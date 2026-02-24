@@ -1,0 +1,200 @@
+# Campaign Template 2: The Crypt of Whispers
+# Undead theme. Tests skill checks, traps, and mixed combat.
+
+name: The Crypt of Whispers
+description: >
+  An ancient burial crypt beneath a ruined chapel. The dead have begun to stir, and
+  strange whispers echo from below. A local priest begs the adventurers to descend
+  and destroy whatever dark force is animating the corpses before it spreads.
+difficulty_tier: intermediate
+estimated_sessions: 2
+
+story_hooks:
+  - "The dead are rising from the old cemetery outside town"
+  - "A priest's holy symbol cracked when he tried to turn the undead — something powerful is down there"
+  - "Whispers can be heard at night near the ruined chapel"
+  - "An ancient diary mentions a wight lord buried beneath the chapel centuries ago"
+
+rooms:
+  - id: cow-entry
+    name: Ruined Chapel
+    description: >
+      The shell of a stone chapel, roof long collapsed. Pews are overturned and covered
+      in moss. A stone staircase descends into darkness behind the shattered altar.
+      The air grows cold as you approach the stairs.
+    type: entry
+    features:
+      - "Shattered altar with faded holy symbols"
+      - "Stone staircase descending into darkness"
+      - "Cold draft rising from below"
+      - "Faded mural on the wall (DC 12 History to read: depicts the burial of a warrior-king)"
+
+  - id: cow-burial-hall
+    name: Burial Hall
+    description: >
+      A long hall lined with stone sarcophagi. Most are sealed, but several lids have
+      been pushed aside from within. The floor is covered in dust and scattered bones.
+      Torches in wall sconces flicker with an unnatural blue flame.
+    type: corridor
+    features:
+      - "Stone sarcophagi (some open, some sealed)"
+      - "Blue-flamed torches (magical, DC 13 Arcana)"
+      - "Scattered bones and dust"
+      - "Inscription above the far door: 'Here rest the faithful servants'"
+    suggested_encounter: cow-skeletons
+
+  - id: cow-trapped-hall
+    name: Hall of Trials
+    description: >
+      A narrow hall with ornate floor tiles arranged in a pattern. Some tiles are
+      slightly raised. Pressure plates trigger poison darts from the walls.
+      Ancient text on the wall describes a prayer that reveals the safe path.
+    type: trap
+    features:
+      - "Patterned floor tiles (DC 14 Perception to spot pressure plates)"
+      - "Dart trap (DC 13 DEX save, 1d4 piercing + DC 11 CON save or poisoned)"
+      - "Ancient prayer text on wall (DC 12 Religion to decipher safe path)"
+      - "Scratches on safe tiles from previous visitors"
+
+  - id: cow-puzzle-door
+    name: The Sealed Chamber
+    description: >
+      A massive stone door covered in carved symbols. Three rotating rings of runes
+      must be aligned correctly to open it. The answer is hidden in the murals
+      throughout the crypt. Forcing it triggers a trap.
+    type: chamber
+    features:
+      - "Massive stone door with rotating rune rings"
+      - "Puzzle: align three symbols (DC 15 Investigation, or DC 13 with mural clues)"
+      - "Force trap: DC 16 STR to force, triggers 2d6 necrotic damage (DC 14 CON save for half)"
+      - "Carved murals showing the warrior-king's life"
+
+  - id: cow-ossuary
+    name: The Ossuary
+    description: >
+      A chamber where bones are stacked floor to ceiling in geometric patterns. The
+      whispers are louder here. Ghoulish creatures lurk among the bones, waiting to
+      ambush the living. A faint green glow emanates from the far passage.
+    type: chamber
+    features:
+      - "Walls of stacked bones"
+      - "Louder whispers (DC 10 WIS save or frightened for 1 round)"
+      - "Green glow from the far passage"
+      - "Concealed alcove with offerings (DC 14 Perception)"
+    suggested_encounter: cow-ghouls
+
+  - id: cow-rest-shrine
+    name: Shrine of the Guardian
+    description: >
+      A small chapel within the crypt, still blessed and protected. A stone guardian
+      angel stands watch. The whispers cannot penetrate here. The air is warm and
+      the undead cannot enter.
+    type: rest
+    features:
+      - "Stone guardian angel statue"
+      - "Blessed ground (undead cannot enter)"
+      - "Holy water font (2 vials available)"
+      - "Prayer bench"
+
+  - id: cow-treasure
+    name: Offering Chamber
+    description: >
+      A side chamber filled with funeral offerings. Gold coins, silver chalices, and
+      gemstones were left for the dead. Some items radiate faint magic.
+    type: treasure
+    features:
+      - "Funeral offerings (gold, silver, gems)"
+      - "Faintly magical ring on a skeleton's finger"
+      - "Trapped chest (DC 13 to detect, DC 12 DEX save or 1d6 necrotic)"
+    loot_table: cow-treasure-loot
+
+  - id: cow-boss
+    name: The Wight Lord's Tomb
+    description: >
+      A grand burial chamber. A massive stone sarcophagus dominates the center,
+      its lid shattered from within. The wight lord stands before his throne of
+      bones, eyes burning with cold blue fire. Zombie servants flank him.
+    type: boss
+    features:
+      - "Shattered sarcophagus"
+      - "Throne of bones"
+      - "Cold blue fire in wall sconces"
+      - "Ancient weapon rack (DC 14 Perception: +1 Longsword)"
+    suggested_encounter: cow-boss
+
+encounters:
+  - id: cow-skeletons
+    name: Awakened Dead
+    monsters:
+      - template_name: Skeleton
+        count: 4
+    difficulty: easy
+
+  - id: cow-ghouls
+    name: Ghoul Ambush
+    monsters:
+      - template_name: Ghoul
+        count: 2
+      - template_name: Zombie
+        count: 2
+    difficulty: hard
+
+  - id: cow-boss
+    name: The Wight Lord
+    monsters:
+      - template_name: Wight
+        count: 1
+      - template_name: Skeleton
+        count: 3
+    difficulty: hard
+
+loot_tables:
+  - id: cow-treasure-loot
+    name: Offering Chamber Loot
+    entries:
+      - item_name: Gold Coins
+        weight: 3
+        quantity: 50
+      - item_name: Ring of Protection
+        weight: 1
+        quantity: 1
+      - item_name: Potion of Greater Healing
+        weight: 2
+        quantity: 1
+      - item_name: Scroll of Cure Wounds
+        weight: 2
+        quantity: 1
+
+connections:
+  - from: cow-entry
+    to: cow-burial-hall
+    type: passage
+  - from: cow-burial-hall
+    to: cow-trapped-hall
+    type: passage
+  - from: cow-burial-hall
+    to: cow-rest-shrine
+    type: hidden
+  - from: cow-trapped-hall
+    to: cow-puzzle-door
+    type: passage
+  - from: cow-puzzle-door
+    to: cow-ossuary
+    type: locked
+  - from: cow-ossuary
+    to: cow-treasure
+    type: door
+  - from: cow-ossuary
+    to: cow-boss
+    type: door
+
+npcs:
+  - name: Spirit of the Guardian
+    description: >
+      The ghost of the warrior-king's loyal guardian. Appears in the shrine as a
+      translucent figure in ancient armor. Not hostile. Can provide cryptic hints
+      about the puzzle door and the wight lord's weakness.
+    dialogue:
+      - "My lord was a good man in life. In death, he is... corrupted. Please, free him."
+      - "The seals were placed to contain his rage. Align them with the symbols of his virtues: Honor, Courage, Mercy."
+      - "Strike true at his heart. The cold fire sustains him — but it fears the light."

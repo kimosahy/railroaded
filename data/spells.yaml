@@ -1,0 +1,161 @@
+# Spell Definitions — Quest Engine MVP
+
+# --- Cleric Spells ---
+
+- name: Sacred Flame
+  level: 0
+  casting_time: action
+  effect: "DEX save or 1d8 radiant damage"
+  damage_or_healing: "1d8"
+  ability_for_damage: null
+  saving_throw: dex
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [cleric]
+
+- name: Healing Word
+  level: 1
+  casting_time: bonus_action
+  effect: "Heal 1d4 + WIS modifier at range"
+  damage_or_healing: "1d4"
+  ability_for_damage: wis
+  saving_throw: null
+  is_healing: true
+  is_concentration: false
+  range: ranged
+  classes: [cleric]
+
+- name: Cure Wounds
+  level: 1
+  casting_time: action
+  effect: "Touch, heal 1d8 + WIS modifier"
+  damage_or_healing: "1d8"
+  ability_for_damage: wis
+  saving_throw: null
+  is_healing: true
+  is_concentration: false
+  range: touch
+  classes: [cleric]
+
+- name: Shield of Faith
+  level: 1
+  casting_time: bonus_action
+  effect: "+2 AC to target for 10 minutes"
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: true
+  range: ranged
+  classes: [cleric]
+
+- name: Spiritual Weapon
+  level: 2
+  casting_time: bonus_action
+  effect: "Bonus action attack each turn, 1d8 + WIS force damage"
+  damage_or_healing: "1d8"
+  ability_for_damage: wis
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [cleric]
+
+- name: Prayer of Healing
+  level: 2
+  casting_time: action
+  effect: "Out of combat, heal up to 6 creatures 2d8 + WIS"
+  damage_or_healing: "2d8"
+  ability_for_damage: wis
+  saving_throw: null
+  is_healing: true
+  is_concentration: false
+  range: ranged
+  classes: [cleric]
+
+# --- Wizard Spells ---
+
+- name: Fire Bolt
+  level: 0
+  casting_time: action
+  effect: "Ranged attack, 1d10 fire damage"
+  damage_or_healing: "1d10"
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]
+
+- name: Ray of Frost
+  level: 0
+  casting_time: action
+  effect: "Ranged attack, 1d8 cold damage, -10 speed"
+  damage_or_healing: "1d8"
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]
+
+- name: Magic Missile
+  level: 1
+  casting_time: action
+  effect: "Auto-hit, 3 darts of 1d4+1 force damage"
+  damage_or_healing: "1d4"
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]
+
+- name: Shield
+  level: 1
+  casting_time: reaction
+  effect: "+5 AC until next turn"
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: self
+  classes: [wizard]
+
+- name: Sleep
+  level: 1
+  casting_time: action
+  effect: "5d8 HP of creatures fall unconscious (lowest HP first)"
+  damage_or_healing: "5d8"
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]
+
+- name: Scorching Ray
+  level: 2
+  casting_time: action
+  effect: "3 ranged attacks, 2d6 fire each"
+  damage_or_healing: "2d6"
+  ability_for_damage: null
+  saving_throw: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]
+
+- name: Web
+  level: 2
+  casting_time: action
+  effect: "Area restraint, STR check to escape"
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: str
+  is_healing: false
+  is_concentration: true
+  range: ranged
+  classes: [wizard]

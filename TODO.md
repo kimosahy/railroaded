@@ -17,10 +17,10 @@
 - [x] Tests for all rules engine components
 
 ## Phase 3: Game Data
-- [ ] Monster stat blocks (YAML → database seed)
-- [ ] Item definitions (weapons, armor, potions, scrolls)
-- [ ] Spell definitions
-- [ ] Campaign templates (3 dungeons with rooms, encounters, loot)
+- [x] Monster stat blocks (YAML → database seed)
+- [x] Item definitions (weapons, armor, potions, scrolls)
+- [x] Spell definitions
+- [x] Campaign templates (3 dungeons with rooms, encounters, loot)
 - [ ] Character creation (race bonuses, class features, starting equipment)
 
 ## Phase 4: Session System

@@ -1,0 +1,208 @@
+# Campaign Template 1: The Goblin Warren
+# Classic starter dungeon. Combat-focused, good for testing basic mechanics.
+
+name: The Goblin Warren
+description: >
+  A network of caves occupied by a tribe of goblins led by a cunning hobgoblin warlord.
+  Merchants have gone missing on the road, and the local village has pooled their coin
+  to hire adventurers. The goblins have been raiding caravans and hoarding the stolen
+  goods deep in their warren.
+difficulty_tier: starter
+estimated_sessions: 2
+
+story_hooks:
+  - "Missing merchants from the village of Thornfield"
+  - "A survivor stumbled back to town, babbling about 'the green tide'"
+  - "The goblin raids are getting bolder — they attacked in broad daylight last week"
+  - "A wanted poster in the tavern offers 50 gold for the goblin leader's head"
+
+rooms:
+  - id: gw-entry
+    name: Cave Entrance
+    description: >
+      A narrow cave mouth half-hidden by thornbushes. Goblin tracks are everywhere
+      in the mud. A crude wooden sign shows a skull — a warning to trespassers.
+      The air smells of smoke and rotting meat.
+    type: entry
+    features:
+      - "Thornbushes (can be searched for hidden path)"
+      - "Goblin tracks leading inside"
+      - "Warning sign with skull"
+      - "Snare trap near the entrance (DC 12 Perception to spot, DC 10 DEX save)"
+
+  - id: gw-guard-post
+    name: Guard Post
+    description: >
+      A wider section of the cave lit by a sputtering torch. Two goblins sit on rocks,
+      arguing over a game of knucklebones. A pile of stolen crates sits against the wall.
+    type: chamber
+    features:
+      - "Sputtering torch on the wall"
+      - "Pile of stolen merchant crates"
+      - "Knucklebones game on a flat rock"
+      - "Narrow passage continues deeper"
+    suggested_encounter: gw-guards
+
+  - id: gw-pit-corridor
+    name: Pit Trap Corridor
+    description: >
+      A long, narrow passage with suspiciously even flooring. The walls are scratched
+      with crude goblin graffiti. Halfway down, a section of floor is a concealed pit
+      trap — 10 feet deep with sharpened stakes.
+    type: trap
+    features:
+      - "Goblin graffiti on walls"
+      - "Pit trap (DC 13 Perception to spot, DC 12 DEX save, 1d6 falling + 1d4 piercing)"
+      - "Scratch marks on walls from goblins climbing out"
+
+  - id: gw-wolf-den
+    name: Wolf Den
+    description: >
+      A damp cave reeking of animal musk. Three wolves are chained to iron stakes
+      driven into the rock. They snarl and strain at their chains. Bones litter the
+      floor. A goblin handler sleeps against the far wall.
+    type: chamber
+    features:
+      - "Three chained wolves"
+      - "Iron stakes and chains"
+      - "Sleeping goblin handler"
+      - "Pile of gnawed bones"
+    suggested_encounter: gw-wolves
+
+  - id: gw-storage
+    name: Storage Cavern
+    description: >
+      A natural cavern used as a storeroom. Barrels of stolen ale, crates of provisions,
+      bolts of cloth, and a locked chest sit among the clutter. This is where the goblins
+      hoard their stolen goods.
+    type: treasure
+    features:
+      - "Stolen merchant goods (ale, provisions, cloth)"
+      - "Locked chest (DC 14 Thieves' Tools to open)"
+      - "Goblin inventory scratched on a wooden board"
+    loot_table: gw-storage-loot
+
+  - id: gw-mess-hall
+    name: Goblin Mess Hall
+    description: >
+      A large cavern with a cooking fire in the center. The smoke rises through a natural
+      chimney in the ceiling. Goblins eat here, and the remains of their meals are scattered
+      everywhere. Several goblins are eating when the party arrives.
+    type: chamber
+    features:
+      - "Cooking fire with natural chimney"
+      - "Crude wooden tables and benches"
+      - "Food scraps and bones everywhere"
+      - "Passage to the throne room guarded by a bugbear"
+    suggested_encounter: gw-mess-hall
+
+  - id: gw-rest-alcove
+    name: Hidden Alcove
+    description: >
+      A small side cave hidden behind a loose rock. It's clean, dry, and defensible —
+      clearly not used by the goblins. A perfect spot to catch a breath.
+    type: rest
+    features:
+      - "Loose rock concealing entrance (DC 14 Perception)"
+      - "Dry, defensible space"
+      - "Old bedroll from a previous explorer"
+
+  - id: gw-throne
+    name: Throne Room
+    description: >
+      The largest cavern in the warren. A crude throne made of stolen furniture sits on a
+      raised platform. The hobgoblin warlord sits here, flanked by his elite guards. A
+      captured merchant is tied to a post nearby.
+    type: boss
+    features:
+      - "Crude throne on raised platform"
+      - "Captured merchant (alive, tied to a post)"
+      - "War banner with goblin clan symbol"
+      - "Escape tunnel behind the throne (DC 16 Perception)"
+    suggested_encounter: gw-boss
+
+encounters:
+  - id: gw-guards
+    name: Guard Post Ambush
+    monsters:
+      - template_name: Goblin
+        count: 2
+    difficulty: easy
+
+  - id: gw-wolves
+    name: Wolf Den
+    monsters:
+      - template_name: Wolf
+        count: 3
+      - template_name: Goblin
+        count: 1
+    difficulty: medium
+
+  - id: gw-mess-hall
+    name: Mess Hall Brawl
+    monsters:
+      - template_name: Goblin
+        count: 4
+      - template_name: Bugbear
+        count: 1
+    difficulty: hard
+
+  - id: gw-boss
+    name: The Warlord's Stand
+    monsters:
+      - template_name: Hobgoblin Warlord
+        count: 1
+      - template_name: Hobgoblin
+        count: 2
+    difficulty: hard
+
+loot_tables:
+  - id: gw-storage-loot
+    name: Storage Cavern Loot
+    entries:
+      - item_name: Potion of Healing
+        weight: 3
+        quantity: 2
+      - item_name: Gold Coins
+        weight: 4
+        quantity: 25
+      - item_name: Scroll of Magic Missile
+        weight: 2
+        quantity: 1
+      - item_name: Thieves' Tools
+        weight: 1
+        quantity: 1
+
+connections:
+  - from: gw-entry
+    to: gw-guard-post
+    type: passage
+  - from: gw-guard-post
+    to: gw-pit-corridor
+    type: passage
+  - from: gw-guard-post
+    to: gw-wolf-den
+    type: door
+  - from: gw-pit-corridor
+    to: gw-storage
+    type: passage
+  - from: gw-pit-corridor
+    to: gw-mess-hall
+    type: passage
+  - from: gw-storage
+    to: gw-rest-alcove
+    type: hidden
+  - from: gw-mess-hall
+    to: gw-throne
+    type: door
+
+npcs:
+  - name: Captured Merchant
+    description: >
+      Aldric, a middle-aged merchant who was captured three days ago. Terrified but
+      unharmed. Will be grateful if rescued and can provide information about the
+      goblin warren's layout if freed. Offers a reward of 20 gold.
+    dialogue:
+      - "Please, help me! They've been keeping me alive to ransom, but I think they're getting impatient."
+      - "The big one — the hobgoblin — he's smart. He has the others organized like a real army."
+      - "There's a back way out, behind the throne. I saw them use it when scouts came in."

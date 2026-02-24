@@ -1,0 +1,394 @@
+# Monster Stat Blocks — Quest Engine MVP
+# Based on D&D 5e SRD, simplified for MVP
+
+# --- Tier 1: Starter (CR 1/8 - 1/4) ---
+
+- name: Goblin
+  challenge_rating: 0.25
+  xp_value: 50
+  hp_max: 7
+  ac: 15
+  ability_scores:
+    str: 8
+    dex: 14
+    con: 10
+    int: 10
+    wis: 8
+    cha: 8
+  attacks:
+    - name: Scimitar
+      to_hit: 4
+      damage: "1d6+2"
+      type: slashing
+    - name: Shortbow
+      to_hit: 4
+      damage: "1d6+2"
+      type: piercing
+  special_abilities:
+    - "Nimble Escape: Disengage or Hide as a bonus action"
+
+- name: Skeleton
+  challenge_rating: 0.25
+  xp_value: 50
+  hp_max: 13
+  ac: 13
+  ability_scores:
+    str: 10
+    dex: 14
+    con: 15
+    int: 6
+    wis: 8
+    cha: 5
+  attacks:
+    - name: Shortsword
+      to_hit: 4
+      damage: "1d6+2"
+      type: piercing
+    - name: Shortbow
+      to_hit: 4
+      damage: "1d6+2"
+      type: piercing
+  special_abilities:
+    - "Vulnerability to bludgeoning damage"
+
+- name: Wolf
+  challenge_rating: 0.25
+  xp_value: 50
+  hp_max: 11
+  ac: 13
+  ability_scores:
+    str: 12
+    dex: 15
+    con: 12
+    int: 3
+    wis: 12
+    cha: 6
+  attacks:
+    - name: Bite
+      to_hit: 4
+      damage: "2d4+2"
+      type: piercing
+  special_abilities:
+    - "Pack Tactics: Advantage on attack if ally is within 5ft of target"
+    - "Knockdown: Target must make DC 11 STR save or be knocked prone"
+
+- name: Kobold
+  challenge_rating: 0.125
+  xp_value: 25
+  hp_max: 5
+  ac: 12
+  ability_scores:
+    str: 7
+    dex: 15
+    con: 9
+    int: 8
+    wis: 7
+    cha: 8
+  attacks:
+    - name: Dagger
+      to_hit: 4
+      damage: "1d4+2"
+      type: piercing
+    - name: Sling
+      to_hit: 4
+      damage: "1d4+2"
+      type: bludgeoning
+  special_abilities:
+    - "Pack Tactics: Advantage on attack if ally is within 5ft of target"
+    - "Sunlight Sensitivity: Disadvantage on attacks in sunlight"
+
+# --- Tier 2: Standard (CR 1/8 - 1/2) ---
+
+- name: Hobgoblin
+  challenge_rating: 0.5
+  xp_value: 100
+  hp_max: 11
+  ac: 18
+  ability_scores:
+    str: 13
+    dex: 12
+    con: 12
+    int: 10
+    wis: 10
+    cha: 9
+  attacks:
+    - name: Longsword
+      to_hit: 3
+      damage: "1d8+1"
+      type: slashing
+    - name: Longbow
+      to_hit: 3
+      damage: "1d8+1"
+      type: piercing
+  special_abilities:
+    - "Martial Advantage: +2d6 damage once per turn if ally is within 5ft of target"
+
+- name: Zombie
+  challenge_rating: 0.25
+  xp_value: 50
+  hp_max: 22
+  ac: 8
+  ability_scores:
+    str: 13
+    dex: 6
+    con: 16
+    int: 3
+    wis: 6
+    cha: 5
+  attacks:
+    - name: Slam
+      to_hit: 3
+      damage: "1d6+1"
+      type: bludgeoning
+  special_abilities:
+    - "Undead Fortitude: On dropping to 0 HP, CON save DC 5+damage. On success, drop to 1 HP instead"
+
+- name: Bandit
+  challenge_rating: 0.125
+  xp_value: 25
+  hp_max: 11
+  ac: 12
+  ability_scores:
+    str: 11
+    dex: 12
+    con: 12
+    int: 10
+    wis: 10
+    cha: 10
+  attacks:
+    - name: Scimitar
+      to_hit: 3
+      damage: "1d6+1"
+      type: slashing
+    - name: Light Crossbow
+      to_hit: 3
+      damage: "1d8+1"
+      type: piercing
+  special_abilities: []
+
+- name: Giant Rat
+  challenge_rating: 0.125
+  xp_value: 25
+  hp_max: 7
+  ac: 12
+  ability_scores:
+    str: 7
+    dex: 15
+    con: 11
+    int: 2
+    wis: 10
+    cha: 4
+  attacks:
+    - name: Bite
+      to_hit: 4
+      damage: "1d4+2"
+      type: piercing
+  special_abilities:
+    - "Pack Tactics: Advantage on attack if ally is within 5ft of target"
+
+- name: Orc
+  challenge_rating: 0.5
+  xp_value: 100
+  hp_max: 15
+  ac: 13
+  ability_scores:
+    str: 16
+    dex: 12
+    con: 16
+    int: 7
+    wis: 11
+    cha: 10
+  attacks:
+    - name: Greataxe
+      to_hit: 5
+      damage: "1d12+3"
+      type: slashing
+    - name: Javelin
+      to_hit: 5
+      damage: "1d6+3"
+      type: piercing
+  special_abilities:
+    - "Aggressive: Move up to speed toward hostile creature as a bonus action"
+
+# --- Tier 3: Tough (CR 1-2) ---
+
+- name: Bugbear
+  challenge_rating: 1
+  xp_value: 200
+  hp_max: 27
+  ac: 16
+  ability_scores:
+    str: 15
+    dex: 14
+    con: 13
+    int: 8
+    wis: 11
+    cha: 9
+  attacks:
+    - name: Morningstar
+      to_hit: 4
+      damage: "2d8+2"
+      type: piercing
+    - name: Javelin
+      to_hit: 4
+      damage: "1d6+2"
+      type: piercing
+  special_abilities:
+    - "Surprise Attack: +2d6 damage if target is surprised"
+    - "Brute: Extra damage die on melee (included in attack)"
+
+- name: Ghoul
+  challenge_rating: 1
+  xp_value: 200
+  hp_max: 22
+  ac: 12
+  ability_scores:
+    str: 13
+    dex: 15
+    con: 10
+    int: 7
+    wis: 10
+    cha: 6
+  attacks:
+    - name: Claws
+      to_hit: 4
+      damage: "2d4+2"
+      type: slashing
+    - name: Bite
+      to_hit: 2
+      damage: "2d6+2"
+      type: piercing
+  special_abilities:
+    - "Paralyzing Touch: On claw hit, DC 10 CON save or paralyzed for 1 minute (repeat save each turn)"
+
+- name: Bandit Captain
+  challenge_rating: 2
+  xp_value: 450
+  hp_max: 65
+  ac: 15
+  ability_scores:
+    str: 15
+    dex: 16
+    con: 14
+    int: 14
+    wis: 11
+    cha: 14
+  attacks:
+    - name: Scimitar
+      to_hit: 5
+      damage: "1d6+3"
+      type: slashing
+    - name: Dagger
+      to_hit: 5
+      damage: "1d4+3"
+      type: piercing
+  special_abilities:
+    - "Multiattack: Two scimitar attacks and one dagger attack"
+    - "Parry: +2 AC against one melee attack (reaction)"
+
+- name: Ogre
+  challenge_rating: 2
+  xp_value: 450
+  hp_max: 59
+  ac: 11
+  ability_scores:
+    str: 19
+    dex: 8
+    con: 16
+    int: 5
+    wis: 7
+    cha: 7
+  attacks:
+    - name: Greatclub
+      to_hit: 6
+      damage: "2d8+4"
+      type: bludgeoning
+    - name: Javelin
+      to_hit: 6
+      damage: "2d6+4"
+      type: piercing
+  special_abilities: []
+
+# --- Boss Tier (CR 3-4) ---
+
+- name: Wight
+  challenge_rating: 3
+  xp_value: 700
+  hp_max: 45
+  ac: 14
+  ability_scores:
+    str: 15
+    dex: 14
+    con: 16
+    int: 10
+    wis: 13
+    cha: 15
+  attacks:
+    - name: Longsword
+      to_hit: 4
+      damage: "1d8+2"
+      type: slashing
+    - name: Life Drain
+      to_hit: 4
+      damage: "1d6+2"
+      type: necrotic
+    - name: Longbow
+      to_hit: 4
+      damage: "1d8+2"
+      type: piercing
+  special_abilities:
+    - "Life Drain: On hit, target must DC 13 CON save or max HP reduced by damage dealt"
+    - "Multiattack: Two longsword attacks or two longbow attacks"
+    - "Sunlight Sensitivity: Disadvantage on attacks in sunlight"
+
+- name: Hobgoblin Warlord
+  challenge_rating: 3
+  xp_value: 700
+  hp_max: 52
+  ac: 17
+  ability_scores:
+    str: 16
+    dex: 14
+    con: 14
+    int: 12
+    wis: 11
+    cha: 15
+  attacks:
+    - name: Greatsword
+      to_hit: 5
+      damage: "2d6+3"
+      type: slashing
+    - name: Javelin
+      to_hit: 5
+      damage: "1d6+3"
+      type: piercing
+  special_abilities:
+    - "Multiattack: Two greatsword attacks"
+    - "Martial Advantage: +2d6 damage once per turn if ally is within 5ft"
+    - "Leadership: Allies within 30ft add d4 to attack rolls and saves (recharges on short rest)"
+
+- name: Young Dragon
+  challenge_rating: 4
+  xp_value: 1100
+  hp_max: 75
+  ac: 17
+  ability_scores:
+    str: 18
+    dex: 10
+    con: 17
+    int: 12
+    wis: 11
+    cha: 15
+  attacks:
+    - name: Bite
+      to_hit: 7
+      damage: "2d10+4"
+      type: piercing
+    - name: Claw
+      to_hit: 7
+      damage: "2d6+4"
+      type: slashing
+  special_abilities:
+    - "Multiattack: One bite and two claw attacks"
+    - "Fire Breath (Recharge 5-6): 30ft cone, DC 14 DEX save, 10d6 fire (half on save)"
+    - "Frightful Presence: DC 14 WIS save or frightened for 1 minute"

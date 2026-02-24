@@ -1,0 +1,246 @@
+# Campaign Template 3: The Bandit Fortress
+# Human enemies, negotiation possible. Tests roleplay + combat mixing.
+
+name: The Bandit Fortress
+description: >
+  A ruined hilltop fort occupied by a well-organized bandit company. Their captain
+  is a former soldier with a grudge against the local lord. Not all the bandits are
+  evil — some are desperate farmers who turned to crime after heavy taxes. The
+  situation can be resolved through combat, negotiation, or a mix of both.
+difficulty_tier: intermediate
+estimated_sessions: 2
+
+story_hooks:
+  - "Trade route between Millhaven and Crosswall has been blocked for weeks"
+  - "The bandit captain sends a letter to the lord: 'Tax your people less, or we tax the roads'"
+  - "A deserter from the bandit company seeks amnesty and offers to guide adventurers"
+  - "The lord offers 100 gold and a land grant for ending the bandit threat"
+
+rooms:
+  - id: bf-approach
+    name: The Approach
+    description: >
+      A winding path up a rocky hill to the ruined fort. The bandits have cleared
+      the brush for visibility. Scout posts watch the road. Approaching unseen
+      requires skill.
+    type: entry
+    features:
+      - "Rocky hill path with cleared sightlines"
+      - "Scout posts with lookouts (DC 14 Stealth to approach unseen)"
+      - "Old road markers from when this was a military fort"
+      - "Campfire smoke visible from the fort above"
+
+  - id: bf-gate
+    name: Gatehouse
+    description: >
+      The fort's main gate, partially repaired by the bandits. Two guards stand
+      watch. A parley flag can be raised to request negotiation. The gate can be
+      stormed, snuck past, or talked through.
+    type: chamber
+    features:
+      - "Repaired wooden gate (DC 18 STR to force)"
+      - "Guard tower with two lookouts"
+      - "Parley flag mechanism (can request to speak with the captain)"
+      - "Side passage through collapsed wall (DC 14 Perception to spot)"
+    suggested_encounter: bf-gate-guards
+
+  - id: bf-courtyard
+    name: Courtyard
+    description: >
+      The central courtyard of the ruined fort. Bandits have set up tents, a
+      training area, and a cooking station. Off-duty bandits mill about. The
+      mood is tense but disciplined — this isn't a rabble.
+    type: chamber
+    features:
+      - "Training dummies and weapon rack"
+      - "Cooking station with campfire"
+      - "Bandit tents (can be searched)"
+      - "Notice board with Captain's orders (reveals internal dissent)"
+    suggested_encounter: bf-courtyard
+
+  - id: bf-barracks
+    name: Barracks
+    description: >
+      A long stone building with rows of bedrolls. Personal effects are neatly
+      stored. Letters from families reveal the bandits' stories — many are former
+      farmers driven to desperation.
+    type: chamber
+    features:
+      - "Bedrolls and personal effects"
+      - "Letters from families (reveal sympathetic backstories)"
+      - "Hidden stash under a loose stone (DC 13 Investigation: gold and a healing potion)"
+      - "Map of planned raids on the wall"
+    loot_table: bf-barracks-loot
+
+  - id: bf-prison
+    name: Prison Tower
+    description: >
+      A small tower used to hold prisoners. Currently holds two captured merchants
+      and a tax collector the bandits despise. The merchants are unharmed. The tax
+      collector has been roughed up but is alive.
+    type: chamber
+    features:
+      - "Iron-barred cells (DC 15 Thieves' Tools to pick)"
+      - "Two frightened merchants"
+      - "Bruised tax collector (key witness to the lord's corruption)"
+      - "Guard rotation schedule on the wall"
+
+  - id: bf-armory
+    name: Armory
+    description: >
+      A locked room filled with weapons, armor, and supplies taken from raids.
+      Well-organized and catalogued. The captain runs a tight ship.
+    type: treasure
+    features:
+      - "Racks of weapons and armor"
+      - "Catalogued stolen supplies"
+      - "Locked strong box (DC 16 Thieves' Tools)"
+      - "Military-grade equipment (better than typical bandit gear)"
+    loot_table: bf-armory-loot
+
+  - id: bf-rest-cellar
+    name: Wine Cellar
+    description: >
+      A cool cellar beneath the fort with barrels of stolen wine. Quiet and
+      out of the way. A reasonable place to rest if the bandits don't know
+      you're here.
+    type: rest
+    features:
+      - "Wine barrels (some quite good)"
+      - "Cool, quiet environment"
+      - "Back staircase to the captain's quarters"
+      - "Old fort blueprints on the wall"
+
+  - id: bf-captain
+    name: Captain's Quarters
+    description: >
+      A well-appointed room at the top of the keep. Maps, letters, and strategy
+      documents cover a large table. The bandit captain sits here, a scarred
+      woman in well-maintained armor. She's willing to talk — but not to surrender.
+    type: boss
+    features:
+      - "Strategic maps and documents"
+      - "Letters proving the lord's corrupt taxation"
+      - "The captain's personal effects (military commendation, family portrait)"
+      - "Window overlooking the courtyard (escape route)"
+    suggested_encounter: bf-boss
+
+encounters:
+  - id: bf-gate-guards
+    name: Gate Guards
+    monsters:
+      - template_name: Bandit
+        count: 3
+    difficulty: easy
+
+  - id: bf-courtyard
+    name: Courtyard Standoff
+    monsters:
+      - template_name: Bandit
+        count: 5
+      - template_name: Hobgoblin
+        count: 1
+    difficulty: medium
+
+  - id: bf-boss
+    name: The Captain's Stand
+    monsters:
+      - template_name: Bandit Captain
+        count: 1
+      - template_name: Bandit
+        count: 2
+    difficulty: hard
+
+loot_tables:
+  - id: bf-barracks-loot
+    name: Barracks Hidden Stash
+    entries:
+      - item_name: Gold Coins
+        weight: 3
+        quantity: 15
+      - item_name: Potion of Healing
+        weight: 2
+        quantity: 1
+      - item_name: Dagger
+        weight: 1
+        quantity: 1
+
+  - id: bf-armory-loot
+    name: Armory Loot
+    entries:
+      - item_name: "+1 Longsword"
+        weight: 1
+        quantity: 1
+      - item_name: Chain Shirt
+        weight: 2
+        quantity: 1
+      - item_name: Potion of Greater Healing
+        weight: 2
+        quantity: 1
+      - item_name: Gold Coins
+        weight: 3
+        quantity: 40
+      - item_name: Scroll of Shield
+        weight: 1
+        quantity: 1
+
+connections:
+  - from: bf-approach
+    to: bf-gate
+    type: passage
+  - from: bf-gate
+    to: bf-courtyard
+    type: door
+  - from: bf-courtyard
+    to: bf-barracks
+    type: door
+  - from: bf-courtyard
+    to: bf-prison
+    type: door
+  - from: bf-courtyard
+    to: bf-armory
+    type: locked
+  - from: bf-barracks
+    to: bf-rest-cellar
+    type: hidden
+  - from: bf-rest-cellar
+    to: bf-captain
+    type: passage
+  - from: bf-courtyard
+    to: bf-captain
+    type: door
+
+npcs:
+  - name: Captain Sera Voss
+    description: >
+      Former sergeant in the lord's militia. Deserted after watching the lord's tax
+      collectors beat a farmer to death for being short on payment. Took her squad
+      with her and began "taxing" the trade routes instead. She's pragmatic, not
+      cruel. Willing to negotiate if the party can offer a real solution to the
+      taxation problem.
+    dialogue:
+      - "I didn't choose this life. But I won't watch good people starve while the lord feasts."
+      - "You want a fight? I'll give you one. But we both know there's a smarter play here."
+      - "Bring me proof the lord will change his ways, and I'll stand down. Otherwise, we hold this fort."
+
+  - name: Deserter Tomm
+    description: >
+      A young bandit who lost his nerve after a raid went wrong. Fled to the
+      nearest town and is willing to guide adventurers into the fort in exchange
+      for amnesty. Knows the layout, guard rotations, and the captain's habits.
+      Nervous but honest.
+    dialogue:
+      - "I'll show you the way in, but I'm not fighting. I've seen enough blood."
+      - "The captain's not evil, she just... she won't stop. Not until someone makes her."
+      - "There's a way through the collapsed wall on the east side. Guards don't watch it."
+
+  - name: Tax Collector Harven
+    description: >
+      The lord's tax collector, imprisoned by the bandits. A weaselly, arrogant
+      man who doesn't realize he's part of the problem. Has documents proving
+      the lord's excessive taxation. Could be convinced to testify — or might
+      try to spin the situation to his advantage.
+    dialogue:
+      - "These criminals assaulted an agent of the crown! I demand you arrest them all!"
+      - "The tax rates are set by the lord. I merely collect what is owed."
+      - "...fine, perhaps the rates were... aggressive. But that's not MY fault."

@@ -1,0 +1,142 @@
+# Item Definitions — Quest Engine MVP
+
+# --- Weapons ---
+
+weapons:
+  - name: Dagger
+    damage: "1d4"
+    damage_type: piercing
+    properties: [finesse, light, thrown]
+    description: "A simple blade favored by rogues."
+
+  - name: Shortsword
+    damage: "1d6"
+    damage_type: piercing
+    properties: [finesse]
+    description: "A quick, light blade."
+
+  - name: Longsword
+    damage: "1d8"
+    damage_type: slashing
+    properties: [versatile]
+    description: "A versatile blade. 1d10 when wielded two-handed."
+
+  - name: Greatsword
+    damage: "2d6"
+    damage_type: slashing
+    properties: [heavy, two-handed]
+    description: "A massive two-handed blade."
+
+  - name: Handaxe
+    damage: "1d6"
+    damage_type: slashing
+    properties: [light, thrown]
+    description: "A light axe that can be thrown."
+
+  - name: Longbow
+    damage: "1d8"
+    damage_type: piercing
+    properties: [ranged, two-handed]
+    description: "A tall bow with excellent range."
+
+  - name: Mace
+    damage: "1d6"
+    damage_type: bludgeoning
+    properties: []
+    description: "A heavy head on a solid shaft."
+
+  - name: Staff
+    damage: "1d6"
+    damage_type: bludgeoning
+    properties: [versatile]
+    description: "A wooden staff. 1d8 when wielded two-handed."
+
+# --- Armor ---
+
+armor:
+  - name: Leather Armor
+    ac_base: 11
+    ac_dex_cap: 99
+    type: light
+    description: "Supple leather that allows full mobility."
+
+  - name: Chain Shirt
+    ac_base: 13
+    ac_dex_cap: 2
+    type: medium
+    description: "Interlocking metal rings under a layer of fabric."
+
+  - name: Chain Mail
+    ac_base: 16
+    ac_dex_cap: 0
+    type: heavy
+    description: "Heavy interlocking metal rings. No DEX bonus."
+
+  - name: Shield
+    ac_base: 2
+    ac_dex_cap: null
+    type: shield
+    description: "A wooden or metal shield. +2 AC when held."
+
+# --- Potions ---
+
+potions:
+  - name: Potion of Healing
+    heal_amount: "2d4+2"
+    description: "A red liquid that restores health. Heals 2d4+2 HP."
+
+  - name: Potion of Greater Healing
+    heal_amount: "4d4+4"
+    description: "A deep crimson liquid. Heals 4d4+4 HP."
+
+# --- Scrolls ---
+
+scrolls:
+  - name: Scroll of Magic Missile
+    spell_name: Magic Missile
+    description: "A one-use scroll. Casts Magic Missile."
+
+  - name: Scroll of Cure Wounds
+    spell_name: Cure Wounds
+    description: "A one-use scroll. Casts Cure Wounds."
+
+  - name: Scroll of Shield
+    spell_name: Shield
+    description: "A one-use scroll. Casts Shield as a reaction."
+
+  - name: Scroll of Web
+    spell_name: Web
+    description: "A one-use scroll. Casts Web."
+
+# --- Magic Items ---
+
+magic_items:
+  - name: "+1 Longsword"
+    base_weapon: Longsword
+    magic_bonus: 1
+    description: "A finely crafted longsword with a faint magical glow. +1 to attack and damage."
+
+  - name: "+1 Longbow"
+    base_weapon: Longbow
+    magic_bonus: 1
+    description: "An elven bow humming with enchantment. +1 to attack and damage."
+
+  - name: Ring of Protection
+    type: ring
+    magic_bonus: 1
+    description: "+1 to AC while worn."
+
+# --- Misc ---
+
+misc:
+  - name: Gold Coins
+    description: "Standard currency."
+
+  - name: Torch
+    description: "Provides bright light in a 20-foot radius."
+
+  - name: Rope (50 ft)
+    description: "Hempen rope, useful for climbing and tying."
+
+  - name: Thieves' Tools
+    description: "Required for picking locks and disabling traps."
