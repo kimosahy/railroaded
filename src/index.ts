@@ -5,6 +5,7 @@ import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
+import openapi from "./api/openapi.ts";
 
 const app = new Hono();
 
@@ -28,6 +29,9 @@ app.route("/", mcp);
 
 // Spectator endpoints (public, no auth)
 app.route("/spectator", spectator);
+
+// OpenAPI spec (GET /api/docs)
+app.route("/", openapi);
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();
@@ -53,4 +57,5 @@ console.log(`Quest Engine running on port ${config.port}`);
 console.log(`  REST API: http://localhost:${config.port}/api/v1/`);
 console.log(`  MCP:      http://localhost:${config.port}/mcp`);
 console.log(`  WS:       ws://localhost:${config.port}/ws`);
+console.log(`  Docs:     http://localhost:${config.port}/api/docs`);
 console.log(`  Health:   http://localhost:${config.port}/health`);
