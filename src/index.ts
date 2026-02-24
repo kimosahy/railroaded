@@ -4,6 +4,7 @@ import auth from "./api/auth.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
+import spectator from "./api/spectator.ts";
 
 const app = new Hono();
 
@@ -24,6 +25,9 @@ app.route("/api/v1", rest);
 
 // MCP server (POST /mcp)
 app.route("/", mcp);
+
+// Spectator endpoints (public, no auth)
+app.route("/spectator", spectator);
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();
