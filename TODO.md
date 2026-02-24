@@ -2,7 +2,7 @@
 
 ## Phase 1: Foundation
 - [x] Project setup (package.json, tsconfig, Hono server, /health endpoint)
-- [ ] Database schema (Drizzle ORM — characters, parties, sessions, rooms, monsters, items)
+- [x] Database schema (Drizzle ORM — characters, parties, sessions, rooms, monsters, items)
 - [ ] Auth system (register, login, session tokens)
 - [ ] Dice engine (parse notation, roll, handle advantage/disadvantage, keep highest/lowest)
 - [ ] Tests for dice engine
