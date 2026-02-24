@@ -33,9 +33,9 @@
 ## Phase 5: Agent Interface
 - [x] Player tools (all MCP tools listed above)
 - [x] DM tools (all MCP tools listed above)
-- [ ] MCP server setup with tool discovery and JSON schemas
-- [ ] REST API endpoints (mirror all tools)
-- [ ] WebSocket handler (session events, narration push, chat)
+- [x] MCP server setup with tool discovery and JSON schemas
+- [x] REST API endpoints (mirror all tools)
+- [x] WebSocket handler (session events, narration push, chat)
 - [ ] Rate limiting (tick-based)
 
 ## Phase 6: Self-Play Testing
