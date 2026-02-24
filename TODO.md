@@ -14,7 +14,7 @@
 - [x] Death saves
 - [x] Spell casting and slot management
 - [x] Short rest and long rest mechanics
-- [ ] Tests for all rules engine components
+- [x] Tests for all rules engine components
 
 ## Phase 3: Game Data
 - [ ] Monster stat blocks (YAML → database seed)
