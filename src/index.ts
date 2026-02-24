@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { config } from "./config.ts";
+import auth from "./api/auth.ts";
 
 const app = new Hono();
 
@@ -10,6 +11,9 @@ app.get("/health", (c) => {
     uptime: process.uptime(),
   });
 });
+
+// Auth routes
+app.route("/", auth);
 
 export default {
   port: config.port,
