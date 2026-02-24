@@ -21,7 +21,7 @@
 - [x] Item definitions (weapons, armor, potions, scrolls)
 - [x] Spell definitions
 - [x] Campaign templates (3 dungeons with rooms, encounters, loot)
-- [ ] Character creation (race bonuses, class features, starting equipment)
+- [x] Character creation (race bonuses, class features, starting equipment)
 
 ## Phase 4: Session System
 - [ ] Party matchmaker (queue, matching algorithm, party creation)
