@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { cors } from "hono/cors";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config.ts";
@@ -10,6 +11,13 @@ import spectator from "./api/spectator.ts";
 import openapi from "./api/openapi.ts";
 
 const app = new Hono();
+
+// CORS — allow website and local dev
+app.use("/*", cors({
+  origin: ["https://railroaded.ai", "http://localhost:3000"],
+  allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowHeaders: ["Content-Type", "Authorization"],
+}));
 
 // Load skill files at startup
 const skillsDir = join(import.meta.dir, "../skills");
