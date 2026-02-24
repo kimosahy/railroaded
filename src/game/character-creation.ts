@@ -148,32 +148,49 @@ export function classProficiencies(characterClass: CharacterClass): string[] {
 }
 
 /**
- * Get starting equipment for a class.
+ * Get starting equipment for a class, adjusted for racial proficiencies.
+ * Dwarves get Warhammer over Mace (martial weapon proficiency).
+ * Elves get Longbow in inventory (weapon proficiency).
+ * Half-Orcs get Greatsword over Longsword for fighters (STR-focused).
  */
-export function startingEquipment(characterClass: CharacterClass): {
+export function startingEquipment(characterClass: CharacterClass, race?: Race): {
   equipment: Equipment;
   inventory: string[];
 } {
   switch (characterClass) {
     case "fighter":
       return {
-        equipment: { weapon: "Longsword", armor: "Chain Mail", shield: "Shield" },
+        equipment: {
+          weapon: race === "half-orc" ? "Greatsword" : "Longsword",
+          armor: "Chain Mail",
+          shield: race === "half-orc" ? null : "Shield", // Greatsword is two-handed
+        },
         inventory: ["Handaxe", "Handaxe", "Torch", "Rope (50 ft)"],
       };
     case "rogue":
       return {
         equipment: { weapon: "Shortsword", armor: "Leather Armor", shield: null },
-        inventory: ["Dagger", "Dagger", "Thieves' Tools", "Torch"],
+        inventory: [
+          "Dagger", "Dagger", "Thieves' Tools", "Torch",
+          ...(race === "elf" ? ["Longbow"] : []),
+        ],
       };
     case "cleric":
       return {
-        equipment: { weapon: "Mace", armor: "Chain Shirt", shield: "Shield" },
+        equipment: {
+          weapon: race === "dwarf" ? "Warhammer" : "Mace",
+          armor: "Chain Shirt",
+          shield: "Shield",
+        },
         inventory: ["Torch", "Potion of Healing"],
       };
     case "wizard":
       return {
         equipment: { weapon: "Staff", armor: null, shield: null },
-        inventory: ["Dagger", "Torch", "Scroll of Magic Missile"],
+        inventory: [
+          "Dagger", "Torch", "Scroll of Magic Missile",
+          ...(race === "elf" ? ["Shortsword"] : []),
+        ],
       };
   }
 }
@@ -181,11 +198,11 @@ export function startingEquipment(characterClass: CharacterClass): {
 /**
  * Get AC for starting equipment of a class.
  */
-function startingAC(characterClass: CharacterClass, dexMod: number): number {
+function startingAC(characterClass: CharacterClass, dexMod: number, race?: Race): number {
   switch (characterClass) {
     case "fighter":
-      // Chain Mail (16) + Shield (+2) = 18
-      return calculateAC(dexMod, { acBase: 16, acDexCap: 0 }, true);
+      // Chain Mail (16); Shield (+2) unless two-handed weapon (half-orc Greatsword)
+      return calculateAC(dexMod, { acBase: 16, acDexCap: 0 }, race !== "half-orc");
     case "rogue":
       // Leather (11 + DEX)
       return calculateAC(dexMod, { acBase: 11, acDexCap: 99 }, false);
@@ -220,9 +237,9 @@ export function createCharacter(params: {
   const dexMod = abilityModifier(finalScores.dex);
   const hitDieSides = hitDieSidesForClass(params.class);
   const hpMax = calculateMaxHP(hitDieSides, conMod, level);
-  const ac = startingAC(params.class, dexMod);
+  const ac = startingAC(params.class, dexMod, params.race);
   const spellSlots = getMaxSpellSlots(level, params.class);
-  const { equipment, inventory } = startingEquipment(params.class);
+  const { equipment, inventory } = startingEquipment(params.class, params.race);
 
   // Combine racial + class features
   const features = [

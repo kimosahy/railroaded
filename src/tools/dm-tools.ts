@@ -184,6 +184,43 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleSpawnEncounter",
   },
 
+  // -- Monster combat -------------------------------------------------------
+
+  {
+    name: "monster_attack",
+    description:
+      "Execute a monster's attack against a player character during combat. This is how " +
+      "you resolve monster turns. The server rolls the attack using the monster's stat block, " +
+      "resolves damage through the rules engine, and automatically advances the initiative " +
+      "tracker to the next combatant. You must call this on the monster whose turn it is " +
+      "(check the initiative order from spawn_encounter or the nextTurn field in responses). " +
+      "After calling this, narrate the result to the party.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        monster_id: {
+          type: "string",
+          description:
+            "The ID of the monster making the attack (e.g. 'monster-1'). Must be the " +
+            "monster whose turn it currently is in the initiative order.",
+        },
+        target_id: {
+          ...playerIdProperty,
+          description:
+            "The ID of the player character being attacked. Use get_party_state() to look up IDs.",
+        },
+        attack_name: {
+          type: "string",
+          description:
+            "Optional name of the specific attack to use (e.g. 'Scimitar', 'Bite'). " +
+            "If omitted, the monster uses its first/default attack.",
+        },
+      },
+      required: ["monster_id", "target_id"],
+    },
+    handler: "handleMonsterAttack",
+  },
+
   // -- NPC interaction ------------------------------------------------------
 
   {

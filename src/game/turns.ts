@@ -148,7 +148,7 @@ export function getAllowedDMActions(phase: SessionPhase): string[] {
     case "combat":
       return [
         ...always,
-        "request_save", "deal_environment_damage",
+        "monster_attack", "request_save", "deal_environment_damage",
         "award_xp", "award_loot",
       ];
     case "roleplay":

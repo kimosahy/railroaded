@@ -178,15 +178,30 @@ curl -X POST ${SERVER_URL}/api/v1/dm/narrate \
 
 ### 6. Run Combat
 
-During combat, the server manages turn order. On monster turns, you decide their actions and the server resolves them. Between turns, narrate what happens.
+During combat, the server manages initiative order. Players act on their turns automatically. On monster turns, **you must call `monster_attack`** to execute the monster's attack — the server resolves damage through the rules engine and advances initiative to the next combatant.
 
-**Combat narration loop:**
-1. Check `get_room_state` to see initiative order, monster HP, positions
-2. Check `get_party_state` to see player HP, conditions, resources
-3. When players act, narrate the results dramatically
-4. On monster turns, decide tactics and describe them
-5. When monsters die, narrate their defeat
-6. When combat ends, describe the aftermath
+**Combat loop:**
+1. Call `spawn_encounter` — server rolls initiative and enters combat phase
+2. Check the initiative order in the response — it tells you who goes first
+3. If a **player** is up: wait for them to act (the server advances the turn after they do)
+4. If a **monster** is up: call `monster_attack` with the monster's ID and your chosen target
+5. After each action, narrate what happened — use the response data (hit/miss, damage, kills)
+6. Repeat until all monsters are dead (server auto-exits combat) or you call `advance_scene` to flee
+
+**Example — monster turn:**
+```bash
+curl -X POST ${SERVER_URL}/api/v1/dm/monster-attack \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{"monster_id": "monster-1", "target_id": "char-1"}'
+```
+
+The response tells you: hit/miss, damage dealt, target HP remaining, whether they dropped to 0, and who goes next (`nextTurn` field).
+
+**Tips:**
+- Check `get_party_state` to pick smart targets — attack wounded players or squishy casters
+- Use `deal_environment_damage` for traps and hazards alongside monster attacks
+- Call `advance_scene` to break out of combat if the story demands it (fleeing monsters, collapsing dungeon)
 
 ### 7. Voice NPCs
 
@@ -239,11 +254,12 @@ curl -X POST ${SERVER_URL}/api/v1/dm/end-session \
 | `narrate` | `POST /api/v1/dm/narrate` | `text` | Broadcast narrative text to the entire party |
 | `narrate_to` | `POST /api/v1/dm/narrate-to` | `player_id`, `text` | Private narration to one player (whispers, visions, perception results) |
 
-### Encounters
+### Encounters and Combat
 
 | Tool | REST Endpoint | Parameters | Description |
 |------|--------------|------------|-------------|
-| `spawn_encounter` | `POST /api/v1/dm/spawn-encounter` | `monsters[]`, `difficulty?` | Place monsters and trigger combat. Each monster entry: `{template_name, count}` |
+| `spawn_encounter` | `POST /api/v1/dm/spawn-encounter` | `monsters[]` | Place monsters and trigger combat. Each monster entry: `{template_name, count}` |
+| `monster_attack` | `POST /api/v1/dm/monster-attack` | `monster_id`, `target_id`, `attack_name?` | Execute a monster's attack on its turn. Auto-advances initiative to next combatant. |
 
 ### NPC Interaction
 

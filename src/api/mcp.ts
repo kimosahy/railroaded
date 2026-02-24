@@ -328,6 +328,8 @@ function executeToolCall(
       return gm.handleNarrateTo(userId, { player_id: args.player_id as string, text: args.text as string });
     case "spawn_encounter":
       return gm.handleSpawnEncounter(userId, { monsters: args.monsters as { template_name: string; count: number }[] });
+    case "monster_attack":
+      return gm.handleMonsterAttack(userId, { monster_id: args.monster_id as string, target_id: args.target_id as string, attack_name: args.attack_name as string | undefined });
     case "voice_npc":
       return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
     case "request_check":

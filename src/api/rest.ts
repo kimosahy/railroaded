@@ -182,6 +182,17 @@ dm.post("/end-session", async (c) => {
   return respond(c, gm.handleEndSession(c.get("user").userId, body));
 });
 
+// Monster attack — DM executes a monster's turn
+dm.post("/monster-attack", async (c) => {
+  const body = await c.req.json<{ monster_id: string; target_id: string; attack_name?: string }>();
+  return respond(c, gm.handleMonsterAttack(c.get("user").userId, body));
+});
+
+// Convenience aliases for combat flow
+dm.post("/next-turn", (c) => {
+  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act." }, 400);
+});
+
 // Also allow DM to queue
 dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
 

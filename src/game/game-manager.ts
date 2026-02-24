@@ -167,6 +167,13 @@ export function getPartyForUser(userId: string): GameParty | null {
   return getPartyForCharacter(char.id);
 }
 
+/**
+ * Resolve a player_id parameter — accepts char-X (character ID) or user-X (user ID).
+ */
+function resolveCharacter(playerId: string): GameCharacter | null {
+  return characters.get(playerId) ?? characters.get(charactersByUser.get(playerId) ?? "") ?? null;
+}
+
 // --- Player Tool Handlers ---
 
 export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -294,9 +301,9 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
   const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
   if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
 
-  // Determine weapon type (simplified)
-  const isRanged = char.equipment.weapon === "Longbow";
+  // Determine weapon type from properties
   const weaponDamage = getWeaponDamage(char.equipment.weapon);
+  const isRanged = weaponDamage.properties.includes("ranged");
   const profBonus = proficiencyBonus(char.level);
 
   const attackParams = isRanged
@@ -336,12 +343,18 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       }
     }
 
+    // Advance to next turn (if still in combat)
+    if (party.session && party.session.phase === "combat") {
+      party.session = nextTurn(party.session);
+    }
+
     return {
       success: true,
       data: {
         hit: true, critical: result.critical, damage: result.totalDamage,
         damageType: result.damageType, targetHP: monster.hpCurrent,
         killed, naturalRoll: result.naturalRoll,
+        nextTurn: party.session?.phase === "combat" ? getCurrentCombatant(party.session)?.entityId ?? null : null,
       },
     };
   }
@@ -351,10 +364,103 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     hit: false, fumble: result.fumble,
   });
 
+  // Advance to next turn even on miss
+  if (party.session && party.session.phase === "combat") {
+    party.session = nextTurn(party.session);
+  }
+
   return {
     success: true,
     data: {
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
+      nextTurn: party.session?.phase === "combat" ? getCurrentCombatant(party.session)?.entityId ?? null : null,
+    },
+  };
+}
+
+export function handleMonsterAttack(userId: string, params: { monster_id: string; target_id: string; attack_name?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session || party.session.phase !== "combat") {
+    return { success: false, error: "Not in combat." };
+  }
+
+  // Verify it's this monster's turn
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== params.monster_id || current.type !== "monster") {
+    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}` };
+  }
+
+  const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
+  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
+
+  // Find target character
+  const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
+  if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+
+  // Pick attack (first matching or first available)
+  const attack = params.attack_name
+    ? monster.attacks.find((a) => a.name.toLowerCase() === params.attack_name!.toLowerCase())
+    : monster.attacks[0];
+  if (!attack) return { success: false, error: "No valid attack found for this monster." };
+
+  // Resolve using the rules engine
+  const result = resolveAttack({
+    attackerAbilityMod: attack.to_hit - proficiencyBonus(1), // to_hit already includes proficiency in stat blocks
+    proficiencyBonus: 0, // already baked into to_hit
+    targetAC: target.ac,
+    damageDice: attack.damage.replace(/[+-]\d+$/, ""), // strip modifier from notation like "1d6+1"
+    damageType: attack.type,
+    damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
+    bonusToHit: attack.to_hit, // use the full to_hit from the stat block
+  });
+
+  if (result.hit) {
+    const { hp, droppedToZero } = applyDamage(
+      { current: target.hpCurrent, max: target.hpMax, temp: 0 },
+      result.totalDamage
+    );
+    target.hpCurrent = hp.current;
+
+    if (droppedToZero) {
+      target.conditions = handleDropToZero(target.conditions);
+    }
+
+    logEvent(party, "monster_attack", monster.id, {
+      monsterName: monster.name, targetName: target.name, attackName: attack.name,
+      hit: true, damage: result.totalDamage, damageType: result.damageType,
+      critical: result.critical, droppedToZero,
+    });
+
+    // Advance to next turn
+    party.session = nextTurn(party.session);
+
+    return {
+      success: true,
+      data: {
+        hit: true, critical: result.critical, damage: result.totalDamage,
+        damageType: result.damageType, targetHP: target.hpCurrent,
+        droppedToZero, naturalRoll: result.naturalRoll,
+        attackName: attack.name, monsterName: monster.name, targetName: target.name,
+        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+      },
+    };
+  }
+
+  logEvent(party, "monster_attack", monster.id, {
+    monsterName: monster.name, targetName: target.name, attackName: attack.name,
+    hit: false, fumble: result.fumble,
+  });
+
+  // Advance to next turn even on miss
+  party.session = nextTurn(party.session);
+
+  return {
+    success: true,
+    data: {
+      hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
+      attackName: attack.name, monsterName: monster.name, targetName: target.name,
+      nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
     },
   };
 }
@@ -752,8 +858,8 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const char = characters.get(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+  const char = resolveCharacter(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
   const profBonus = params.skill && char.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
@@ -782,8 +888,8 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
 }
 
 export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const char = characters.get(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+  const char = resolveCharacter(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
   const result = savingThrow({
@@ -833,8 +939,8 @@ export function handleRequestGroupCheck(userId: string, params: { ability: strin
 }
 
 export function handleDealEnvironmentDamage(userId: string, params: { player_id: string; notation: string; type: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const char = characters.get(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+  const char = resolveCharacter(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   const dmgRoll = roll(params.notation);
   const { hp, droppedToZero } = applyDamage(
@@ -860,17 +966,27 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
+  // Exit combat if currently in combat
+  if (party.session && party.session.phase === "combat") {
+    party.session = exitCombat(party.session);
+    party.monsters = []; // clear encounter
+    logEvent(party, "combat_end", null, { reason: "scene_advanced" });
+  }
+
   if (params.next_room_id && party.dungeonState) {
     const newState = moveToRoom(party.dungeonState, params.next_room_id);
     if (newState) {
       party.dungeonState = newState;
       const room = getCurrentRoom(newState);
       logEvent(party, "room_enter", null, { roomName: room?.name });
-      return { success: true, data: { advanced: true, room: room?.name, description: room?.description } };
+      return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase } };
     }
+    return { success: false, error: `Cannot move to room ${params.next_room_id} — not connected or not found.` };
   }
 
-  return { success: true, data: { advanced: true, message: "Scene advanced." } };
+  // No room specified — just advance the scene (exit combat, return available exits)
+  const exits = party.dungeonState ? getAvailableExits(party.dungeonState).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })) : [];
+  return { success: true, data: { advanced: true, phase: party.session?.phase, exits } };
 }
 
 export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -929,8 +1045,8 @@ export function handleAwardXp(userId: string, params: { amount: number }): { suc
 }
 
 export function handleAwardLoot(userId: string, params: { player_id: string; item_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const char = characters.get(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+  const char = resolveCharacter(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   char.inventory.push(params.item_id);
   logEvent(findDMParty(userId), "loot", null, { characterId: params.player_id, characterName: char.name, itemName: params.item_id });
@@ -1027,6 +1143,7 @@ function getWeaponDamage(weaponName: string | null): { damage: string; propertie
     "Staff": { damage: "1d6", properties: ["versatile"], damageType: "bludgeoning" },
     "Longbow": { damage: "1d8", properties: ["ranged", "two-handed"], damageType: "piercing" },
     "Handaxe": { damage: "1d6", properties: ["light", "thrown"], damageType: "slashing" },
+    "Warhammer": { damage: "1d8", properties: ["versatile"], damageType: "bludgeoning" },
   };
   return weapons[weaponName ?? ""] ?? { damage: "1d4", properties: [], damageType: "bludgeoning" };
 }
