@@ -12,7 +12,7 @@
 - [x] Combat: initiative, attack rolls, damage, critical hits
 - [x] HP tracking, conditions (unconscious, poisoned, stunned, restrained)
 - [x] Death saves
-- [ ] Spell casting and slot management
+- [x] Spell casting and slot management
 - [ ] Short rest and long rest mechanics
 - [ ] Tests for all rules engine components
 
