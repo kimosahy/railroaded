@@ -8,7 +8,7 @@
 - [x] Tests for dice engine
 
 ## Phase 2: Rules Engine
-- [ ] Ability checks and saving throws
+- [x] Ability checks and saving throws
 - [ ] Combat: initiative, attack rolls, damage, critical hits
 - [ ] HP tracking, conditions (unconscious, poisoned, stunned, restrained)
 - [ ] Death saves
