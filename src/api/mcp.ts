@@ -17,6 +17,7 @@ import { playerTools } from "../tools/player-tools.ts";
 import type { PlayerToolDefinition } from "../tools/player-tools.ts";
 import { dmTools } from "../tools/dm-tools.ts";
 import type { ToolDefinition } from "../tools/dm-tools.ts";
+import * as gm from "../game/game-manager.ts";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC types
@@ -211,6 +212,7 @@ function handleToolsList(
 function handleToolsCall(
   id: string | number | null,
   role: "player" | "dm",
+  userId: string,
   params: Record<string, unknown>
 ): JsonRpcResponse {
   const toolName = params.name;
@@ -246,15 +248,117 @@ function handleToolsCall(
     );
   }
 
-  // Stub response — actual tool execution will be wired up later
+  const args = (params.arguments ?? {}) as Record<string, unknown>;
+  const result = executeToolCall(toolName, userId, args);
+
+  if (!result.success) {
+    return success(id, {
+      content: [{ type: "text", text: JSON.stringify({ error: result.error }) }],
+      isError: true,
+    });
+  }
+
   return success(id, {
-    content: [
-      {
-        type: "text",
-        text: `Tool called: ${toolName}. Not yet implemented.`,
-      },
-    ],
+    content: [{ type: "text", text: JSON.stringify(result.data ?? { ok: true }) }],
   });
+}
+
+function executeToolCall(
+  toolName: string,
+  userId: string,
+  args: Record<string, unknown>
+): { success: boolean; data?: Record<string, unknown>; error?: string; character?: unknown } {
+  switch (toolName) {
+    // --- Player tools ---
+    case "create_character":
+      return gm.handleCreateCharacter(userId, {
+        name: args.name as string,
+        race: args.race as "human" | "elf" | "dwarf" | "halfling" | "half-orc",
+        class: args.class as "fighter" | "rogue" | "cleric" | "wizard",
+        ability_scores: args.ability_scores as { str: number; dex: number; con: number; int: number; wis: number; cha: number },
+        backstory: args.backstory as string | undefined,
+        personality: args.personality as string | undefined,
+        playstyle: args.playstyle as string | undefined,
+      });
+    case "look":
+      return gm.handleLook(userId);
+    case "get_status":
+      return gm.handleGetStatus(userId);
+    case "get_party":
+      return gm.handleGetParty(userId);
+    case "get_inventory":
+      return gm.handleGetInventory(userId);
+    case "get_available_actions":
+      return gm.handleGetAvailableActions(userId);
+    case "move":
+      return gm.handleMove(userId, { direction_or_target: args.direction_or_target as string });
+    case "attack":
+      return gm.handleAttack(userId, { target_id: args.target_id as string, weapon: args.weapon as string | undefined });
+    case "cast":
+      return gm.handleCast(userId, { spell_name: args.spell_name as string, target_id: args.target_id as string | undefined });
+    case "use_item":
+      return gm.handleUseItem(userId, { item_id: args.item_id as string, target_id: args.target_id as string | undefined });
+    case "dodge":
+      return gm.handleDodge(userId);
+    case "dash":
+      return gm.handleDash(userId);
+    case "disengage":
+      return gm.handleDisengage(userId);
+    case "help":
+      return gm.handleHelp(userId, { target_id: args.target_id as string });
+    case "hide":
+      return gm.handleHide(userId);
+    case "short_rest":
+      return gm.handleShortRest(userId);
+    case "long_rest":
+      return gm.handleLongRest(userId);
+    case "party_chat":
+      return gm.handlePartyChat(userId, { message: args.message as string });
+    case "whisper":
+      return gm.handleWhisper(userId, { player_id: args.player_id as string, message: args.message as string });
+    case "journal_add":
+      return gm.handleJournalAdd(userId, { entry: args.entry as string });
+    case "queue_for_party":
+      return gm.handleQueueForParty(userId);
+
+    // --- DM tools ---
+    case "narrate":
+      return gm.handleNarrate(userId, { text: args.text as string });
+    case "narrate_to":
+      return gm.handleNarrateTo(userId, { player_id: args.player_id as string, text: args.text as string });
+    case "spawn_encounter":
+      return gm.handleSpawnEncounter(userId, { monsters: args.monsters as { template_name: string; count: number }[] });
+    case "voice_npc":
+      return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
+    case "request_check":
+      return gm.handleRequestCheck(userId, {
+        player_id: args.player_id as string, ability: args.ability as string,
+        dc: args.dc as number, skill: args.skill as string | undefined,
+      });
+    case "request_save":
+      return gm.handleRequestSave(userId, { player_id: args.player_id as string, ability: args.ability as string, dc: args.dc as number });
+    case "request_group_check":
+      return gm.handleRequestGroupCheck(userId, { ability: args.ability as string, dc: args.dc as number });
+    case "deal_environment_damage":
+      return gm.handleDealEnvironmentDamage(userId, { player_id: args.player_id as string, notation: args.notation as string, type: args.type as string });
+    case "advance_scene":
+      return gm.handleAdvanceScene(userId, { next_room_id: args.next_room_id as string | undefined });
+    case "get_party_state":
+      return gm.handleGetPartyState(userId);
+    case "get_room_state":
+      return gm.handleGetRoomState(userId);
+    case "award_xp":
+      return gm.handleAwardXp(userId, { amount: args.amount as number });
+    case "award_loot":
+      return gm.handleAwardLoot(userId, { player_id: args.player_id as string, item_id: args.item_id as string });
+    case "end_session":
+      return gm.handleEndSession(userId, { summary: args.summary as string });
+    case "dm_queue_for_party":
+      return gm.handleDMQueueForParty(userId);
+
+    default:
+      return { success: false, error: `Tool '${toolName}' has no handler implementation.` };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -314,7 +418,7 @@ mcp.post("/mcp", async (c) => {
 
     case "tools/call":
       return c.json(
-        handleToolsCall(request.id, user.role, request.params ?? {}),
+        handleToolsCall(request.id, user.role, user.userId, request.params ?? {}),
         200
       );
 

@@ -1,0 +1,1132 @@
+/**
+ * In-memory game state manager.
+ *
+ * Bridges the API layer to the engine. Manages characters, parties,
+ * sessions, and routes tool calls to the correct engine functions.
+ *
+ * For MVP, this runs entirely in-memory. Database persistence comes later.
+ */
+
+import {
+  createCharacter as buildCharacter,
+  validateAbilityScores,
+  type CharacterSheet,
+} from "./character-creation.ts";
+import {
+  createDungeonState,
+  getCurrentRoom,
+  getAvailableExits,
+  moveToRoom,
+  unlockConnection,
+  discoverConnection,
+  type DungeonState,
+} from "./dungeon.ts";
+import {
+  spawnMonsters,
+  rollEncounterInitiative,
+  damageMonster,
+  calculateEncounterXP,
+  isEncounterOver,
+  getAliveMonsters,
+  type MonsterInstance,
+} from "./encounters.ts";
+import {
+  createSession,
+  enterCombat,
+  exitCombat,
+  nextTurn,
+  getCurrentCombatant,
+  removeCombatant,
+  endSession as endSessionState,
+  shouldCombatEnd,
+  type SessionState,
+  type InitiativeSlot,
+} from "./session.ts";
+import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
+import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
+import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
+import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition } from "../engine/hp.ts";
+import { castSpell, spellSaveDC, spellAttackBonus, type SpellDefinition } from "../engine/spells.ts";
+import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
+import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from "../engine/rest.ts";
+import { roll, abilityModifier } from "../engine/dice.ts";
+import { rollLootTable } from "../engine/loot.ts";
+import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
+import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase } from "../types.ts";
+import { parse as parseYAML } from "yaml";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+// --- In-memory state ---
+
+interface GameCharacter extends CharacterSheet {
+  id: string;
+  userId: string;
+  partyId: string | null;
+  conditions: Condition[];
+}
+
+interface GameParty {
+  id: string;
+  members: string[]; // character IDs
+  dmUserId: string | null;
+  dungeonState: DungeonState | null;
+  session: SessionState | null;
+  monsters: MonsterInstance[];
+  events: SessionEvent[];
+}
+
+const characters = new Map<string, GameCharacter>();
+const charactersByUser = new Map<string, string>(); // userId → characterId
+const parties = new Map<string, GameParty>();
+const playerQueue: QueueEntry[] = [];
+const dmQueue: QueueEntry[] = [];
+
+// Spell definitions loaded from YAML (simplified for in-memory)
+const spellDefs = new Map<string, SpellDefinition>();
+
+// Monster templates
+const monsterTemplates = new Map<string, {
+  hpMax: number;
+  ac: number;
+  abilityScores: AbilityScores;
+  attacks: { name: string; to_hit: number; damage: string; type: string }[];
+  specialAbilities: string[];
+  xpValue: number;
+}>();
+
+let idCounter = 1;
+function nextId(prefix: string): string {
+  return `${prefix}-${idCounter++}`;
+}
+
+// --- Character Management ---
+
+export function handleCreateCharacter(userId: string, params: {
+  name: string;
+  race: Race;
+  class: CharacterClass;
+  ability_scores: AbilityScores;
+  backstory?: string;
+  personality?: string;
+  playstyle?: string;
+}): { success: boolean; character?: GameCharacter; error?: string } {
+  // Check if user already has a character
+  if (charactersByUser.has(userId)) {
+    return { success: false, error: "You already have a character. One character per account." };
+  }
+
+  const validation = validateAbilityScores(params.ability_scores);
+  if (!validation.valid) {
+    return { success: false, error: validation.error };
+  }
+
+  const sheet = buildCharacter({
+    name: params.name,
+    race: params.race,
+    class: params.class,
+    abilityScores: params.ability_scores,
+    backstory: params.backstory,
+    personality: params.personality,
+    playstyle: params.playstyle,
+  });
+
+  const id = nextId("char");
+  const character: GameCharacter = {
+    ...sheet,
+    id,
+    userId,
+    partyId: null,
+    conditions: [],
+  };
+
+  characters.set(id, character);
+  charactersByUser.set(userId, id);
+
+  return { success: true, character };
+}
+
+// --- Query helpers ---
+
+export function getCharacterForUser(userId: string): GameCharacter | null {
+  const charId = charactersByUser.get(userId);
+  if (!charId) return null;
+  return characters.get(charId) ?? null;
+}
+
+export function getPartyForCharacter(characterId: string): GameParty | null {
+  const char = characters.get(characterId);
+  if (!char?.partyId) return null;
+  return parties.get(char.partyId) ?? null;
+}
+
+export function getPartyForUser(userId: string): GameParty | null {
+  const char = getCharacterForUser(userId);
+  if (!char) return null;
+  return getPartyForCharacter(char.id);
+}
+
+// --- Player Tool Handlers ---
+
+export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found. Create one first." };
+
+  const party = char.partyId ? parties.get(char.partyId) : null;
+  if (!party?.dungeonState) {
+    return { success: true, data: { description: "You are not in a dungeon. Queue for a party to begin adventuring.", location: "tavern" } };
+  }
+
+  const room = getCurrentRoom(party.dungeonState);
+  if (!room) return { success: false, error: "Unable to determine current room." };
+
+  const exits = getAvailableExits(party.dungeonState);
+  const aliveMonsters = getAliveMonsters(party.monsters);
+
+  return {
+    success: true,
+    data: {
+      room: room.name,
+      description: room.description,
+      type: room.type,
+      features: room.features,
+      exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.isAlive ? "alive" : "dead" })),
+      partyMembers: party.members
+        .map((mid) => characters.get(mid))
+        .filter(Boolean)
+        .map((c) => ({ name: c!.name, class: c!.class, condition: c!.conditions.length > 0 ? c!.conditions.join(", ") : "healthy" })),
+    },
+  };
+}
+
+export function handleGetStatus(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  return {
+    success: true,
+    data: {
+      name: char.name,
+      race: char.race,
+      class: char.class,
+      level: char.level,
+      xp: char.xp,
+      hp: { current: char.hpCurrent, max: char.hpMax },
+      ac: char.ac,
+      abilityScores: char.abilityScores,
+      spellSlots: char.spellSlots,
+      conditions: char.conditions,
+      equipment: char.equipment,
+      features: char.features,
+    },
+  };
+}
+
+export function handleGetParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = char.partyId ? parties.get(char.partyId) : null;
+  if (!party) return { success: true, data: { party: null, message: "Not in a party." } };
+
+  const members = party.members
+    .map((mid) => characters.get(mid))
+    .filter(Boolean)
+    .map((c) => ({
+      name: c!.name,
+      class: c!.class,
+      race: c!.race,
+      level: c!.level,
+      condition: c!.hpCurrent > c!.hpMax / 2 ? "healthy" : c!.hpCurrent > 0 ? "wounded" : "unconscious",
+    }));
+
+  return {
+    success: true,
+    data: { members, phase: party.session?.phase ?? "none" },
+  };
+}
+
+export function handleGetInventory(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  return {
+    success: true,
+    data: {
+      equipment: char.equipment,
+      inventory: char.inventory,
+    },
+  };
+}
+
+export function handleGetAvailableActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = char.partyId ? parties.get(char.partyId) : null;
+  const phase = party?.session?.phase ?? "exploration";
+
+  const isCurrentTurn =
+    party?.session
+      ? getCurrentCombatant(party.session)?.entityId === char.id
+      : false;
+
+  const actions = getAllowedActions(phase, isCurrentTurn);
+
+  return {
+    success: true,
+    data: { phase, isYourTurn: isCurrentTurn, availableActions: actions },
+  };
+}
+
+export function handleAttack(userId: string, params: { target_id: string; weapon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "You can only attack during combat." };
+  }
+
+  // Find target monster
+  const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+  if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
+
+  // Determine weapon type (simplified)
+  const isRanged = char.equipment.weapon === "Longbow";
+  const weaponDamage = getWeaponDamage(char.equipment.weapon);
+  const profBonus = proficiencyBonus(char.level);
+
+  const attackParams = isRanged
+    ? rangedAttackParams(char.abilityScores, profBonus, weaponDamage)
+    : meleeAttackParams(char.abilityScores, profBonus, weaponDamage);
+
+  const result = resolveAttack({ ...attackParams, targetAC: target.ac });
+
+  if (result.hit) {
+    const { monster, killed } = damageMonster(target, result.totalDamage);
+    // Update monster in party
+    const idx = party.monsters.findIndex((m) => m.id === target.id);
+    if (idx !== -1) party.monsters[idx] = monster;
+
+    logEvent(party, "attack", char.id, {
+      attackerName: char.name, targetName: target.name,
+      hit: true, damage: result.totalDamage, damageType: result.damageType,
+      critical: result.critical,
+    });
+
+    if (killed) {
+      // Remove from initiative
+      if (party.session) {
+        party.session = removeCombatant(party.session, target.id);
+      }
+
+      // Check if combat should end
+      if (party.session && shouldCombatEnd(party.session)) {
+        const xp = calculateEncounterXP(party.monsters);
+        const xpEach = Math.floor(xp / party.members.length);
+        for (const mid of party.members) {
+          const m = characters.get(mid);
+          if (m) m.xp += xpEach;
+        }
+        party.session = exitCombat(party.session);
+        logEvent(party, "combat_end", null, { xpAwarded: xp });
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        hit: true, critical: result.critical, damage: result.totalDamage,
+        damageType: result.damageType, targetHP: monster.hpCurrent,
+        killed, naturalRoll: result.naturalRoll,
+      },
+    };
+  }
+
+  logEvent(party, "attack", char.id, {
+    attackerName: char.name, targetName: target.name,
+    hit: false, fumble: result.fumble,
+  });
+
+  return {
+    success: true,
+    data: {
+      hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
+    },
+  };
+}
+
+export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const spell = spellDefs.get(params.spell_name);
+  if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+
+  const result = castSpell({
+    spell,
+    casterAbilityScores: char.abilityScores,
+    casterClass: char.class,
+    spellSlots: char.spellSlots,
+  });
+
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+
+  // Update spell slots
+  char.spellSlots = result.remainingSlots;
+
+  const party = getPartyForCharacter(char.id);
+
+  // Apply effect to target if applicable
+  if (spell.isHealing && params.target_id && result.totalEffect) {
+    // Find target character
+    const target = characters.get(params.target_id);
+    if (target) {
+      const hp = applyHealing(
+        { current: target.hpCurrent, max: target.hpMax, temp: 0 },
+        result.totalEffect
+      );
+      target.hpCurrent = hp.current;
+
+      logEvent(party, "heal", char.id, {
+        healerName: char.name, targetName: target.name, amount: result.totalEffect,
+      });
+    }
+  } else if (!spell.isHealing && params.target_id && result.totalEffect) {
+    // Damage a monster
+    if (party) {
+      const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+      if (target) {
+        const { monster } = damageMonster(target, result.totalEffect);
+        const idx = party.monsters.findIndex((m) => m.id === target.id);
+        if (idx !== -1) party.monsters[idx] = monster;
+      }
+    }
+  }
+
+  logEvent(party, "spell_cast", char.id, {
+    casterName: char.name, spellName: params.spell_name,
+    targetName: params.target_id, effect: result.totalEffect,
+  });
+
+  return {
+    success: true,
+    data: {
+      spell: params.spell_name,
+      effect: result.totalEffect,
+      remainingSlots: result.remainingSlots,
+    },
+  };
+}
+
+export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  // In a full implementation, this would set a "dodging" flag
+  return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
+}
+
+export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
+}
+
+export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
+}
+
+export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
+}
+
+export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  const result = abilityCheck({
+    abilityScores: char.abilityScores,
+    ability: "dex",
+    dc: 10,
+    proficiencyBonus: char.proficiencies.includes("Stealth") ? proficiencyBonus(char.level) : 0,
+  });
+  return {
+    success: true,
+    data: { action: "hide", roll: result.roll.total, hidden: result.success },
+  };
+}
+
+export function handleMove(userId: string, params: { direction_or_target: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.dungeonState) {
+    return { success: false, error: "Not in a dungeon." };
+  }
+
+  // Try to move to a room by ID or name
+  const exits = getAvailableExits(party.dungeonState);
+  const target = exits.find(
+    (e) => e.roomId === params.direction_or_target || e.roomName.toLowerCase().includes(params.direction_or_target.toLowerCase())
+  );
+
+  if (!target) {
+    return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}` };
+  }
+
+  const newState = moveToRoom(party.dungeonState, target.roomId);
+  if (!newState) {
+    return { success: false, error: `Cannot move to ${target.roomName} (${target.connectionType}).` };
+  }
+
+  party.dungeonState = newState;
+  const room = getCurrentRoom(newState);
+
+  logEvent(party, "room_enter", char.id, { roomName: room?.name });
+
+  return {
+    success: true,
+    data: {
+      moved: true,
+      room: room?.name,
+      description: room?.description,
+      type: room?.type,
+    },
+  };
+}
+
+export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  logEvent(party, "chat", char.id, { speakerName: char.name, message: params.message });
+
+  return { success: true, data: { speaker: char.name, message: params.message } };
+}
+
+export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  return { success: true, data: { from: char.name, to: params.player_id, message: params.message } };
+}
+
+export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const conMod = abilityModifier(char.abilityScores.con);
+  const result = doShortRest({
+    hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
+    hitDice: char.hitDice,
+    conModifier: conMod,
+    hitDiceToSpend: Math.min(char.hitDice.current, 1), // spend 1 hit die
+    characterClass: char.class,
+    characterLevel: char.level,
+    spellSlots: char.spellSlots,
+  });
+
+  char.hpCurrent = result.hpAfter;
+  char.hitDice = { ...char.hitDice, current: result.hitDiceRemaining };
+  char.spellSlots = result.newSpellSlots;
+
+  return {
+    success: true,
+    data: {
+      healed: result.totalHealing,
+      hpBefore: result.hpBefore,
+      hpAfter: result.hpAfter,
+      hitDiceRemaining: result.hitDiceRemaining,
+      spellSlotsRecovered: result.spellSlotsRecovered,
+    },
+  };
+}
+
+export function handleLongRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const result = doLongRest({
+    hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
+    hitDice: char.hitDice,
+    characterClass: char.class,
+    characterLevel: char.level,
+    spellSlots: char.spellSlots,
+  });
+
+  char.hpCurrent = result.hpAfter;
+  char.hitDice = { ...char.hitDice, current: result.hitDiceTotal };
+  char.spellSlots = result.newSpellSlots;
+  char.conditions = [];
+
+  return {
+    success: true,
+    data: {
+      hpBefore: result.hpBefore,
+      hpAfter: result.hpAfter,
+      hitDiceRecovered: result.hitDiceRecovered,
+      spellSlots: result.newSpellSlots,
+    },
+  };
+}
+
+export function handleUseItem(userId: string, params: { item_id: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const itemIdx = char.inventory.indexOf(params.item_id);
+  if (itemIdx === -1) {
+    return { success: false, error: `Item "${params.item_id}" not found in inventory.` };
+  }
+
+  // Handle potions
+  if (params.item_id === "Potion of Healing") {
+    const healRoll = roll("2d4+2");
+    const target = params.target_id ? characters.get(params.target_id) : char;
+    if (target) {
+      const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
+      target.hpCurrent = hp.current;
+    }
+    char.inventory.splice(itemIdx, 1);
+    return { success: true, data: { item: params.item_id, healed: healRoll.total, targetHP: (params.target_id ? characters.get(params.target_id) : char)?.hpCurrent } };
+  }
+
+  if (params.item_id === "Potion of Greater Healing") {
+    const healRoll = roll("4d4+4");
+    const target = params.target_id ? characters.get(params.target_id) : char;
+    if (target) {
+      const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
+      target.hpCurrent = hp.current;
+    }
+    char.inventory.splice(itemIdx, 1);
+    return { success: true, data: { item: params.item_id, healed: healRoll.total } };
+  }
+
+  return { success: true, data: { item: params.item_id, message: "Item used." } };
+}
+
+export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  return { success: true, data: { entry: params.entry, character: char.name } };
+}
+
+export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found. Create one first." };
+  if (char.partyId) return { success: false, error: "Already in a party." };
+
+  const entry: QueueEntry = {
+    userId,
+    characterId: char.id,
+    characterClass: char.class,
+    characterName: char.name,
+    personality: char.personality,
+    playstyle: char.playstyle,
+    role: "player",
+  };
+
+  playerQueue.push(entry);
+
+  // Try to match
+  const match = tryMatchParty([...playerQueue, ...dmQueue]);
+  if (match) {
+    formParty(match);
+    return { success: true, data: { queued: false, matched: true, message: "Party formed!" } };
+  }
+
+  return { success: true, data: { queued: true, matched: false, position: playerQueue.length } };
+}
+
+// --- DM Tool Handlers ---
+
+export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const entry: QueueEntry = {
+    userId,
+    characterId: "",
+    characterClass: "fighter", // placeholder
+    characterName: "DM",
+    personality: "",
+    playstyle: "",
+    role: "dm",
+  };
+
+  dmQueue.push(entry);
+
+  const match = tryMatchParty([...playerQueue, ...dmQueue]);
+  if (match) {
+    formParty(match);
+    return { success: true, data: { queued: false, matched: true, message: "Party formed! You are the DM." } };
+  }
+
+  return { success: true, data: { queued: true, matched: false, playersWaiting: playerQueue.length } };
+}
+
+export function handleNarrate(userId: string, params: { text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "You are not a DM for any active party." };
+
+  logEvent(party, "narration", null, { text: params.text });
+  return { success: true, data: { narrated: true, text: params.text } };
+}
+
+export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  return { success: true, data: { narrated: true, to: params.player_id, text: params.text } };
+}
+
+export function handleSpawnEncounter(userId: string, params: { monsters: { template_name: string; count: number }[] }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session) return { success: false, error: "No active session." };
+
+  // Look up monster templates
+  const toSpawn = params.monsters.map((m) => {
+    const template = monsterTemplates.get(m.template_name);
+    if (!template) {
+      // Create a default monster if template not loaded
+      return {
+        templateName: m.template_name,
+        count: m.count,
+        template: {
+          hpMax: 10, ac: 12,
+          abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+          attacks: [{ name: "Attack", to_hit: 3, damage: "1d6+1", type: "slashing" }],
+          specialAbilities: [],
+          xpValue: 50,
+        },
+      };
+    }
+    return { templateName: m.template_name, count: m.count, template };
+  });
+
+  const monsters = spawnMonsters(toSpawn);
+  party.monsters = monsters;
+
+  // Roll initiative
+  const players = party.members
+    .map((mid) => characters.get(mid))
+    .filter(Boolean)
+    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex }));
+
+  const initiative = rollEncounterInitiative(players, monsters);
+  const slots: InitiativeSlot[] = initiative.map((e) => ({
+    entityId: e.entityId,
+    initiative: e.initiative,
+    type: e.type,
+  }));
+
+  party.session = enterCombat(party.session, slots);
+
+  logEvent(party, "combat_start", null, {
+    monsters: monsters.map((m) => ({ name: m.name, hp: m.hpMax, ac: m.ac })),
+    initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
+  });
+
+  return {
+    success: true,
+    data: {
+      monsters: monsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpMax, ac: m.ac })),
+      initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative, type: e.type })),
+      phase: "combat",
+    },
+  };
+}
+
+export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  logEvent(party, "npc_dialogue", null, { npcName: params.npc_id, dialogue: params.dialogue });
+  return { success: true, data: { npc: params.npc_id, dialogue: params.dialogue } };
+}
+
+export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = characters.get(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+
+  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const profBonus = params.skill && char.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
+    ? proficiencyBonus(char.level) : 0;
+
+  const result = abilityCheck({
+    abilityScores: char.abilityScores,
+    ability,
+    dc: params.dc,
+    proficiencyBonus: profBonus,
+  });
+
+  return {
+    success: true,
+    data: {
+      player: char.name,
+      ability: params.ability,
+      skill: params.skill,
+      dc: params.dc,
+      roll: result.roll.total,
+      success: result.success,
+      natural20: result.natural20,
+      natural1: result.natural1,
+    },
+  };
+}
+
+export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = characters.get(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+
+  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const result = savingThrow({
+    abilityScores: char.abilityScores,
+    ability,
+    dc: params.dc,
+  });
+
+  return {
+    success: true,
+    data: {
+      player: char.name, ability: params.ability, dc: params.dc,
+      roll: result.roll.total, success: result.success,
+    },
+  };
+}
+
+export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean);
+  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+
+  const result = groupCheck({
+    characters: charList.map((c) => ({
+      id: c!.id,
+      abilityScores: c!.abilityScores,
+    })),
+    ability,
+    dc: params.dc,
+  });
+
+  return {
+    success: true,
+    data: {
+      ability: params.ability, dc: params.dc,
+      overallSuccess: result.success,
+      results: result.results.map((r) => ({
+        id: r.id,
+        name: characters.get(r.id)?.name,
+        roll: r.check.roll.total,
+        success: r.check.success,
+      })),
+    },
+  };
+}
+
+export function handleDealEnvironmentDamage(userId: string, params: { player_id: string; notation: string; type: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = characters.get(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+
+  const dmgRoll = roll(params.notation);
+  const { hp, droppedToZero } = applyDamage(
+    { current: char.hpCurrent, max: char.hpMax, temp: 0 },
+    dmgRoll.total
+  );
+  char.hpCurrent = hp.current;
+
+  if (droppedToZero) {
+    char.conditions = handleDropToZero(char.conditions);
+  }
+
+  return {
+    success: true,
+    data: {
+      player: char.name, damage: dmgRoll.total, type: params.type,
+      hpRemaining: char.hpCurrent, droppedToZero,
+    },
+  };
+}
+
+export function handleAdvanceScene(userId: string, params: { next_room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (params.next_room_id && party.dungeonState) {
+    const newState = moveToRoom(party.dungeonState, params.next_room_id);
+    if (newState) {
+      party.dungeonState = newState;
+      const room = getCurrentRoom(newState);
+      logEvent(party, "room_enter", null, { roomName: room?.name });
+      return { success: true, data: { advanced: true, room: room?.name, description: room?.description } };
+    }
+  }
+
+  return { success: true, data: { advanced: true, message: "Scene advanced." } };
+}
+
+export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const members = party.members.map((mid) => {
+    const c = characters.get(mid);
+    if (!c) return null;
+    return {
+      id: c.id, name: c.name, class: c.class, race: c.race, level: c.level,
+      hp: { current: c.hpCurrent, max: c.hpMax },
+      ac: c.ac, conditions: c.conditions,
+      spellSlots: c.spellSlots,
+      equipment: c.equipment,
+      inventory: c.inventory,
+    };
+  }).filter(Boolean);
+
+  return { success: true, data: { members, phase: party.session?.phase } };
+}
+
+export function handleGetRoomState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!party.dungeonState) {
+    return { success: true, data: { room: null, message: "No dungeon loaded." } };
+  }
+
+  const room = getCurrentRoom(party.dungeonState);
+  const exits = getAvailableExits(party.dungeonState);
+  const aliveMonsters = getAliveMonsters(party.monsters);
+
+  return {
+    success: true,
+    data: {
+      room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
+      exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac })),
+    },
+  };
+}
+
+export function handleAwardXp(userId: string, params: { amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const xpEach = Math.floor(params.amount / party.members.length);
+  for (const mid of party.members) {
+    const c = characters.get(mid);
+    if (c) c.xp += xpEach;
+  }
+
+  return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length } };
+}
+
+export function handleAwardLoot(userId: string, params: { player_id: string; item_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = characters.get(params.player_id);
+  if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+
+  char.inventory.push(params.item_id);
+  logEvent(findDMParty(userId), "loot", null, { characterId: params.player_id, characterName: char.name, itemName: params.item_id });
+
+  return { success: true, data: { player: char.name, item: params.item_id } };
+}
+
+export function handleEndSession(userId: string, params: { summary: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (party.session) {
+    party.session = endSessionState(party.session);
+  }
+
+  logEvent(party, "session_end", null, { summary: params.summary });
+
+  const eventSummary = summarizeSession(party.events);
+
+  return {
+    success: true,
+    data: { ended: true, summary: params.summary, eventLog: eventSummary },
+  };
+}
+
+// --- Internal helpers ---
+
+function findDMParty(dmUserId: string): GameParty | null {
+  for (const party of parties.values()) {
+    if (party.dmUserId === dmUserId) return party;
+  }
+  return null;
+}
+
+function formParty(match: MatchResult): void {
+  const partyId = nextId("party");
+
+  const party: GameParty = {
+    id: partyId,
+    members: match.players.map((p) => p.characterId),
+    dmUserId: match.dm.userId,
+    dungeonState: null,
+    session: null,
+    monsters: [],
+    events: [],
+  };
+
+  // Assign characters to party
+  for (const player of match.players) {
+    const char = characters.get(player.characterId);
+    if (char) char.partyId = partyId;
+
+    // Remove from queue
+    const qIdx = playerQueue.findIndex((q) => q.userId === player.userId);
+    if (qIdx !== -1) playerQueue.splice(qIdx, 1);
+  }
+
+  // Remove DM from queue
+  const dmIdx = dmQueue.findIndex((q) => q.userId === match.dm.userId);
+  if (dmIdx !== -1) dmQueue.splice(dmIdx, 1);
+
+  // Create a simple dungeon for testing
+  const testRooms = [
+    { id: "room-1", name: "Entrance Hall", description: "A dark stone entrance with torches flickering on the walls.", type: "entry" as const, features: ["Torches", "Stone archway"] },
+    { id: "room-2", name: "Guard Room", description: "A room with overturned furniture. Signs of a struggle.", type: "chamber" as const, features: ["Overturned table", "Weapon rack"] },
+    { id: "room-3", name: "Boss Chamber", description: "A large chamber with a throne at the far end.", type: "boss" as const, features: ["Throne", "Treasure chest"] },
+  ];
+  const testConnections = [
+    { fromRoomId: "room-1", toRoomId: "room-2", type: "passage" as const },
+    { fromRoomId: "room-2", toRoomId: "room-3", type: "door" as const },
+  ];
+
+  party.dungeonState = createDungeonState(testRooms, testConnections, "room-1");
+  party.session = {
+    id: nextId("session"),
+    ...createSession({ partyId }),
+  };
+
+  parties.set(partyId, party);
+}
+
+function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
+  if (!party) return;
+  party.events.push({ type, actorId, data, timestamp: new Date() });
+}
+
+function getWeaponDamage(weaponName: string | null): { damage: string; properties: string[]; damageType: string } {
+  const weapons: Record<string, { damage: string; properties: string[]; damageType: string }> = {
+    "Longsword": { damage: "1d8", properties: ["versatile"], damageType: "slashing" },
+    "Shortsword": { damage: "1d6", properties: ["finesse"], damageType: "piercing" },
+    "Greatsword": { damage: "2d6", properties: ["heavy", "two-handed"], damageType: "slashing" },
+    "Dagger": { damage: "1d4", properties: ["finesse", "light", "thrown"], damageType: "piercing" },
+    "Mace": { damage: "1d6", properties: [], damageType: "bludgeoning" },
+    "Staff": { damage: "1d6", properties: ["versatile"], damageType: "bludgeoning" },
+    "Longbow": { damage: "1d8", properties: ["ranged", "two-handed"], damageType: "piercing" },
+    "Handaxe": { damage: "1d6", properties: ["light", "thrown"], damageType: "slashing" },
+  };
+  return weapons[weaponName ?? ""] ?? { damage: "1d4", properties: [], damageType: "bludgeoning" };
+}
+
+// --- Load spell definitions ---
+
+export function loadSpellDef(name: string, spell: SpellDefinition): void {
+  spellDefs.set(name, spell);
+}
+
+export function loadMonsterTemplate(name: string, template: {
+  hpMax: number; ac: number;
+  abilityScores: AbilityScores;
+  attacks: { name: string; to_hit: number; damage: string; type: string }[];
+  specialAbilities: string[];
+  xpValue: number;
+}): void {
+  monsterTemplates.set(name, template);
+}
+
+// --- Data loading ---
+
+interface YAMLMonster {
+  name: string;
+  hp_max: number;
+  ac: number;
+  ability_scores: AbilityScores;
+  attacks: { name: string; to_hit: number; damage: string; type: string }[];
+  special_abilities: string[];
+  xp_value: number;
+}
+
+interface YAMLSpell {
+  name: string;
+  level: number;
+  casting_time: string;
+  effect: string;
+  damage_or_healing: string | null;
+  ability_for_damage: string | null;
+  saving_throw: string | null;
+  is_healing: boolean;
+  is_concentration: boolean;
+  range: string;
+  classes: string[];
+}
+
+export function initGameData(dataDir?: string): void {
+  const dir = dataDir ?? join(import.meta.dir, "../../data");
+
+  // Load monsters
+  try {
+    const monstersYAML = readFileSync(join(dir, "monsters.yaml"), "utf-8");
+    const monsters = parseYAML(monstersYAML) as YAMLMonster[];
+    for (const m of monsters) {
+      monsterTemplates.set(m.name, {
+        hpMax: m.hp_max,
+        ac: m.ac,
+        abilityScores: m.ability_scores,
+        attacks: m.attacks,
+        specialAbilities: m.special_abilities ?? [],
+        xpValue: m.xp_value,
+      });
+    }
+    console.log(`  Loaded ${monsters.length} monster templates`);
+  } catch (e) {
+    console.warn("  Warning: Could not load monsters.yaml:", (e as Error).message);
+  }
+
+  // Load spells
+  try {
+    const spellsYAML = readFileSync(join(dir, "spells.yaml"), "utf-8");
+    const spells = parseYAML(spellsYAML) as YAMLSpell[];
+    for (const s of spells) {
+      const ability = s.ability_for_damage as "str" | "dex" | "con" | "int" | "wis" | "cha" | null;
+      const save = s.saving_throw as "str" | "dex" | "con" | "int" | "wis" | "cha" | null;
+      spellDefs.set(s.name, {
+        name: s.name,
+        level: s.level,
+        castingTime: s.casting_time as "action" | "bonus_action" | "reaction",
+        effect: s.effect,
+        damageOrHealing: s.damage_or_healing,
+        abilityForDamage: ability,
+        savingThrow: save,
+        isHealing: s.is_healing,
+        isConcentration: s.is_concentration,
+        range: s.range as "self" | "touch" | "ranged",
+        classes: s.classes as CharacterClass[],
+      });
+    }
+    console.log(`  Loaded ${spells.length} spell definitions`);
+  } catch (e) {
+    console.warn("  Warning: Could not load spells.yaml:", (e as Error).message);
+  }
+}
+
+// Auto-load game data on import
+initGameData();
+
+// --- State access for testing ---
+
+export function getState() {
+  return { characters, parties, playerQueue, dmQueue };
+}

@@ -40,10 +40,10 @@
 
 ## Phase 6: Self-Play Testing
 - [x] Reference CLI client
-- [ ] Claude plays as a player agent — create character, queue, explore, fight, rest
-- [ ] Claude plays as a DM agent — narrate, spawn encounters, voice NPCs, run a session
-- [ ] Full session test: 4 players + 1 DM complete a dungeon
-- [ ] Fix everything that breaks
+- [x] Claude plays as a player agent — create character, queue, explore, fight, rest
+- [x] Claude plays as a DM agent — narrate, spawn encounters, voice NPCs, run a session
+- [x] Full session test: 4 players + 1 DM complete a dungeon
+- [x] Fix everything that breaks
 
 ## Phase 7: Spectator & Distribution
 - [ ] Adventure journal generation from session logs

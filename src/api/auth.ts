@@ -1,10 +1,34 @@
+/**
+ * Auth system — in-memory user and session storage.
+ *
+ * No database required. Users and sessions live in Maps.
+ * Suitable for self-play testing and development.
+ */
+
 import { Hono } from "hono";
-import { eq, and, gt } from "drizzle-orm";
-import { db } from "../db/connection.ts";
-import { users, sessions } from "../db/schema.ts";
 import type { UserRole } from "../types.ts";
 
-const auth = new Hono();
+// --- In-memory stores ---
+
+interface StoredUser {
+  id: string;
+  username: string;
+  passwordHash: string;
+  role: UserRole;
+}
+
+interface StoredSession {
+  userId: string;
+  expiresAt: Date;
+}
+
+const usersByUsername = new Map<string, StoredUser>();
+const usersById = new Map<string, StoredUser>();
+const sessionsByToken = new Map<string, StoredSession>();
+
+let userIdCounter = 1;
+
+// --- Helpers ---
 
 function generateToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -33,6 +57,10 @@ async function verifyPassword(
 
 const SESSION_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
+// --- Routes ---
+
+const auth = new Hono();
+
 // POST /register — create a new user, return generated password
 auth.post("/register", async (c) => {
   const body = await c.req.json<{ username?: string; role?: string }>();
@@ -46,38 +74,19 @@ auth.post("/register", async (c) => {
     return c.json({ error: "role must be 'player' or 'dm'" }, 400);
   }
 
-  // Check if username already exists
-  const existing = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.username, body.username))
-    .limit(1);
-
-  if (existing.length > 0) {
+  if (usersByUsername.has(body.username)) {
     return c.json({ error: "username already taken" }, 409);
   }
 
   const password = generatePassword();
   const passwordHash = await hashPassword(password);
+  const id = `user-${userIdCounter++}`;
 
-  const [user] = await db
-    .insert(users)
-    .values({
-      username: body.username,
-      passwordHash,
-      role,
-    })
-    .returning({ id: users.id, username: users.username, role: users.role });
+  const user: StoredUser = { id, username: body.username, passwordHash, role };
+  usersByUsername.set(body.username, user);
+  usersById.set(id, user);
 
-  return c.json(
-    {
-      id: user!.id,
-      username: user!.username,
-      role: user!.role,
-      password,
-    },
-    201
-  );
+  return c.json({ id, username: body.username, role, password }, 201);
 });
 
 // POST /login — authenticate and return session token
@@ -88,12 +97,7 @@ auth.post("/login", async (c) => {
     return c.json({ error: "username and password are required" }, 400);
   }
 
-  const [user] = await db
-    .select()
-    .from(users)
-    .where(eq(users.username, body.username))
-    .limit(1);
-
+  const user = usersByUsername.get(body.username);
   if (!user) {
     return c.json({ error: "invalid credentials" }, 401);
   }
@@ -106,11 +110,7 @@ auth.post("/login", async (c) => {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
-  await db.insert(sessions).values({
-    userId: user.id,
-    token,
-    expiresAt,
-  });
+  sessionsByToken.set(token, { userId: user.id, expiresAt });
 
   return c.json({
     token,
@@ -132,30 +132,21 @@ export async function getAuthUser(
 } | null> {
   if (!token) return null;
 
-  // Strip "Bearer " prefix
   const raw = token.startsWith("Bearer ") ? token.slice(7) : token;
 
-  const [session] = await db
-    .select()
-    .from(sessions)
-    .where(and(eq(sessions.token, raw), gt(sessions.expiresAt, new Date())))
-    .limit(1);
-
+  const session = sessionsByToken.get(raw);
   if (!session) return null;
 
-  // Renew the session on activity
-  const newExpiry = new Date(Date.now() + SESSION_DURATION_MS);
-  await db
-    .update(sessions)
-    .set({ expiresAt: newExpiry })
-    .where(eq(sessions.id, session.id));
+  // Check expiry
+  if (session.expiresAt < new Date()) {
+    sessionsByToken.delete(raw);
+    return null;
+  }
 
-  const [user] = await db
-    .select({ id: users.id, username: users.username, role: users.role })
-    .from(users)
-    .where(eq(users.id, session.userId))
-    .limit(1);
+  // Renew on activity
+  session.expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
 
+  const user = usersById.get(session.userId);
   if (!user) return null;
 
   return { userId: user.id, username: user.username, role: user.role };

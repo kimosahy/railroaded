@@ -1,22 +1,12 @@
 /**
- * HTTP REST API — fallback transport for agents that cannot use MCP or WebSocket.
- *
- * All routes live under /api/v1/. Every route requires a valid Bearer token.
- * Player routes require role === "player"; DM routes require role === "dm".
- *
- * For MVP each handler returns a stub response. Real handler implementations
- * (wired to the rules engine and session system) will replace these stubs
- * once those subsystems are built.
+ * HTTP REST API — wired to the game manager for real gameplay.
  */
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { getAuthUser } from "./auth.ts";
-import type { UserRole } from "../types.ts";
-
-// ---------------------------------------------------------------------------
-// Authenticated user type stored in Hono context variables
-// ---------------------------------------------------------------------------
+import type { UserRole, Race, CharacterClass, AbilityScores } from "../types.ts";
+import * as gm from "../game/game-manager.ts";
 
 interface AuthUser {
   userId: string;
@@ -24,424 +14,178 @@ interface AuthUser {
   role: "player" | "dm";
 }
 
-type AuthEnv = {
-  Variables: {
-    user: AuthUser;
-  };
-};
+type AuthEnv = { Variables: { user: AuthUser } };
 
-// ---------------------------------------------------------------------------
-// Middleware
-// ---------------------------------------------------------------------------
-
-/**
- * Require a valid Bearer token. On success the authenticated user is stored
- * in `c.get("user")` for downstream handlers.
- */
 const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
-
-  if (!user) {
-    return c.json({ error: "Unauthorized — provide a valid Bearer token" }, 401);
-  }
-
+  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token" }, 401);
   c.set("user", user);
   await next();
 });
 
-/**
- * Require the authenticated user to have a specific role.
- * Must be used *after* `requireAuth` so `c.get("user")` is populated.
- */
 function requireRole(role: UserRole) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const user = c.get("user");
-
     if (user.role !== role) {
-      return c.json(
-        {
-          error: `Forbidden — this endpoint requires the '${role}' role, but you are a '${user.role}'`,
-        },
-        403,
-      );
+      return c.json({ error: `Forbidden — requires '${role}' role, you are '${user.role}'` }, 403);
     }
-
     await next();
   });
 }
 
-// ---------------------------------------------------------------------------
-// Stub response helper
-// ---------------------------------------------------------------------------
-
-function stub(action: string) {
-  return { status: "ok" as const, action, message: "Not yet implemented" };
+function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string }) {
+  if (!result.success) {
+    return c.json({ error: result.error }, 400);
+  }
+  return c.json(result.data);
 }
 
-// ---------------------------------------------------------------------------
-// Router
-// ---------------------------------------------------------------------------
-
 const rest = new Hono<AuthEnv>();
-
-// Every route under /api/v1 requires authentication
 rest.use("/*", requireAuth);
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Player routes — require role === "player"
-// ═══════════════════════════════════════════════════════════════════════════
-
+// === Player routes ===
 const player = new Hono<AuthEnv>();
 player.use("/*", requireRole("player"));
 
-// -- Character Creation ---------------------------------------------------
-
 player.post("/character", async (c) => {
   const body = await c.req.json<{
-    name: string;
-    race: string;
-    class: string;
-    ability_scores: Record<string, number>;
-    backstory: string;
-    personality: string;
-    playstyle: string;
+    name: string; race: Race; class: CharacterClass;
+    ability_scores: AbilityScores;
+    backstory?: string; personality?: string; playstyle?: string;
   }>();
-
-  return c.json({
-    ...stub("create_character"),
-    received: {
-      name: body.name,
-      race: body.race,
-      class: body.class,
-    },
-  });
+  const result = gm.handleCreateCharacter(c.get("user").userId, body);
+  if (!result.success) return c.json({ error: result.error }, 400);
+  return c.json({ character: result.character }, 201);
 });
 
-// -- Observation ----------------------------------------------------------
-
-player.get("/look", (c) => {
-  return c.json(stub("look"));
-});
-
-// -- Movement -------------------------------------------------------------
+player.get("/look", (c) => respond(c, gm.handleLook(c.get("user").userId)));
+player.get("/status", (c) => respond(c, gm.handleGetStatus(c.get("user").userId)));
+player.get("/party", (c) => respond(c, gm.handleGetParty(c.get("user").userId)));
+player.get("/inventory", (c) => respond(c, gm.handleGetInventory(c.get("user").userId)));
+player.get("/actions", (c) => respond(c, gm.handleGetAvailableActions(c.get("user").userId)));
 
 player.post("/move", async (c) => {
   const body = await c.req.json<{ direction_or_target: string }>();
-
-  return c.json({
-    ...stub("move"),
-    received: { direction_or_target: body.direction_or_target },
-  });
+  return respond(c, gm.handleMove(c.get("user").userId, body));
 });
-
-// -- Combat Actions -------------------------------------------------------
 
 player.post("/attack", async (c) => {
   const body = await c.req.json<{ target_id: string; weapon?: string }>();
-
-  return c.json({
-    ...stub("attack"),
-    received: { target_id: body.target_id, weapon: body.weapon ?? null },
-  });
+  return respond(c, gm.handleAttack(c.get("user").userId, body));
 });
 
 player.post("/cast", async (c) => {
   const body = await c.req.json<{ spell_name: string; target_id?: string }>();
-
-  return c.json({
-    ...stub("cast"),
-    received: { spell_name: body.spell_name, target_id: body.target_id ?? null },
-  });
+  return respond(c, gm.handleCast(c.get("user").userId, body));
 });
 
 player.post("/use-item", async (c) => {
   const body = await c.req.json<{ item_id: string; target_id?: string }>();
-
-  return c.json({
-    ...stub("use_item"),
-    received: { item_id: body.item_id, target_id: body.target_id ?? null },
-  });
+  return respond(c, gm.handleUseItem(c.get("user").userId, body));
 });
 
-player.post("/dodge", (c) => {
-  return c.json(stub("dodge"));
-});
-
-player.post("/dash", (c) => {
-  return c.json(stub("dash"));
-});
-
-player.post("/disengage", (c) => {
-  return c.json(stub("disengage"));
-});
+player.post("/dodge", (c) => respond(c, gm.handleDodge(c.get("user").userId)));
+player.post("/dash", (c) => respond(c, gm.handleDash(c.get("user").userId)));
+player.post("/disengage", (c) => respond(c, gm.handleDisengage(c.get("user").userId)));
 
 player.post("/help", async (c) => {
   const body = await c.req.json<{ target_id: string }>();
-
-  return c.json({
-    ...stub("help"),
-    received: { target_id: body.target_id },
-  });
+  return respond(c, gm.handleHelp(c.get("user").userId, body));
 });
 
-player.post("/hide", (c) => {
-  return c.json(stub("hide"));
-});
-
-// -- Resting --------------------------------------------------------------
-
-player.post("/short-rest", (c) => {
-  return c.json(stub("short_rest"));
-});
-
-player.post("/long-rest", (c) => {
-  return c.json(stub("long_rest"));
-});
-
-// -- Communication --------------------------------------------------------
+player.post("/hide", (c) => respond(c, gm.handleHide(c.get("user").userId)));
+player.post("/short-rest", (c) => respond(c, gm.handleShortRest(c.get("user").userId)));
+player.post("/long-rest", (c) => respond(c, gm.handleLongRest(c.get("user").userId)));
 
 player.post("/chat", async (c) => {
   const body = await c.req.json<{ message: string }>();
-
-  return c.json({
-    ...stub("party_chat"),
-    received: { message: body.message },
-  });
+  return respond(c, gm.handlePartyChat(c.get("user").userId, body));
 });
 
 player.post("/whisper", async (c) => {
   const body = await c.req.json<{ player_id: string; message: string }>();
-
-  return c.json({
-    ...stub("whisper"),
-    received: { player_id: body.player_id, message: body.message },
-  });
+  return respond(c, gm.handleWhisper(c.get("user").userId, body));
 });
-
-// -- Information ----------------------------------------------------------
-
-player.get("/status", (c) => {
-  return c.json(stub("get_status"));
-});
-
-player.get("/party", (c) => {
-  return c.json(stub("get_party"));
-});
-
-player.get("/inventory", (c) => {
-  return c.json(stub("get_inventory"));
-});
-
-// -- Journal --------------------------------------------------------------
 
 player.post("/journal", async (c) => {
   const body = await c.req.json<{ entry: string }>();
-
-  return c.json({
-    ...stub("journal_add"),
-    received: { entry: body.entry },
-  });
+  return respond(c, gm.handleJournalAdd(c.get("user").userId, body));
 });
 
-// -- Matchmaking ----------------------------------------------------------
+player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").userId)));
 
-player.post("/queue", (c) => {
-  return c.json(stub("queue_for_party"));
-});
-
-// -- Context-Aware Actions ------------------------------------------------
-
-player.get("/actions", (c) => {
-  return c.json(stub("get_available_actions"));
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// DM routes — require role === "dm"
-// ═══════════════════════════════════════════════════════════════════════════
-
+// === DM routes ===
 const dm = new Hono<AuthEnv>();
 dm.use("/*", requireRole("dm"));
 
-// -- Narration ------------------------------------------------------------
-
 dm.post("/narrate", async (c) => {
   const body = await c.req.json<{ text: string }>();
-
-  return c.json({
-    ...stub("narrate"),
-    received: { text: body.text },
-  });
+  return respond(c, gm.handleNarrate(c.get("user").userId, body));
 });
 
 dm.post("/narrate-to", async (c) => {
   const body = await c.req.json<{ player_id: string; text: string }>();
-
-  return c.json({
-    ...stub("narrate_to"),
-    received: { player_id: body.player_id, text: body.text },
-  });
+  return respond(c, gm.handleNarrateTo(c.get("user").userId, body));
 });
-
-// -- Encounter Management -------------------------------------------------
 
 dm.post("/spawn-encounter", async (c) => {
-  const body = await c.req.json<{
-    monsters: { template_name: string; count: number }[];
-    difficulty?: string;
-  }>();
-
-  return c.json({
-    ...stub("spawn_encounter"),
-    received: {
-      monsters: body.monsters,
-      difficulty: body.difficulty ?? null,
-    },
-  });
+  const body = await c.req.json<{ monsters: { template_name: string; count: number }[] }>();
+  return respond(c, gm.handleSpawnEncounter(c.get("user").userId, body));
 });
-
-// -- NPC Interaction ------------------------------------------------------
 
 dm.post("/voice-npc", async (c) => {
   const body = await c.req.json<{ npc_id: string; dialogue: string }>();
-
-  return c.json({
-    ...stub("voice_npc"),
-    received: { npc_id: body.npc_id, dialogue: body.dialogue },
-  });
+  return respond(c, gm.handleVoiceNpc(c.get("user").userId, body));
 });
 
-// -- Checks and Saves -----------------------------------------------------
-
 dm.post("/request-check", async (c) => {
-  const body = await c.req.json<{
-    player_id: string;
-    ability: string;
-    dc: number;
-    skill?: string;
-  }>();
-
-  return c.json({
-    ...stub("request_check"),
-    received: {
-      player_id: body.player_id,
-      ability: body.ability,
-      dc: body.dc,
-      skill: body.skill ?? null,
-    },
-  });
+  const body = await c.req.json<{ player_id: string; ability: string; dc: number; skill?: string }>();
+  return respond(c, gm.handleRequestCheck(c.get("user").userId, body));
 });
 
 dm.post("/request-save", async (c) => {
-  const body = await c.req.json<{
-    player_id: string;
-    ability: string;
-    dc: number;
-  }>();
-
-  return c.json({
-    ...stub("request_save"),
-    received: {
-      player_id: body.player_id,
-      ability: body.ability,
-      dc: body.dc,
-    },
-  });
+  const body = await c.req.json<{ player_id: string; ability: string; dc: number }>();
+  return respond(c, gm.handleRequestSave(c.get("user").userId, body));
 });
 
 dm.post("/request-group-check", async (c) => {
-  const body = await c.req.json<{
-    ability: string;
-    dc: number;
-    skill?: string;
-  }>();
-
-  return c.json({
-    ...stub("request_group_check"),
-    received: {
-      ability: body.ability,
-      dc: body.dc,
-      skill: body.skill ?? null,
-    },
-  });
+  const body = await c.req.json<{ ability: string; dc: number }>();
+  return respond(c, gm.handleRequestGroupCheck(c.get("user").userId, body));
 });
-
-// -- Environmental Damage -------------------------------------------------
 
 dm.post("/environment-damage", async (c) => {
-  const body = await c.req.json<{
-    player_id: string;
-    notation: string;
-    type: string;
-  }>();
-
-  return c.json({
-    ...stub("deal_environment_damage"),
-    received: {
-      player_id: body.player_id,
-      notation: body.notation,
-      type: body.type,
-    },
-  });
+  const body = await c.req.json<{ player_id: string; notation: string; type: string }>();
+  return respond(c, gm.handleDealEnvironmentDamage(c.get("user").userId, body));
 });
-
-// -- Scene Management -----------------------------------------------------
 
 dm.post("/advance-scene", async (c) => {
   const body = await c.req.json<{ next_room_id?: string }>();
-
-  return c.json({
-    ...stub("advance_scene"),
-    received: { next_room_id: body.next_room_id ?? null },
-  });
+  return respond(c, gm.handleAdvanceScene(c.get("user").userId, body));
 });
 
-// -- State Inspection -----------------------------------------------------
-
-dm.get("/party-state", (c) => {
-  return c.json(stub("get_party_state"));
-});
-
-dm.get("/room-state", (c) => {
-  return c.json(stub("get_room_state"));
-});
-
-// -- Rewards --------------------------------------------------------------
+dm.get("/party-state", (c) => respond(c, gm.handleGetPartyState(c.get("user").userId)));
+dm.get("/room-state", (c) => respond(c, gm.handleGetRoomState(c.get("user").userId)));
 
 dm.post("/award-xp", async (c) => {
   const body = await c.req.json<{ amount: number }>();
-
-  return c.json({
-    ...stub("award_xp"),
-    received: { amount: body.amount },
-  });
+  return respond(c, gm.handleAwardXp(c.get("user").userId, body));
 });
 
 dm.post("/award-loot", async (c) => {
   const body = await c.req.json<{ player_id: string; item_id: string }>();
-
-  return c.json({
-    ...stub("award_loot"),
-    received: { player_id: body.player_id, item_id: body.item_id },
-  });
+  return respond(c, gm.handleAwardLoot(c.get("user").userId, body));
 });
-
-// -- Session Control ------------------------------------------------------
 
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string }>();
-
-  return c.json({
-    ...stub("end_session"),
-    received: { summary: body.summary },
-  });
+  return respond(c, gm.handleEndSession(c.get("user").userId, body));
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Mount sub-routers onto the main REST router
-// ═══════════════════════════════════════════════════════════════════════════
+// Also allow DM to queue
+dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
 
-rest.route("/", player);
 rest.route("/dm", dm);
+rest.route("/", player);
 
 export default rest;
