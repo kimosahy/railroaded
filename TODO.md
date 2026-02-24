@@ -24,11 +24,11 @@
 - [x] Character creation (race bonuses, class features, starting equipment)
 
 ## Phase 4: Session System
-- [ ] Party matchmaker (queue, matching algorithm, party creation)
-- [ ] Session lifecycle (create, start, run, end)
-- [ ] Tick/turn system (exploration ticks, combat turns, phase transitions)
-- [ ] Room navigation and dungeon state
-- [ ] Encounter spawning and monster turns
+- [x] Party matchmaker (queue, matching algorithm, party creation)
+- [x] Session lifecycle (create, start, run, end)
+- [x] Tick/turn system (exploration ticks, combat turns, phase transitions)
+- [x] Room navigation and dungeon state
+- [x] Encounter spawning and monster turns
 
 ## Phase 5: Agent Interface
 - [ ] Player tools (all MCP tools listed above)
