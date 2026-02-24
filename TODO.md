@@ -13,7 +13,7 @@
 - [x] HP tracking, conditions (unconscious, poisoned, stunned, restrained)
 - [x] Death saves
 - [x] Spell casting and slot management
-- [ ] Short rest and long rest mechanics
+- [x] Short rest and long rest mechanics
 - [ ] Tests for all rules engine components
 
 ## Phase 3: Game Data
