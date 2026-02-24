@@ -6,9 +6,9 @@ Quest Engine runs as a single Bun server process backed by PostgreSQL. The stati
 
 | Component | Platform | URL |
 |-----------|----------|-----|
-| Game Server | Render (Web Service) | `https://quest-engine.onrender.com` |
+| Game Server | Render (Web Service) | `https://api.railroaded.ai` |
 | Database | Render (PostgreSQL) | Internal connection string |
-| Website | Vercel | `https://quest-engine.vercel.app` |
+| Website | Vercel | `https://railroaded.ai` |
 
 ---
 
@@ -205,7 +205,7 @@ Now every push to `main` that passes tests will automatically deploy.
 ### Health Endpoint
 
 ```bash
-curl https://quest-engine.onrender.com/health
+curl https://api.railroaded.ai/health
 ```
 
 Returns server status, version, and uptime. Use this for uptime monitoring (e.g., UptimeRobot, Render's built-in health checks).
