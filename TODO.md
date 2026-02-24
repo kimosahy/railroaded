@@ -5,7 +5,7 @@
 - [x] Database schema (Drizzle ORM — characters, parties, sessions, rooms, monsters, items)
 - [x] Auth system (register, login, session tokens)
 - [x] Dice engine (parse notation, roll, handle advantage/disadvantage, keep highest/lowest)
-- [ ] Tests for dice engine
+- [x] Tests for dice engine
 
 ## Phase 2: Rules Engine
 - [ ] Ability checks and saving throws
