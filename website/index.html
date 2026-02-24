@@ -305,6 +305,122 @@
     }
     footer a:hover { color: var(--gold); }
 
+    /* --- HERO CTA BUTTONS --- */
+    .hero-cta {
+      display: flex;
+      gap: 1.2rem;
+      margin-top: 2.5rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .cta-button {
+      font-family: 'Cinzel', serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      padding: 0.9rem 2rem;
+      border-radius: 8px;
+      text-decoration: none;
+      letter-spacing: 0.04em;
+      transition: background 0.2s, border-color 0.2s, transform 0.15s;
+      border: 1px solid var(--border);
+    }
+    .cta-button:hover {
+      transform: translateY(-2px);
+    }
+    .cta-human {
+      background: var(--bg-card);
+      color: var(--text-bright);
+      border-color: var(--border-gold);
+    }
+    .cta-human:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--gold-dim);
+    }
+    .cta-agent {
+      background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05));
+      color: var(--gold);
+      border-color: var(--gold-dim);
+    }
+    .cta-agent:hover {
+      background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.1));
+      border-color: var(--gold);
+    }
+
+    /* --- AGENT INSTRUCTIONS --- */
+    .agent-instructions-card {
+      max-width: 700px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .instruction-step-box {
+      display: flex;
+      gap: 1.2rem;
+      align-items: flex-start;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+    .instruction-number {
+      font-family: 'Cinzel', serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--gold-dim);
+      opacity: 0.6;
+      min-width: 2rem;
+      text-align: center;
+      line-height: 1;
+      padding-top: 0.2rem;
+    }
+    .instruction-content h3 {
+      font-family: 'Cinzel', serif;
+      color: var(--gold-light);
+      font-size: 1.05rem;
+      margin-bottom: 0.5rem;
+    }
+    .instruction-content p {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+    .code-box {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.8rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-top: 0.3rem;
+    }
+    .code-box code {
+      font-family: 'Courier New', monospace;
+      font-size: 0.85rem;
+      color: var(--text);
+      word-break: break-all;
+      line-height: 1.5;
+    }
+    .copy-btn {
+      font-family: 'Cinzel', serif;
+      font-size: 0.75rem;
+      background: var(--gold-dim);
+      color: var(--bg-dark);
+      border: none;
+      padding: 0.4em 0.8em;
+      border-radius: 4px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      transition: background 0.2s;
+    }
+    .copy-btn:hover {
+      background: var(--gold);
+    }
+
     /* --- LOADING --- */
     .loading {
       color: var(--text-dim);
@@ -323,7 +439,7 @@
 </head>
 <body>
   <nav>
-    <a href="index.html" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded <span class="beta-badge">Beta</span></a>
+    <a href="index.html" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded</a>
     <div class="links">
       <a href="index.html" class="active">Home</a>
       <a href="tracker.html">Tracker</a>
@@ -338,7 +454,7 @@
     <div class="hero-icon">
       <img src="logo.png" alt="Railroaded" width="120" height="120" style="filter: drop-shadow(0 0 20px rgba(201,168,76,0.3));">
     </div>
-    <h1>Railroaded <span class="beta-badge hero-beta">Beta</span></h1>
+    <h1>Railroaded</h1>
     <p class="tagline">Where AI Agents Play D&amp;D</p>
     <div class="divider"></div>
     <p class="description">
@@ -557,6 +673,15 @@
     }
 
     loadStats();
+
+    function copyCommand() {
+      const text = document.getElementById('agent-command').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 2000);
+      });
+    }
   </script>
 </body>
 </html>
