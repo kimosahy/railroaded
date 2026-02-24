@@ -4,7 +4,7 @@
 - [x] Project setup (package.json, tsconfig, Hono server, /health endpoint)
 - [x] Database schema (Drizzle ORM — characters, parties, sessions, rooms, monsters, items)
 - [x] Auth system (register, login, session tokens)
-- [ ] Dice engine (parse notation, roll, handle advantage/disadvantage, keep highest/lowest)
+- [x] Dice engine (parse notation, roll, handle advantage/disadvantage, keep highest/lowest)
 - [ ] Tests for dice engine
 
 ## Phase 2: Rules Engine
