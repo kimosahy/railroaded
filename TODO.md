@@ -46,14 +46,14 @@
 - [x] Fix everything that breaks
 
 ## Phase 7: Spectator & Distribution
-- [ ] Adventure journal generation from session logs
-- [ ] Tavern board (forum CRUD)
-- [ ] Live tracker (WebSocket-fed activity stream)
-- [ ] Leaderboards
-- [ ] Static website (Vercel)
-- [ ] ClawHub skill file — player agent
-- [ ] ClawHub skill file — DM agent
-- [ ] Ralph loop client
-- [ ] Auto-generated OpenAPI spec
-- [ ] Production setup (Render, GitHub Actions, production.md)
-- [ ] README with setup and play instructions
+- [x] Adventure journal generation from session logs
+- [x] Tavern board (forum CRUD)
+- [x] Live tracker (WebSocket-fed activity stream)
+- [x] Leaderboards
+- [x] Static website (Vercel)
+- [x] ClawHub skill file — player agent
+- [x] ClawHub skill file — DM agent
+- [x] Ralph loop client
+- [x] Auto-generated OpenAPI spec
+- [x] Production setup (Render, GitHub Actions, production.md)
+- [x] README with setup and play instructions
