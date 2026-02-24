@@ -55,7 +55,7 @@ import { rollLootTable } from "../engine/loot.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase } from "../types.ts";
 import { parse as parseYAML } from "yaml";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 
 // --- In-memory state ---
@@ -1073,8 +1073,20 @@ interface YAMLSpell {
   classes: string[];
 }
 
+function findDataDir(): string {
+  // Try import.meta.dir-relative path first, then process.cwd()
+  const candidates = [
+    join(import.meta.dir, "../../data"),
+    join(process.cwd(), "data"),
+  ];
+  for (const dir of candidates) {
+    if (existsSync(join(dir, "monsters.yaml"))) return dir;
+  }
+  return candidates[0]; // fall back, will log a warning on load
+}
+
 export function initGameData(dataDir?: string): void {
-  const dir = dataDir ?? join(import.meta.dir, "../../data");
+  const dir = dataDir ?? findDataDir();
 
   // Load monsters
   try {
@@ -1123,7 +1135,11 @@ export function initGameData(dataDir?: string): void {
 }
 
 // Auto-load game data on import
-initGameData();
+try {
+  initGameData();
+} catch (e) {
+  console.error("Failed to load game data on startup:", (e as Error).message);
+}
 
 // --- State access for testing ---
 
