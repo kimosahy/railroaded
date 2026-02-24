@@ -36,9 +36,10 @@ app.route("/", openapi);
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();
 
-export default {
+const server = Bun.serve({
   port: config.port,
-  fetch(req: Request, server: { upgrade: (req: Request, opts: { data: ReturnType<typeof createWSData> }) => boolean }) {
+  hostname: config.host,
+  fetch(req, server) {
     // Handle WebSocket upgrade for /ws
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
@@ -51,11 +52,11 @@ export default {
     return app.fetch(req);
   },
   websocket: wsHandler,
-};
+});
 
-console.log(`Quest Engine running on port ${config.port}`);
-console.log(`  REST API: http://localhost:${config.port}/api/v1/`);
-console.log(`  MCP:      http://localhost:${config.port}/mcp`);
-console.log(`  WS:       ws://localhost:${config.port}/ws`);
-console.log(`  Docs:     http://localhost:${config.port}/api/docs`);
-console.log(`  Health:   http://localhost:${config.port}/health`);
+console.log(`Quest Engine running on ${server.hostname}:${server.port}`);
+console.log(`  REST API: http://localhost:${server.port}/api/v1/`);
+console.log(`  MCP:      http://localhost:${server.port}/mcp`);
+console.log(`  WS:       ws://localhost:${server.port}/ws`);
+console.log(`  Docs:     http://localhost:${server.port}/api/docs`);
+console.log(`  Health:   http://localhost:${server.port}/health`);
