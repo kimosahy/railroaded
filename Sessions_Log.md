@@ -48,3 +48,71 @@
 - **CNAME record:** Points a subdomain to another domain name (used for `api.railroaded.ai` → Render)
 - **DNS propagation:** Changes take a few minutes to spread across the internet
 - **SSL certificate:** Render auto-issues HTTPS so the connection is secure
+
+
+---
+
+## Session 2: First Live Playtest & Bug Fixes
+**Date:** February 24, 2026
+**Goal:** Fix deployment issues, run first live agent playtest, fix combat bugs
+
+### What We Did
+
+**1. Vercel deployment debugging**
+- After pushing URL updates, Vercel wasn't auto-deploying from GitHub pushes
+- Tried deploy hooks, Vercel CLI, and reconnecting the Git repo
+- CC ultimately deleted the old Vercel project and redeployed fresh with the correct code
+- Lesson: Vercel's Git webhook can get stale — sometimes a clean reconnect is needed
+
+**2. Added skill file routes**
+- Agent reported `/skill/player` returning 404
+- The skill markdown files existed in `skills/` but no route served them
+- CC added `GET /skill/player` and `GET /skill/dm` routes to serve the files
+- Also added a root `GET /` welcome route
+
+**3. First live agent playtest (Poormetheus)**
+- 4 AI players + 1 AI DM entered The Cursed Crypt of Ashenvault
+- Party: Dolgrim Stonehew (dwarf cleric), Brog Ironwall (half-orc fighter), Sylith Dra'kenn (drow warlock), Wren Ashvale (halfling rogue)
+- Exploration and roleplay worked great — characters had real personality
+- **Combat broke completely** — turns never advanced, players stuck with `isYourTurn: false`
+
+**4. Combat bug fixes (6 bugs)**
+CC fixed all 6 issues from the agent's bug report:
+
+| # | Bug | Fix |
+|---|-----|-----|
+| 1 | No DM tool for monster turns | Added `monster_attack` tool — DM calls it with `monster_id` + `target_id`, auto-advances initiative |
+| 2 | `advance-scene` stuck in combat | Now exits combat phase, clears monsters, returns error for invalid room moves |
+| 3 | DM endpoints returning "requires player role" | Path issue — DM routes now live under `/api/v1/dm/*` |
+| 4 | `environment-damage` ID confusion | All DM tools accept both `char-X` and `user-X` IDs via `resolveCharacter()` helper |
+| 5 | Room name fluctuation | Root cause: `advance-scene` silently succeeded without moving rooms. Fixed. |
+| 6 | Equipment ignores race proficiencies | Dwarf clerics get Warhammer, half-orc fighters get Greatsword, elves get racial weapons |
+
+**5. Added CORS middleware**
+- Website at `railroaded.ai` couldn't fetch data from `api.railroaded.ai` — browser blocked cross-origin requests
+- CC added Hono's `cors()` middleware allowing `https://railroaded.ai` and `http://localhost:3000`
+
+**6. Journals page empty — data loss on restart**
+- Journals page showed "No adventure journals yet" despite a full session having been played
+- Root cause: server uses **in-memory storage** — Render restarting the server (on each deploy) wipes all data
+- The journal data from the first playtest was lost when the bug fix deploy restarted the server
+- Long-term fix: connect PostgreSQL via `DATABASE_URL` so data survives restarts
+
+### Bugs Found by Agent (Full List)
+**Critical:** Combat turns never advance, no monster attack tool, attack targeting broken
+**High:** `/api/v1/actions` incomplete during combat, 404s on documented endpoints, JSON parameter parsing errors, room state desync
+**Medium:** Equipment ignores proficiencies, message length limits, `player_id` parameter inconsistency
+
+### Current State
+- Website live at railroaded.ai ✅
+- API live at api.railroaded.ai ✅
+- CORS working ✅
+- Combat system fixed (untested with new fixes)
+- Data is ephemeral (in-memory) — lost on every deploy/restart
+- Next: run agent playtest #2 with combat fixes, then connect PostgreSQL for persistence
+
+### Concepts Learned
+- **CORS (Cross-Origin Resource Sharing):** Browsers block requests between different domains by default. The server must explicitly allow it with headers.
+- **In-memory storage:** Data lives in the server's RAM. Fast but disappears on restart. Opposite of a database.
+- **Deploy hooks:** A URL you can hit to trigger a deployment. Useful for manual or CI-triggered deploys.
+- **Vercel CLI:** Command-line tool to deploy directly from your machine, bypassing the Git-based auto-deploy.
