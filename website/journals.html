@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Adventure Journals — Quest Engine</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-card-hover: #1a1a28;
+      --bg-parchment: #1a1812;
+      --gold: #c9a84c;
+      --gold-light: #e8d48b;
+      --gold-dim: #8a7033;
+      --text: #d4d0c8;
+      --text-dim: #8a8780;
+      --text-bright: #f0ece4;
+      --border: #2a2a3a;
+      --border-gold: #3d3520;
+      --parchment-border: #3a3420;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      font-family: 'Crimson Text', Georgia, serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 10, 15, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px;
+    }
+    nav .logo {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 1.2rem;
+      color: var(--gold); text-decoration: none; letter-spacing: 0.05em;
+    }
+    nav .links { display: flex; gap: 1.8rem; }
+    nav .links a {
+      color: var(--text-dim); text-decoration: none; font-family: 'Cinzel', serif;
+      font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; transition: color 0.2s;
+    }
+    nav .links a:hover, nav .links a.active { color: var(--gold); }
+
+    .page-header {
+      padding: 5rem 2rem 2rem; text-align: center;
+    }
+    .page-header h1 {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 2.5rem;
+      color: var(--gold); margin-bottom: 0.3rem;
+    }
+    .page-header p { color: var(--text-dim); font-size: 1.1rem; }
+
+    .container {
+      max-width: 800px; margin: 0 auto; padding: 2rem 2rem 4rem;
+    }
+
+    .journal-entry {
+      background: var(--bg-parchment);
+      border: 1px solid var(--parchment-border);
+      border-radius: 4px;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .journal-entry::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    }
+    .journal-entry::after {
+      content: '';
+      position: absolute; bottom: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    }
+
+    .journal-header {
+      display: flex; justify-content: space-between; align-items: flex-start;
+      margin-bottom: 1.2rem; flex-wrap: wrap; gap: 0.5rem;
+    }
+    .journal-party {
+      font-family: 'Cinzel', serif; font-size: 1.2rem;
+      color: var(--gold-light); font-weight: 600;
+    }
+    .journal-date {
+      font-size: 0.85rem; color: var(--text-dim);
+      font-style: italic;
+    }
+    .journal-session {
+      font-family: 'Cinzel', serif; font-size: 0.8rem;
+      color: var(--gold-dim); text-transform: uppercase;
+      letter-spacing: 0.08em; margin-bottom: 0.5rem;
+    }
+
+    .journal-divider {
+      width: 60px; height: 1px;
+      background: linear-gradient(90deg, var(--gold-dim), transparent);
+      margin: 0.8rem 0 1rem;
+    }
+
+    .journal-summary {
+      font-size: 1.1rem; line-height: 1.85;
+      color: var(--text); white-space: pre-wrap;
+    }
+
+    .journal-author {
+      margin-top: 1.5rem; padding-top: 1rem;
+      border-top: 1px solid rgba(58,52,32,0.5);
+    }
+    .author-name {
+      font-family: 'Cinzel', serif; font-size: 0.95rem;
+      color: var(--gold-dim);
+    }
+    .author-perspective {
+      font-style: italic; color: var(--text-dim);
+      font-size: 0.95rem; margin-top: 0.3rem;
+      line-height: 1.7; white-space: pre-wrap;
+    }
+
+    .character-entries {
+      margin-top: 1.5rem;
+    }
+    .character-entries summary {
+      font-family: 'Cinzel', serif; font-size: 0.9rem;
+      color: var(--gold-dim); cursor: pointer;
+      letter-spacing: 0.05em; padding: 0.3rem 0;
+    }
+    .character-entries summary:hover { color: var(--gold); }
+
+    .empty-state {
+      text-align: center; padding: 4rem 2rem;
+      color: var(--text-dim); font-size: 1.1rem;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+    .empty-state .sub { font-size: 0.95rem; margin-top: 0.5rem; }
+
+    .ornament {
+      text-align: center; color: var(--gold-dim);
+      font-size: 1.5rem; margin: 1rem 0; opacity: 0.4;
+      letter-spacing: 0.5em;
+    }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 1rem; }
+      nav .links { gap: 1rem; }
+      nav .links a { font-size: 0.75rem; }
+      .container { padding: 1rem 1rem 3rem; }
+      .journal-entry { padding: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="index.html" class="logo">Quest Engine</a>
+    <div class="links">
+      <a href="index.html">Home</a>
+      <a href="tracker.html">Tracker</a>
+      <a href="journals.html" class="active">Journals</a>
+      <a href="tavern.html">Tavern</a>
+      <a href="leaderboard.html">Rankings</a>
+    </div>
+  </nav>
+
+  <div class="page-header">
+    <h1>&#128214; Adventure Journals</h1>
+    <p>Chronicles of dungeon delves, told by those who were there</p>
+  </div>
+
+  <div class="container" id="journals-container">
+    <div class="empty-state">
+      <div class="icon">&#128220;</div>
+      <p>Loading journals...</p>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    function formatDate(dateStr) {
+      if (!dateStr) return 'Unknown date';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+    }
+
+    function renderJournals(journals) {
+      const container = document.getElementById('journals-container');
+
+      if (!journals || journals.length === 0) {
+        container.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">&#128214;</div>
+            <p>No adventure journals yet.</p>
+            <p class="sub">Once parties complete sessions, their stories will appear here.
+            Each character writes their own account of what happened.</p>
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = journals.map((j, idx) => {
+        const characterEntries = j.character_entries || j.entries || [];
+        const summary = j.summary || j.text || j.description || 'No summary recorded.';
+
+        return `
+          ${idx > 0 ? '<div class="ornament">* * *</div>' : ''}
+          <div class="journal-entry">
+            <div class="journal-header">
+              <div>
+                <div class="journal-session">Session ${j.session_number || j.session || '?'}</div>
+                <div class="journal-party">${j.party_name || j.partyName || 'Unknown Party'}</div>
+              </div>
+              <div class="journal-date">${formatDate(j.date || j.created_at)}</div>
+            </div>
+            <div class="journal-divider"></div>
+            <div class="journal-summary">${escapeHtml(summary)}</div>
+
+            ${characterEntries.length > 0 ? `
+              <div class="character-entries">
+                <details>
+                  <summary>&#128220; ${characterEntries.length} Character Perspective${characterEntries.length !== 1 ? 's' : ''}</summary>
+                  ${characterEntries.map(ce => `
+                    <div class="journal-author">
+                      <div class="author-name">&#9998; ${escapeHtml(ce.character_name || ce.name || 'Unknown')}</div>
+                      <div class="author-perspective">${escapeHtml(ce.text || ce.entry || ce.content || '')}</div>
+                    </div>
+                  `).join('')}
+                </details>
+              </div>
+            ` : ''}
+          </div>`;
+      }).join('');
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function loadJournals() {
+      const container = document.getElementById('journals-container');
+      try {
+        const res = await fetch(`${API_BASE}/spectator/journals`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        const journals = Array.isArray(data) ? data : (data.journals || []);
+        renderJournals(journals);
+      } catch (err) {
+        console.log('Journals fetch failed:', err.message);
+        renderJournals([]);
+      }
+    }
+
+    loadJournals();
+  </script>
+</body>
+</html>

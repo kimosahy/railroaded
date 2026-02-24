@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tavern Board — Quest Engine</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-dark: #0a0a0f;
+      --bg-card: #12121a;
+      --bg-card-hover: #1a1a28;
+      --bg-input: #0e0e16;
+      --gold: #c9a84c;
+      --gold-light: #e8d48b;
+      --gold-dim: #8a7033;
+      --text: #d4d0c8;
+      --text-dim: #8a8780;
+      --text-bright: #f0ece4;
+      --border: #2a2a3a;
+      --border-gold: #3d3520;
+      --red: #8b2020;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text);
+      font-family: 'Crimson Text', Georgia, serif;
+      line-height: 1.7;
+      min-height: 100vh;
+    }
+
+    nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: rgba(10, 10, 15, 0.92);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px;
+    }
+    nav .logo {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 1.2rem;
+      color: var(--gold); text-decoration: none; letter-spacing: 0.05em;
+    }
+    nav .links { display: flex; gap: 1.8rem; }
+    nav .links a {
+      color: var(--text-dim); text-decoration: none; font-family: 'Cinzel', serif;
+      font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; transition: color 0.2s;
+    }
+    nav .links a:hover, nav .links a.active { color: var(--gold); }
+
+    .page-header {
+      padding: 5rem 2rem 2rem; text-align: center;
+    }
+    .page-header h1 {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 2.5rem;
+      color: var(--gold); margin-bottom: 0.3rem;
+    }
+    .page-header p { color: var(--text-dim); font-size: 1.1rem; }
+
+    .container {
+      max-width: 900px; margin: 0 auto; padding: 2rem 2rem 4rem;
+    }
+
+    /* --- NEW POST FORM --- */
+    .new-post-toggle {
+      display: block; width: 100%;
+      background: var(--bg-card); border: 1px dashed var(--border-gold);
+      border-radius: 8px; padding: 1rem;
+      color: var(--gold-dim); font-family: 'Cinzel', serif;
+      font-size: 1rem; text-align: center; cursor: pointer;
+      transition: border-color 0.3s, color 0.3s;
+      margin-bottom: 1.5rem;
+    }
+    .new-post-toggle:hover {
+      border-color: var(--gold); color: var(--gold);
+    }
+
+    .new-post-form {
+      background: var(--bg-card);
+      border: 1px solid var(--border-gold);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      display: none;
+    }
+    .new-post-form.visible { display: block; }
+
+    .new-post-form h3 {
+      font-family: 'Cinzel', serif; font-size: 1.1rem;
+      color: var(--gold); margin-bottom: 1rem;
+    }
+
+    .form-row {
+      display: flex; gap: 1rem; margin-bottom: 0.8rem;
+    }
+    .form-row.full { flex-direction: column; }
+
+    .form-group { flex: 1; display: flex; flex-direction: column; }
+    .form-group label {
+      font-family: 'Cinzel', serif; font-size: 0.8rem;
+      color: var(--text-dim); text-transform: uppercase;
+      letter-spacing: 0.06em; margin-bottom: 0.3rem;
+    }
+    .form-group input, .form-group textarea {
+      background: var(--bg-input); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.6rem 0.8rem;
+      color: var(--text); font-family: 'Crimson Text', Georgia, serif;
+      font-size: 1rem; transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group textarea:focus {
+      outline: none; border-color: var(--gold-dim);
+    }
+    .form-group textarea { resize: vertical; min-height: 100px; }
+
+    .form-actions {
+      display: flex; gap: 0.8rem; margin-top: 0.5rem;
+    }
+    .btn {
+      font-family: 'Cinzel', serif; font-size: 0.85rem;
+      padding: 0.5rem 1.2rem; border-radius: 4px;
+      cursor: pointer; border: 1px solid var(--border);
+      transition: all 0.2s; text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .btn-primary {
+      background: rgba(201,168,76,0.15); color: var(--gold);
+      border-color: var(--gold-dim);
+    }
+    .btn-primary:hover { background: rgba(201,168,76,0.25); }
+    .btn-secondary {
+      background: transparent; color: var(--text-dim);
+    }
+    .btn-secondary:hover { color: var(--text); }
+
+    /* --- POSTS --- */
+    .post {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+      transition: border-color 0.3s;
+      cursor: pointer;
+    }
+    .post:hover { border-color: var(--border-gold); }
+
+    .post-header {
+      display: flex; justify-content: space-between;
+      align-items: flex-start; margin-bottom: 0.6rem;
+      flex-wrap: wrap; gap: 0.3rem;
+    }
+    .post-title {
+      font-family: 'Cinzel', serif; font-size: 1.15rem;
+      color: var(--gold-light); font-weight: 600;
+    }
+    .post-date {
+      font-size: 0.8rem; color: var(--text-dim); font-style: italic;
+    }
+    .post-author {
+      font-family: 'Cinzel', serif; font-size: 0.85rem;
+      color: var(--gold-dim); margin-bottom: 0.5rem;
+    }
+    .post-content {
+      color: var(--text); font-size: 1rem; line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .post-meta {
+      margin-top: 0.8rem; font-size: 0.85rem; color: var(--text-dim);
+    }
+
+    /* --- EXPANDED POST --- */
+    .post-expanded {
+      background: var(--bg-card);
+      border: 1px solid var(--border-gold);
+      border-radius: 8px;
+      padding: 2rem;
+      margin-bottom: 1rem;
+    }
+    .post-expanded .post-title {
+      font-size: 1.3rem; margin-bottom: 0.3rem;
+    }
+    .post-expanded .post-content {
+      margin: 1rem 0; padding: 1rem 0;
+      border-top: 1px solid rgba(42,42,58,0.5);
+      border-bottom: 1px solid rgba(42,42,58,0.5);
+    }
+
+    .back-link {
+      font-family: 'Cinzel', serif; font-size: 0.85rem;
+      color: var(--gold-dim); cursor: pointer;
+      margin-bottom: 1rem; display: inline-block;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--gold); }
+
+    /* --- REPLIES --- */
+    .replies-section {
+      margin-top: 1.5rem;
+    }
+    .replies-section h3 {
+      font-family: 'Cinzel', serif; font-size: 1rem;
+      color: var(--gold-dim); margin-bottom: 1rem;
+    }
+
+    .reply {
+      background: rgba(14,14,22,0.6);
+      border-left: 2px solid var(--border-gold);
+      padding: 1rem 1rem 1rem 1.2rem;
+      margin-bottom: 0.8rem;
+      border-radius: 0 4px 4px 0;
+    }
+    .reply-author {
+      font-family: 'Cinzel', serif; font-size: 0.85rem;
+      color: var(--gold-dim); margin-bottom: 0.3rem;
+    }
+    .reply-date { font-size: 0.8rem; color: var(--text-dim); font-style: italic; }
+    .reply-content { font-size: 0.95rem; color: var(--text); white-space: pre-wrap; }
+
+    .reply-form {
+      margin-top: 1rem; padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .empty-state {
+      text-align: center; padding: 4rem 2rem;
+      color: var(--text-dim); font-size: 1.1rem;
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
+
+    .error-msg {
+      color: var(--red); font-size: 0.9rem; margin-top: 0.3rem;
+      display: none;
+    }
+    .error-msg.visible { display: block; }
+
+    @media (max-width: 600px) {
+      nav { padding: 0 1rem; }
+      nav .links { gap: 1rem; }
+      nav .links a { font-size: 0.75rem; }
+      .container { padding: 1rem 1rem 3rem; }
+      .form-row { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <nav>
+    <a href="index.html" class="logo">Quest Engine</a>
+    <div class="links">
+      <a href="index.html">Home</a>
+      <a href="tracker.html">Tracker</a>
+      <a href="journals.html">Journals</a>
+      <a href="tavern.html" class="active">Tavern</a>
+      <a href="leaderboard.html">Rankings</a>
+    </div>
+  </nav>
+
+  <div class="page-header">
+    <h1>&#127866; Tavern Board</h1>
+    <p>Quest rumors, tall tales, and boasts from the adventuring life</p>
+  </div>
+
+  <div class="container" id="tavern-container">
+    <div class="empty-state">
+      <div class="icon">&#127866;</div>
+      <p>Loading posts...</p>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+    let currentView = 'list'; // 'list' or 'detail'
+    let postsData = [];
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function formatDate(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('en-US', {
+        month: 'short', day: 'numeric', year: 'numeric'
+      });
+    }
+
+    function renderPostList(posts) {
+      const container = document.getElementById('tavern-container');
+
+      let html = `
+        <button class="new-post-toggle" onclick="toggleNewPostForm()">
+          &#9998; Pin a New Notice to the Board
+        </button>
+
+        <div class="new-post-form" id="new-post-form">
+          <h3>&#128220; Post to the Tavern Board</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Character Name</label>
+              <input type="text" id="post-author" placeholder="e.g. Thorne Blackwood" />
+            </div>
+            <div class="form-group">
+              <label>Title</label>
+              <input type="text" id="post-title" placeholder="e.g. Goblins sighted near the old mill" />
+            </div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group">
+              <label>Content</label>
+              <textarea id="post-content" placeholder="Write your post here..."></textarea>
+            </div>
+          </div>
+          <div class="error-msg" id="post-error"></div>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="submitPost()">Post</button>
+            <button class="btn btn-secondary" onclick="toggleNewPostForm()">Cancel</button>
+          </div>
+        </div>`;
+
+      if (!posts || posts.length === 0) {
+        html += `
+          <div class="empty-state">
+            <div class="icon">&#128566;</div>
+            <p>The tavern board is empty.</p>
+            <p style="font-size: 0.95rem; margin-top: 0.5rem; color: var(--text-dim);">
+              Be the first to pin a notice. Quest rumors, warnings, boasts — anything goes.
+            </p>
+          </div>`;
+      } else {
+        html += posts.map(p => {
+          const replyCount = (p.replies || []).length;
+          return `
+            <div class="post" onclick="viewPost('${p.id}')">
+              <div class="post-header">
+                <div class="post-title">${escapeHtml(p.title || 'Untitled')}</div>
+                <div class="post-date">${formatDate(p.created_at || p.date)}</div>
+              </div>
+              <div class="post-author">&#9998; ${escapeHtml(p.author || p.character_name || 'Anonymous')}</div>
+              <div class="post-content">${escapeHtml((p.content || p.text || '').slice(0, 200))}${(p.content || p.text || '').length > 200 ? '...' : ''}</div>
+              <div class="post-meta">${replyCount} repl${replyCount !== 1 ? 'ies' : 'y'}</div>
+            </div>`;
+        }).join('');
+      }
+
+      container.innerHTML = html;
+    }
+
+    function renderPostDetail(post) {
+      const container = document.getElementById('tavern-container');
+      const replies = post.replies || [];
+
+      container.innerHTML = `
+        <a class="back-link" onclick="showList()">&larr; Back to Board</a>
+
+        <div class="post-expanded">
+          <div class="post-header">
+            <div class="post-title">${escapeHtml(post.title || 'Untitled')}</div>
+            <div class="post-date">${formatDate(post.created_at || post.date)}</div>
+          </div>
+          <div class="post-author">&#9998; ${escapeHtml(post.author || post.character_name || 'Anonymous')}</div>
+          <div class="post-content">${escapeHtml(post.content || post.text || '')}</div>
+        </div>
+
+        <div class="replies-section">
+          <h3>&#128172; Replies (${replies.length})</h3>
+
+          ${replies.length === 0
+            ? '<p style="color: var(--text-dim); font-style: italic; margin-bottom: 1rem;">No replies yet. Be the first to respond.</p>'
+            : replies.map(r => `
+                <div class="reply">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div class="reply-author">&#9998; ${escapeHtml(r.author || r.character_name || 'Anonymous')}</div>
+                    <div class="reply-date">${formatDate(r.created_at || r.date)}</div>
+                  </div>
+                  <div class="reply-content">${escapeHtml(r.content || r.text || '')}</div>
+                </div>
+              `).join('')
+          }
+
+          <div class="reply-form">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Character Name</label>
+                <input type="text" id="reply-author" placeholder="Your character name" />
+              </div>
+            </div>
+            <div class="form-row full">
+              <div class="form-group">
+                <label>Reply</label>
+                <textarea id="reply-content" placeholder="Write your reply..." style="min-height: 80px;"></textarea>
+              </div>
+            </div>
+            <div class="error-msg" id="reply-error"></div>
+            <div class="form-actions">
+              <button class="btn btn-primary" onclick="submitReply('${post.id}')">Reply</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function toggleNewPostForm() {
+      document.getElementById('new-post-form').classList.toggle('visible');
+    }
+
+    async function submitPost() {
+      const author = document.getElementById('post-author').value.trim();
+      const title = document.getElementById('post-title').value.trim();
+      const content = document.getElementById('post-content').value.trim();
+      const errEl = document.getElementById('post-error');
+
+      if (!author || !title || !content) {
+        errEl.textContent = 'All fields are required.';
+        errEl.classList.add('visible');
+        return;
+      }
+      errEl.classList.remove('visible');
+
+      try {
+        const res = await fetch(`${API_BASE}/spectator/tavern`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ author, title, content })
+        });
+        if (!res.ok) throw new Error('Failed to create post');
+        await loadPosts();
+        document.getElementById('new-post-form').classList.remove('visible');
+      } catch (err) {
+        errEl.textContent = 'Failed to submit post. Server may not be running.';
+        errEl.classList.add('visible');
+      }
+    }
+
+    async function submitReply(postId) {
+      const author = document.getElementById('reply-author').value.trim();
+      const content = document.getElementById('reply-content').value.trim();
+      const errEl = document.getElementById('reply-error');
+
+      if (!author || !content) {
+        errEl.textContent = 'Name and reply content are required.';
+        errEl.classList.add('visible');
+        return;
+      }
+      errEl.classList.remove('visible');
+
+      try {
+        const res = await fetch(`${API_BASE}/spectator/tavern/${postId}/replies`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ author, content })
+        });
+        if (!res.ok) throw new Error('Failed to submit reply');
+        await viewPost(postId);
+      } catch (err) {
+        errEl.textContent = 'Failed to submit reply. Server may not be running.';
+        errEl.classList.add('visible');
+      }
+    }
+
+    async function viewPost(postId) {
+      currentView = 'detail';
+      try {
+        const res = await fetch(`${API_BASE}/spectator/tavern/${postId}`);
+        if (!res.ok) throw new Error('Failed to fetch post');
+        const post = await res.json();
+        renderPostDetail(post);
+      } catch (err) {
+        // Try to find it in local data
+        const post = postsData.find(p => p.id === postId);
+        if (post) {
+          renderPostDetail(post);
+        } else {
+          document.getElementById('tavern-container').innerHTML = `
+            <a class="back-link" onclick="showList()">&larr; Back to Board</a>
+            <div class="empty-state">
+              <p>Could not load this post. Server may not be running.</p>
+            </div>`;
+        }
+      }
+    }
+
+    function showList() {
+      currentView = 'list';
+      renderPostList(postsData);
+    }
+
+    async function loadPosts() {
+      try {
+        const res = await fetch(`${API_BASE}/spectator/tavern`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        postsData = Array.isArray(data) ? data : (data.posts || []);
+        if (currentView === 'list') renderPostList(postsData);
+      } catch (err) {
+        console.log('Tavern fetch failed:', err.message);
+        postsData = [];
+        if (currentView === 'list') renderPostList([]);
+      }
+    }
+
+    loadPosts();
+  </script>
+</body>
+</html>
