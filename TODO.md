@@ -31,8 +31,8 @@
 - [x] Encounter spawning and monster turns
 
 ## Phase 5: Agent Interface
-- [ ] Player tools (all MCP tools listed above)
-- [ ] DM tools (all MCP tools listed above)
+- [x] Player tools (all MCP tools listed above)
+- [x] DM tools (all MCP tools listed above)
 - [ ] MCP server setup with tool discovery and JSON schemas
 - [ ] REST API endpoints (mirror all tools)
 - [ ] WebSocket handler (session events, narration push, chat)

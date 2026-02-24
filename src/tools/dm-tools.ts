@@ -1,0 +1,502 @@
+/**
+ * DM (Dungeon Master) MCP tool definitions for the Quest Engine.
+ *
+ * Each tool has a name, description, JSON Schema for input, and a handler
+ * reference string. Handlers are wired up in the MCP server registration layer.
+ *
+ * The DM controls narrative, NPC dialogue, encounter placement, scene pacing,
+ * difficulty calibration, and story direction. The server controls all dice rolls,
+ * damage calculation, HP/resource tracking, death saves, and loot table rolls.
+ */
+
+import type { AbilityName } from "../types.ts";
+
+// ---------------------------------------------------------------------------
+// Tool definition type
+// ---------------------------------------------------------------------------
+
+/**
+ * JSON Schema representation for tool input parameters.
+ * Covers the subset of JSON Schema we actually use in tool definitions.
+ */
+interface JSONSchemaProperty {
+  type: "string" | "number" | "integer" | "boolean" | "array" | "object";
+  description?: string;
+  enum?: readonly string[];
+  items?: JSONSchemaProperty;
+  properties?: Record<string, JSONSchemaProperty>;
+  required?: readonly string[];
+  minimum?: number;
+  maximum?: number;
+  minItems?: number;
+  default?: string | number | boolean;
+}
+
+interface JSONSchemaObject {
+  type: "object";
+  properties: Record<string, JSONSchemaProperty>;
+  required: readonly string[];
+  additionalProperties?: boolean;
+}
+
+export interface ToolDefinition {
+  /** Tool name used in MCP registration and API routing. */
+  name: string;
+  /** Human-readable description shown to DM agents during tool discovery. */
+  description: string;
+  /** JSON Schema describing the tool's input parameters. */
+  inputSchema: JSONSchemaObject;
+  /** Name of the handler function to be wired up in the MCP/REST layer. */
+  handler: string;
+}
+
+// ---------------------------------------------------------------------------
+// Shared schema fragments (reused across multiple tools)
+// ---------------------------------------------------------------------------
+
+const playerIdProperty: JSONSchemaProperty = {
+  type: "string",
+  description:
+    "The unique ID of the target player character. Use get_party_state() to look up IDs.",
+};
+
+const abilityProperty: JSONSchemaProperty = {
+  type: "string",
+  description: "The ability score to use for the check or save.",
+  enum: ["str", "dex", "con", "int", "wis", "cha"] as const,
+};
+
+const dcProperty: JSONSchemaProperty = {
+  type: "integer",
+  description:
+    "Difficulty Class for the check. Guidelines: Easy 10, Medium 13, Hard 16, Very Hard 19.",
+  minimum: 1,
+  maximum: 30,
+};
+
+// ---------------------------------------------------------------------------
+// Tool definitions
+// ---------------------------------------------------------------------------
+
+export const dmTools: readonly ToolDefinition[] = [
+  // -- Narration tools ------------------------------------------------------
+
+  {
+    name: "narrate",
+    description:
+      "Broadcast narrative text to the entire party. Use this to describe rooms, " +
+      "scenes, the results of actions, environmental changes, and dramatic moments. " +
+      "The text you provide is sent as-is to all connected player agents. This is your " +
+      "primary storytelling tool — set the scene, build tension, describe consequences. " +
+      "The server does not modify the text; it is delivered verbatim.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description:
+            "The narrative text to send to all party members. Use vivid, descriptive language. " +
+            "Can be as short or as long as the moment demands.",
+        },
+      },
+      required: ["text"],
+    },
+    handler: "handleNarrate",
+  },
+
+  {
+    name: "narrate_to",
+    description:
+      "Send private narrative text to a single player. Only that player receives the " +
+      "message. Use this for whispered visions, perception-only details, secret notes, " +
+      "backstory callbacks, or information that only one character would know. Other " +
+      "party members do not see this text.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: {
+          ...playerIdProperty,
+          description:
+            "The ID of the player who should receive this private narration.",
+        },
+        text: {
+          type: "string",
+          description:
+            "The private narrative text. Only this player will see it.",
+        },
+      },
+      required: ["player_id", "text"],
+    },
+    handler: "handleNarrateTo",
+  },
+
+  // -- Encounter management -------------------------------------------------
+
+  {
+    name: "spawn_encounter",
+    description:
+      "Place monsters in the current scene and trigger combat. The server creates " +
+      "monster instances from its data files (stat blocks, HP, AC, attacks), rolls " +
+      "initiative for all combatants, and transitions the session into combat phase. " +
+      "You provide the list of monsters to spawn; the server handles all the mechanics. " +
+      "After spawning, use get_room_state() to see the initiative order and monster " +
+      "positions. You can optionally specify a difficulty hint that the server uses for " +
+      "logging and balance tracking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        monsters: {
+          type: "array",
+          description:
+            "List of monsters to spawn. Each entry specifies a monster type by template " +
+            "name and how many to place. Template names must match entries in the monster " +
+            "data files (e.g., 'goblin', 'skeleton', 'hobgoblin', 'wight').",
+          items: {
+            type: "object",
+            properties: {
+              template_name: {
+                type: "string",
+                description:
+                  "Name of the monster template from the data files (e.g., 'goblin', 'skeleton', 'bugbear').",
+              },
+              count: {
+                type: "integer",
+                description: "How many of this monster to spawn.",
+                minimum: 1,
+                maximum: 20,
+              },
+            },
+            required: ["template_name", "count"],
+          },
+          minItems: 1,
+        },
+        difficulty: {
+          type: "string",
+          description:
+            "Optional difficulty hint for logging and balance metrics. Does not " +
+            "mechanically change the encounter — that is determined by which monsters " +
+            "you choose to spawn.",
+          enum: ["easy", "medium", "hard", "deadly"] as const,
+        },
+      },
+      required: ["monsters"],
+    },
+    handler: "handleSpawnEncounter",
+  },
+
+  // -- NPC interaction ------------------------------------------------------
+
+  {
+    name: "voice_npc",
+    description:
+      "Speak as a Non-Player Character in the scene. The server tracks which NPCs " +
+      "exist in the current room; this tool delivers dialogue attributed to a specific " +
+      "NPC. Use distinct voices, speech patterns, and personalities for each NPC. " +
+      "All party members receive the dialogue. For NPCs that only one player can hear, " +
+      "combine with narrate_to() instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        npc_id: {
+          type: "string",
+          description:
+            "The ID of the NPC speaking. Must be a valid NPC present in the current scene. " +
+            "Use get_room_state() to see available NPCs.",
+        },
+        dialogue: {
+          type: "string",
+          description:
+            "The NPC's spoken dialogue. Write in character — accents, verbal tics, " +
+            "personality quirks all go here.",
+        },
+      },
+      required: ["npc_id", "dialogue"],
+    },
+    handler: "handleVoiceNpc",
+  },
+
+  // -- Checks and saves -----------------------------------------------------
+
+  {
+    name: "request_check",
+    description:
+      "Ask the server to run an ability check or skill check for a specific player. " +
+      "You set the DC and which ability to use; the server rolls the d20, applies the " +
+      "player's modifier and proficiency bonus (if a skill is specified and the character " +
+      "is proficient), and returns the result including the natural roll, total, and " +
+      "whether the check succeeded. You then narrate the outcome based on success or " +
+      "failure. The server handles all the math — you never need to calculate modifiers.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: playerIdProperty,
+        ability: abilityProperty,
+        dc: dcProperty,
+        skill: {
+          type: "string",
+          description:
+            "Optional skill name for a skill check (e.g., 'perception', 'stealth', " +
+            "'persuasion', 'athletics', 'arcana', 'investigation'). If provided and the " +
+            "character is proficient, their proficiency bonus is added to the roll.",
+        },
+      },
+      required: ["player_id", "ability", "dc"],
+    },
+    handler: "handleRequestCheck",
+  },
+
+  {
+    name: "request_save",
+    description:
+      "Force a player to make a saving throw. The server rolls the d20 and applies " +
+      "the player's ability modifier (plus proficiency if they have saving throw " +
+      "proficiency). Natural 20 always succeeds, natural 1 always fails. Use this for " +
+      "traps, environmental hazards, spell effects, and any situation where the character " +
+      "is resisting an effect. You narrate the consequence based on the result.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: playerIdProperty,
+        ability: abilityProperty,
+        dc: dcProperty,
+      },
+      required: ["player_id", "ability", "dc"],
+    },
+    handler: "handleRequestSave",
+  },
+
+  {
+    name: "request_group_check",
+    description:
+      "All party members make the same ability check simultaneously. The server rolls " +
+      "for each player and returns individual results plus an overall outcome (majority " +
+      "rules: if at least half succeed, the group succeeds). Use this for situations " +
+      "where the whole party is affected — sneaking past guards, navigating treacherous " +
+      "terrain, resisting an area effect. You get back each player's roll so you can " +
+      "narrate individual reactions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ability: abilityProperty,
+        dc: dcProperty,
+        skill: {
+          type: "string",
+          description:
+            "Optional skill name for the group check (e.g., 'stealth', 'perception'). " +
+            "Proficiency is applied per-character based on their individual proficiencies.",
+        },
+      },
+      required: ["ability", "dc"],
+    },
+    handler: "handleRequestGroupCheck",
+  },
+
+  // -- Environmental damage -------------------------------------------------
+
+  {
+    name: "deal_environment_damage",
+    description:
+      "Inflict damage from a trap, hazard, or environmental effect on a player. The " +
+      "damage goes through the rules engine — the server parses the dice notation, " +
+      "rolls the damage, applies it to the player's HP, and handles any consequences " +
+      "(unconsciousness, death saves). You narrate the trap or hazard; the server does " +
+      "the math. A DM can narrate 'the ceiling collapses' but the actual damage comes " +
+      "from this tool through the rules engine.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: playerIdProperty,
+        notation: {
+          type: "string",
+          description:
+            "Dice notation for the damage (e.g., '2d6', '3d8+4', '1d10'). The server " +
+            "parses and rolls this using the dice engine.",
+        },
+        type: {
+          type: "string",
+          description: "The type of damage being dealt.",
+          enum: [
+            "bludgeoning",
+            "piercing",
+            "slashing",
+            "fire",
+            "cold",
+            "lightning",
+            "acid",
+            "poison",
+            "necrotic",
+            "radiant",
+            "force",
+            "psychic",
+            "thunder",
+          ] as const,
+        },
+      },
+      required: ["player_id", "notation", "type"],
+    },
+    handler: "handleDealEnvironmentDamage",
+  },
+
+  // -- Scene management -----------------------------------------------------
+
+  {
+    name: "advance_scene",
+    description:
+      "Transition the party to the next room or area in the dungeon. The server updates " +
+      "the party's location, marks the new room as visited, and reveals its description " +
+      "and features. If no room ID is provided, the server returns available exits and " +
+      "you can let the players choose, or call again with a specific room. Use this to " +
+      "pace the adventure — advance when the current room is fully explored, after combat " +
+      "ends, or when the story demands a scene change. The session must not be in combat " +
+      "phase to advance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        next_room_id: {
+          type: "string",
+          description:
+            "The ID of the room to move to. Must be connected to the current room via " +
+            "a discovered, non-locked passage. If omitted, the server returns available " +
+            "exits without moving the party.",
+        },
+      },
+      required: [],
+    },
+    handler: "handleAdvanceScene",
+  },
+
+  // -- State inspection -----------------------------------------------------
+
+  {
+    name: "get_party_state",
+    description:
+      "Retrieve the full state of every party member: current and max HP, AC, spell " +
+      "slots (current/max for each level), active conditions (poisoned, stunned, etc.), " +
+      "equipped items, and inventory. Use this before spawning encounters to calibrate " +
+      "difficulty — if the party is low on HP and spell slots, maybe ease up. Use it " +
+      "after combat to see who needs healing. This is your primary tool for reading the " +
+      "mechanical state of the party. No parameters needed.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleGetPartyState",
+  },
+
+  {
+    name: "get_room_state",
+    description:
+      "Get details about the current room: room name, description, type, environmental " +
+      "features, active monsters (with HP and conditions), present NPCs, available exits, " +
+      "and any ongoing effects. During combat, this also includes the initiative order and " +
+      "whose turn it is. Use this to stay oriented — especially after spawning encounters " +
+      "or when players interact with room features.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleGetRoomState",
+  },
+
+  // -- Rewards --------------------------------------------------------------
+
+  {
+    name: "award_xp",
+    description:
+      "Award experience points to the party. The server distributes the XP evenly " +
+      "among all living party members and handles level-up checks automatically. If any " +
+      "character levels up, the server returns that information so you can narrate the " +
+      "milestone. Typical XP values: easy encounter 50-100, medium 100-200, hard 200-400, " +
+      "boss 500+. Also award XP for clever puzzle solutions and good roleplay.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "integer",
+          description:
+            "Total XP to award to the party. This amount is split evenly among living " +
+            "party members. Must be a positive integer.",
+          minimum: 1,
+        },
+      },
+      required: ["amount"],
+    },
+    handler: "handleAwardXp",
+  },
+
+  {
+    name: "award_loot",
+    description:
+      "Give a specific item to a player character. The item must exist in the server's " +
+      "item data files (weapons, armor, potions, scrolls, magic items). The server adds " +
+      "it to the player's inventory. Use this after combat, when searching rooms, or as " +
+      "quest rewards. For random loot, check the room's loot table via get_room_state() " +
+      "and pick appropriate items. Players cannot equip items automatically — they use " +
+      "their own tools to manage equipment.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: {
+          ...playerIdProperty,
+          description: "The ID of the player receiving the item.",
+        },
+        item_id: {
+          type: "string",
+          description:
+            "The ID of the item to award, from the server's item data files " +
+            "(e.g., 'potion-of-healing', 'longsword', 'chain-mail', 'scroll-of-magic-missile').",
+        },
+      },
+      required: ["player_id", "item_id"],
+    },
+    handler: "handleAwardLoot",
+  },
+
+  // -- Session control ------------------------------------------------------
+
+  {
+    name: "end_session",
+    description:
+      "End the current adventure session. Provide a summary of what happened — key events, " +
+      "battles fought, discoveries made, story progress. The server uses this summary to " +
+      "generate adventure journal entries, distribute final XP, and transition the party to " +
+      "'between_sessions' status. After this call, each player agent gets a chance to write " +
+      "their personal journal entry. Call this when the dungeon is completed, the party is " +
+      "TPK'd, or at a natural stopping point in a longer campaign.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        summary: {
+          type: "string",
+          description:
+            "A narrative summary of the session. Include major events, combat outcomes, " +
+            "loot found, NPCs encountered, and story developments. This becomes part of " +
+            "the permanent adventure record and is shown to spectators on the website.",
+        },
+      },
+      required: ["summary"],
+    },
+    handler: "handleEndSession",
+  },
+] as const;
+
+// ---------------------------------------------------------------------------
+// Helper: look up a tool by name
+// ---------------------------------------------------------------------------
+
+/**
+ * Find a DM tool definition by name.
+ * Returns undefined if the tool does not exist.
+ */
+export function getDmTool(name: string): ToolDefinition | undefined {
+  return dmTools.find((t) => t.name === name);
+}
+
+/**
+ * Get all DM tool names, useful for validation and discovery responses.
+ */
+export function getDmToolNames(): string[] {
+  return dmTools.map((t) => t.name);
+}
