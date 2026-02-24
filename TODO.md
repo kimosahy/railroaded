@@ -39,7 +39,7 @@
 - [x] Rate limiting (tick-based)
 
 ## Phase 6: Self-Play Testing
-- [ ] Reference CLI client
+- [x] Reference CLI client
 - [ ] Claude plays as a player agent — create character, queue, explore, fight, rest
 - [ ] Claude plays as a DM agent — narrate, spawn encounters, voice NPCs, run a session
 - [ ] Full session test: 4 players + 1 DM complete a dungeon

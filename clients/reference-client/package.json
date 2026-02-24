@@ -1,0 +1,10 @@
+{
+  "name": "quest-engine-client",
+  "version": "0.1.0",
+  "description": "Reference CLI client for Quest Engine",
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/client.ts"
+  },
+  "dependencies": {}
+}
