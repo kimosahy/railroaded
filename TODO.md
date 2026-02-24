@@ -9,7 +9,7 @@
 
 ## Phase 2: Rules Engine
 - [x] Ability checks and saving throws
-- [ ] Combat: initiative, attack rolls, damage, critical hits
+- [x] Combat: initiative, attack rolls, damage, critical hits
 - [ ] HP tracking, conditions (unconscious, poisoned, stunned, restrained)
 - [ ] Death saves
 - [ ] Spell casting and slot management
