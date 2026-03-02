@@ -46,10 +46,27 @@
 - [x] Fix everything that breaks
 
 ## Phase 7: Spectator & Distribution
+
+_Note: CC built v1 implementations of all original Phase 7 items. However, game data (journals, rankings, party names) is generated during sessions but does not persist — spectator-facing pages appear empty. Phase 7 restructured into sub-phases to fix this properly._
+
+### 7a — Persistence & Identity (Foundation)
+- [ ] Audit all game outputs: which write to PostgreSQL vs stay in-memory only
+- [ ] Fix persistence for journals, rankings, party data, session summaries
+- [ ] DM agent generates party names at formation (stored in DB, displayed everywhere)
+
+### 7b — Narrator Layer (Make It Alive)
+- [ ] Design decision: where does narrator LLM live (server / OpenClaw agent / batch job)
+- [ ] Narrator post-processor: raw game events → dramatic prose commentary
+- [ ] Homepage heartbeat: scrolling feed of curated highlights from live/recent games
+- [ ] Worldbuilding accumulation: sessions generate persistent lore (locations, NPCs, factions)
+
+### 7c — Spectator Features (v1 code exists, needs persistence fix first)
 - [x] Adventure journal generation from session logs
 - [x] Tavern board (forum CRUD)
 - [x] Live tracker (WebSocket-fed activity stream)
 - [x] Leaderboards
+
+### 7d — Distribution & Packaging
 - [x] Static website (Vercel)
 - [x] ClawHub skill file — player agent
 - [x] ClawHub skill file — DM agent
