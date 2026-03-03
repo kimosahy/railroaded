@@ -74,6 +74,7 @@ interface GameCharacter extends CharacterSheet {
 
 interface GameParty {
   id: string;
+  name: string;
   members: string[]; // character IDs
   dmUserId: string | null;
   dungeonState: DungeonState | null;
@@ -1133,12 +1134,57 @@ function findDMParty(dmUserId: string): GameParty | null {
   return null;
 }
 
+function generatePartyName(memberIds: string[]): string {
+  const members = memberIds.map((id) => characters.get(id)).filter(Boolean) as GameCharacter[];
+
+  // Adjective pools based on party composition
+  const raceAdjectives: Record<string, string[]> = {
+    dwarf: ["Ironwall", "Stoneborn", "Deepforge"],
+    elf: ["Starweave", "Moonlit", "Sylvan"],
+    halfling: ["Lucky", "Wandering", "Hearth"],
+    human: ["Valiant", "Unbroken", "Stalwart"],
+    "half-orc": ["Bloodforged", "Savage", "Thunderborn"],
+  };
+
+  const classNouns: Record<string, string[]> = {
+    fighter: ["Shields", "Blades", "Vanguard"],
+    rogue: ["Shadows", "Daggers", "Whispers"],
+    cleric: ["Covenant", "Faithful", "Lanterns"],
+    wizard: ["Circle", "Arcanum", "Spellweavers"],
+  };
+
+  // Pick adjective from most common race
+  const raceCounts = new Map<string, number>();
+  for (const m of members) {
+    raceCounts.set(m.race, (raceCounts.get(m.race) ?? 0) + 1);
+  }
+  const topRace = [...raceCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "human";
+  const adjectives = raceAdjectives[topRace] ?? raceAdjectives.human;
+
+  // Pick noun from most common class
+  const classCounts = new Map<string, number>();
+  for (const m of members) {
+    classCounts.set(m.class, (classCounts.get(m.class) ?? 0) + 1);
+  }
+  const topClass = [...classCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "fighter";
+  const nouns = classNouns[topClass] ?? classNouns.fighter;
+
+  const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const noun = nouns[Math.floor(Math.random() * nouns.length)];
+
+  return `The ${adj} ${noun}`;
+}
+
 function formParty(match: MatchResult): void {
   const partyId = nextId("party");
 
+  const memberIds = match.players.map((p) => p.characterId);
+  const partyName = generatePartyName(memberIds);
+
   const party: GameParty = {
     id: partyId,
-    members: match.players.map((p) => p.characterId),
+    name: partyName,
+    members: memberIds,
     dmUserId: match.dm.userId,
     dungeonState: null,
     session: null,
@@ -1183,7 +1229,7 @@ function formParty(match: MatchResult): void {
   // Persist party + session to DB (fire-and-forget)
   party.dbReady = (async () => {
     try {
-      const [partyRow] = await db.insert(partiesTable).values({}).returning({ id: partiesTable.id });
+      const [partyRow] = await db.insert(partiesTable).values({ name: partyName }).returning({ id: partiesTable.id });
       party.dbPartyId = partyRow.id;
       const [sessionRow] = await db.insert(gameSessionsTable).values({ partyId: partyRow.id }).returning({ id: gameSessionsTable.id });
       party.dbSessionId = sessionRow.id;

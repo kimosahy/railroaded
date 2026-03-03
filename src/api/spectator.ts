@@ -45,6 +45,7 @@ spectator.get("/parties", (c) => {
   const state = gm.getState();
   const partyList: {
     id: string;
+    name: string;
     members: { id: string; name: string; class: string; level: number }[];
     phase: string | null;
     currentRoom: string | null;
@@ -72,6 +73,7 @@ spectator.get("/parties", (c) => {
 
     partyList.push({
       id,
+      name: party.name,
       members,
       phase: party.session?.phase ?? null,
       currentRoom,
@@ -150,6 +152,7 @@ spectator.get("/parties/:id", (c) => {
 
   return c.json({
     id: partyId,
+    name: party.name,
     members,
     dmUserId: party.dmUserId,
     phase: party.session?.phase ?? null,
@@ -190,6 +193,7 @@ spectator.get("/journals", (c) => {
     const summary = summarizeSession(party.events);
     journals.push({
       partyId,
+      partyName: party.name,
       memberNames,
       summary,
       eventCount: party.events.length,
@@ -284,6 +288,7 @@ spectator.get("/leaderboard", (c) => {
   // Longest-surviving parties (most events as a proxy for activity)
   interface PartyLeaderboardEntry {
     id: string;
+    name: string;
     memberNames: string[];
     memberCount: number;
     eventCount: number;
@@ -298,6 +303,7 @@ spectator.get("/leaderboard", (c) => {
     });
     partyEntries.push({
       id: partyId,
+      name: party.name,
       memberNames,
       memberCount: party.members.length,
       eventCount: party.events.length,

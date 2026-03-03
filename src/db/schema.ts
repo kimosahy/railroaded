@@ -144,6 +144,7 @@ export const characters = pgTable("characters", {
 
 export const parties = pgTable("parties", {
   id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name"),
   dmUserId: uuid("dm_user_id").references(() => users.id),
   campaignTemplateId: uuid("campaign_template_id").references(
     () => campaignTemplates.id
