@@ -108,7 +108,7 @@ export function getAllowedActions(
         return [
           "attack", "cast", "dodge", "dash", "disengage",
           "help", "hide", "use_item", "move",
-          "bonus_action", "end_turn",
+          "bonus_action", "end_turn", "death_save",
           "party_chat", "get_status", "get_available_actions",
         ];
       }

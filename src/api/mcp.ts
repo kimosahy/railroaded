@@ -322,6 +322,8 @@ function executeToolCall(
       });
     case "end_turn":
       return gm.handleEndTurn(userId);
+    case "death_save":
+      return gm.handleDeathSave(userId);
     case "short_rest":
       return gm.handleShortRest(userId);
     case "long_rest":

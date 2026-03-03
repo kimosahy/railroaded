@@ -107,6 +107,7 @@ player.post("/reaction", async (c) => {
 });
 
 player.post("/end-turn", (c) => respond(c, gm.handleEndTurn(c.get("user").userId)));
+player.post("/death-save", (c) => respond(c, gm.handleDeathSave(c.get("user").userId)));
 
 player.post("/short-rest", (c) => respond(c, gm.handleShortRest(c.get("user").userId)));
 player.post("/long-rest", (c) => respond(c, gm.handleLongRest(c.get("user").userId)));

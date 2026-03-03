@@ -55,7 +55,7 @@ import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable } from "../engine/loot.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
-import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase } from "../types.ts";
+import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -72,6 +72,7 @@ interface GameCharacter extends CharacterSheet {
   userId: string;
   partyId: string | null;
   conditions: Condition[];
+  deathSaves: DeathSaves;
   dbCharId: string | null; // UUID from characters table
 }
 
@@ -202,6 +203,7 @@ export function handleCreateCharacter(userId: string, params: {
     userId,
     partyId: null,
     conditions: [],
+    deathSaves: { successes: 0, failures: 0 },
     dbCharId: null,
   };
 
@@ -318,6 +320,7 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
       abilityScores: char.abilityScores,
       spellSlots: char.spellSlots,
       conditions: char.conditions,
+      deathSaves: char.deathSaves,
       equipment: char.equipment,
       features: char.features,
     },
@@ -522,6 +525,28 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
     if (droppedToZero) {
       target.conditions = handleDropToZero(target.conditions);
+      target.deathSaves = resetDeathSaves();
+
+      // Broadcast character down to entire party
+      broadcastToParty(party.id, {
+        type: "character_down",
+        characterId: target.id,
+        characterName: target.name,
+        attackerName: monster.name,
+        message: `${target.name} has fallen unconscious!`,
+      });
+
+      // Notify DM explicitly
+      if (party.dmUserId) {
+        sendToUser(party.dmUserId, {
+          type: "character_down",
+          characterId: target.id,
+          characterName: target.name,
+          attackerName: monster.name,
+          hpMax: target.hpMax,
+          message: `${target.name} has dropped to 0 HP from ${monster.name}'s ${attack.name}!`,
+        });
+      }
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -1122,6 +1147,112 @@ export function handleReaction(userId: string, params: { action: string; spell_n
   }
 }
 
+// --- Death Saves ---
+
+export function handleDeathSave(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  if (!char.conditions.includes("unconscious")) {
+    return { success: false, error: "You are not unconscious. Death saves are only made when at 0 HP." };
+  }
+  if (char.conditions.includes("stable")) {
+    return { success: false, error: "You are already stabilized." };
+  }
+  if (char.conditions.includes("dead")) {
+    return { success: false, error: "You are dead." };
+  }
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Death saves are only made during combat." };
+  }
+
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== char.id) {
+    return { success: false, error: "It's not your turn." };
+  }
+
+  const result = deathSave(char.deathSaves);
+  char.deathSaves = result.deathSaves;
+  char.conditions = applyDeathSaveConditions(char.conditions, result);
+
+  if (result.revivedWith1HP) {
+    char.hpCurrent = 1;
+    char.deathSaves = resetDeathSaves();
+  }
+
+  logEvent(party, "death_save", char.id, {
+    characterName: char.name,
+    naturalRoll: result.naturalRoll,
+    success: result.success,
+    deathSaves: result.deathSaves,
+    stabilized: result.stabilized,
+    dead: result.dead,
+    revivedWith1HP: result.revivedWith1HP,
+  });
+
+  // Broadcast death save result to entire party
+  broadcastToParty(party.id, {
+    type: "death_save",
+    characterId: char.id,
+    characterName: char.name,
+    naturalRoll: result.naturalRoll,
+    success: result.success,
+    deathSaves: result.deathSaves,
+    stabilized: result.stabilized,
+    dead: result.dead,
+    revivedWith1HP: result.revivedWith1HP,
+  });
+
+  // Notify DM explicitly on stabilize or death
+  if (party.dmUserId) {
+    if (result.dead) {
+      sendToUser(party.dmUserId, {
+        type: "character_death",
+        characterId: char.id,
+        characterName: char.name,
+        message: `${char.name} has died! Three failed death saves.`,
+      });
+    } else if (result.stabilized) {
+      sendToUser(party.dmUserId, {
+        type: "character_stabilized",
+        characterId: char.id,
+        characterName: char.name,
+        message: `${char.name} has stabilized with three successful death saves.`,
+      });
+    } else if (result.revivedWith1HP) {
+      sendToUser(party.dmUserId, {
+        type: "character_revived",
+        characterId: char.id,
+        characterName: char.name,
+        message: `${char.name} rolled a natural 20 and is back on their feet with 1 HP!`,
+      });
+    }
+  }
+
+  // If dead, remove from initiative
+  if (result.dead && party.session) {
+    party.session = removeCombatant(party.session, char.id);
+    if (shouldCombatEnd(party.session)) {
+      party.session = exitCombat(party.session);
+      logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      naturalRoll: result.naturalRoll,
+      success: result.success,
+      deathSaves: result.deathSaves,
+      stabilized: result.stabilized,
+      dead: result.dead,
+      revivedWith1HP: result.revivedWith1HP,
+    },
+  };
+}
+
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
@@ -1366,6 +1497,29 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id:
 
   if (droppedToZero) {
     char.conditions = handleDropToZero(char.conditions);
+    char.deathSaves = resetDeathSaves();
+
+    const party = getPartyForCharacter(char.id);
+    if (party) {
+      broadcastToParty(party.id, {
+        type: "character_down",
+        characterId: char.id,
+        characterName: char.name,
+        cause: `environment (${params.type})`,
+        message: `${char.name} has fallen unconscious from ${params.type} damage!`,
+      });
+
+      if (party.dmUserId) {
+        sendToUser(party.dmUserId, {
+          type: "character_down",
+          characterId: char.id,
+          characterName: char.name,
+          cause: `environment (${params.type})`,
+          hpMax: char.hpMax,
+          message: `${char.name} has dropped to 0 HP from ${params.type} damage!`,
+        });
+      }
+    }
   }
 
   return {
@@ -1884,6 +2038,7 @@ export async function loadPersistedState(): Promise<number> {
           userId,
           partyId,
           conditions: (row.conditions as string[]) ?? [],
+          deathSaves: (row.deathSaves as DeathSaves) ?? { successes: 0, failures: 0 },
           dbCharId: row.id,
         };
 
@@ -1933,6 +2088,7 @@ export async function loadPersistedState(): Promise<number> {
           phase: "exploration", // reset to exploration (can't restore combat)
           currentTurn: 0,
           initiativeOrder: [],
+          turnResources: {},
           isActive: true,
           startedAt: sessionRow.startedAt,
           endedAt: null,

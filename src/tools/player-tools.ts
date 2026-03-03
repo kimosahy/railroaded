@@ -448,6 +448,23 @@ export const playerTools: PlayerToolDefinition[] = [
     handler: "handleEndTurn",
   },
 
+  // ── Death Saves ────────────────────────────────────────────────────────
+  {
+    name: "death_save",
+    description:
+      "Make a death saving throw. When you are unconscious at 0 HP, you must " +
+      "make a death save at the start of each of your turns. Roll d20: 10+ is " +
+      "a success, 9 or below is a failure. Natural 20 = revive with 1 HP. " +
+      "Natural 1 = two failures. Three successes = stabilize. Three failures " +
+      "= death. The result is broadcast to the entire party.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    handler: "handleDeathSave",
+  },
+
   // ── Resting ─────────────────────────────────────────────────────────────
   {
     name: "short_rest",
