@@ -179,3 +179,38 @@ Connect the Render PostgreSQL database so game data survives deploys and restart
 - **Drizzle migrations:** Schema changes in code need to be turned into SQL migration files via `drizzle-kit generate`. These files must be committed to the repo. The `migrate()` function reads them at deploy time and applies them to the database.
 - **Pre-deploy commands:** Render can run a command after building but before starting your app. Perfect for database migrations — runs every deploy but only applies new changes.
 - **Free tier DB expiry:** Render's free PostgreSQL expires after 30 days. Data is deleted permanently. Paid plan ($6/month) removes the expiry.
+
+
+## Session 4 — Mar 3, 2026
+
+### Goal
+v2 persistence sprint — ship P0 (persistence) and P1 (narrator + homepage heartbeat)
+
+### What Was Done
+1. Installed event persistence: `logEvent()` now writes to both in-memory array and `session_events` DB table
+2. Added character snapshots at session-end and combat-end
+3. Added procedural party name generator (race/class composition), stored in DB, surfaced in all 4 party endpoints
+4. Built `loadPersistedState()` — rebuilds characters/parties/events from DB at server startup
+5. Fixed monster naming bug: case-insensitive template lookup ("undefined A" → "Skeleton A")
+6. Ran Drizzle migration on production DB (parties.name column)
+7. Built narrator layer: new `narrations` table, POST /narrator/narrate (auth'd), GET /spectator/narrations (public)
+8. Ran second migration on production DB (narrations table)
+9. Built homepage heartbeat: "Latest from the Dungeons" narration feed on index.html with auto-refresh
+
+### Bugs Found/Fixed
+| Bug | Cause | Fix |
+|-----|-------|-----|
+| DNS ENOTFOUND on migration | Used internal Render DB URL from Mac | Switched to external URL (*.oregon-postgres.render.com) |
+| SSL/TLS required | External Render DB connections require SSL | Added ?sslmode=require to connection string |
+| "undefined A" monster names | Case-sensitive template lookup; DM sends lowercase, templates stored capitalized | Case-insensitive matching + fallback for missing field |
+
+### Current State
+- All P0 and P1 items shipped (6 commits on main, auto-deployed)
+- 147 tests passing
+- Production DB has both migrations applied
+- Homepage shows live narration feed (empty until Poormetheus starts narrating)
+
+### Concepts Learned
+- **Render internal vs external DB URLs:** Internal hostname (dpg-...-a) only resolves inside Render's network. External hostname (dpg-...-a.oregon-postgres.render.com) works from anywhere but requires ?sslmode=require
+- **Claude Code workflow:** CC reads CLAUDE.md automatically, works through tasks autonomously. Karim's role: approve edits, provide env context (DB URLs, secrets) CC can't access
+- **Architecture: server never calls LLM.** Narrator is an external agent (Poormetheus on OpenClaw) that reads events via spectator API and POSTs prose back
