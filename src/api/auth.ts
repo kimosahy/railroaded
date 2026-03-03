@@ -1,12 +1,14 @@
 /**
- * Auth system — in-memory user and session storage.
+ * Auth system — in-memory user and session storage with DB persistence.
  *
- * No database required. Users and sessions live in Maps.
- * Suitable for self-play testing and development.
+ * Users and sessions live in Maps for fast runtime access.
+ * User rows are also persisted to PostgreSQL for FK chains.
  */
 
 import { Hono } from "hono";
 import type { UserRole } from "../types.ts";
+import { db } from "../db/connection.ts";
+import { users as usersTable } from "../db/schema.ts";
 
 // --- In-memory stores ---
 
@@ -15,6 +17,7 @@ interface StoredUser {
   username: string;
   passwordHash: string;
   role: UserRole;
+  dbUserId: string | null; // UUID from users table
 }
 
 interface StoredSession {
@@ -82,9 +85,18 @@ auth.post("/register", async (c) => {
   const passwordHash = await hashPassword(password);
   const id = `user-${userIdCounter++}`;
 
-  const user: StoredUser = { id, username: body.username, passwordHash, role };
+  const user: StoredUser = { id, username: body.username, passwordHash, role, dbUserId: null };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
+
+  // Persist to DB (fire-and-forget)
+  db.insert(usersTable).values({
+    username: body.username,
+    passwordHash,
+    role,
+  }).returning({ id: usersTable.id })
+    .then(([row]) => { user.dbUserId = row.id; })
+    .catch((err) => console.error("[DB] Failed to persist user:", err));
 
   return c.json({ id, username: body.username, role, password }, 201);
 });
@@ -123,6 +135,19 @@ auth.post("/login", async (c) => {
 export default auth;
 
 // Middleware: extract authenticated user from Bearer token
+// --- DB lookup helpers ---
+
+export function getDbUserId(userId: string): string | null {
+  return usersById.get(userId)?.dbUserId ?? null;
+}
+
+export function findUserIdByDbId(dbUserId: string): string | null {
+  for (const user of usersById.values()) {
+    if (user.dbUserId === dbUserId) return user.id;
+  }
+  return null;
+}
+
 export async function getAuthUser(
   token: string | undefined
 ): Promise<{
@@ -150,4 +175,28 @@ export async function getAuthUser(
   if (!user) return null;
 
   return { userId: user.id, username: user.username, role: user.role };
+}
+
+// --- Restart loading ---
+
+export async function loadPersistedUsers(): Promise<number> {
+  try {
+    const rows = await db.select().from(usersTable);
+    for (const row of rows) {
+      const id = `user-${userIdCounter++}`;
+      const user: StoredUser = {
+        id,
+        username: row.username,
+        passwordHash: row.passwordHash,
+        role: row.role,
+        dbUserId: row.id,
+      };
+      usersByUsername.set(row.username, user);
+      usersById.set(id, user);
+    }
+    return rows.length;
+  } catch (err) {
+    console.error("[DB] Failed to load persisted users:", err);
+    return 0;
+  }
 }

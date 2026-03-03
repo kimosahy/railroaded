@@ -57,6 +57,10 @@ import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase } fro
 import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
+import { db } from "../db/connection.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable } from "../db/schema.ts";
+import { getDbUserId } from "../api/auth.ts";
+import { eq } from "drizzle-orm";
 
 // --- In-memory state ---
 
@@ -65,6 +69,7 @@ interface GameCharacter extends CharacterSheet {
   userId: string;
   partyId: string | null;
   conditions: Condition[];
+  dbCharId: string | null; // UUID from characters table
 }
 
 interface GameParty {
@@ -75,6 +80,9 @@ interface GameParty {
   session: SessionState | null;
   monsters: MonsterInstance[];
   events: SessionEvent[];
+  dbPartyId: string | null;     // UUID from parties table
+  dbSessionId: string | null;   // UUID from game_sessions table
+  dbReady: Promise<void> | null; // resolves when DB session row exists
 }
 
 const characters = new Map<string, GameCharacter>();
@@ -139,10 +147,40 @@ export function handleCreateCharacter(userId: string, params: {
     userId,
     partyId: null,
     conditions: [],
+    dbCharId: null,
   };
 
   characters.set(id, character);
   charactersByUser.set(userId, id);
+
+  // Persist to DB (fire-and-forget)
+  const dbUserId = getDbUserId(userId);
+  if (dbUserId) {
+    db.insert(charactersTable).values({
+      userId: dbUserId,
+      name: sheet.name,
+      race: sheet.race,
+      class: sheet.class,
+      level: sheet.level,
+      xp: sheet.xp,
+      abilityScores: sheet.abilityScores,
+      hpCurrent: sheet.hpCurrent,
+      hpMax: sheet.hpMax,
+      ac: sheet.ac,
+      spellSlots: sheet.spellSlots,
+      hitDice: sheet.hitDice,
+      inventory: sheet.inventory,
+      equipment: sheet.equipment,
+      proficiencies: sheet.proficiencies,
+      features: sheet.features,
+      conditions: [],
+      backstory: sheet.backstory,
+      personality: sheet.personality,
+      playstyle: sheet.playstyle,
+    }).returning({ id: charactersTable.id })
+      .then(([row]) => { character.dbCharId = row.id; })
+      .catch((err) => console.error("[DB] Failed to persist character:", err));
+  }
 
   return { success: true, character };
 }
@@ -340,6 +378,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         }
         party.session = exitCombat(party.session);
         logEvent(party, "combat_end", null, { xpAwarded: xp });
+        snapshotCharacters(party);
       }
     }
 
@@ -971,6 +1010,7 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
     party.session = exitCombat(party.session);
     party.monsters = []; // clear encounter
     logEvent(party, "combat_end", null, { reason: "scene_advanced" });
+    snapshotCharacters(party);
   }
 
   if (params.next_room_id && party.dungeonState) {
@@ -1063,6 +1103,18 @@ export function handleEndSession(userId: string, params: { summary: string }): {
   }
 
   logEvent(party, "session_end", null, { summary: params.summary });
+  snapshotCharacters(party);
+
+  // Mark session as ended in DB
+  if (party.dbReady) {
+    party.dbReady.then(() => {
+      if (!party.dbSessionId) return;
+      db.update(gameSessionsTable)
+        .set({ isActive: false, endedAt: new Date(), summary: params.summary })
+        .where(eq(gameSessionsTable.id, party.dbSessionId))
+        .catch((err) => console.error("[DB] Failed to end session:", err));
+    });
+  }
 
   const eventSummary = summarizeSession(party.events);
 
@@ -1092,6 +1144,9 @@ function formParty(match: MatchResult): void {
     session: null,
     monsters: [],
     events: [],
+    dbPartyId: null,
+    dbSessionId: null,
+    dbReady: null,
   };
 
   // Assign characters to party
@@ -1125,12 +1180,102 @@ function formParty(match: MatchResult): void {
     ...createSession({ partyId }),
   };
 
+  // Persist party + session to DB (fire-and-forget)
+  party.dbReady = (async () => {
+    try {
+      const [partyRow] = await db.insert(partiesTable).values({}).returning({ id: partiesTable.id });
+      party.dbPartyId = partyRow.id;
+      const [sessionRow] = await db.insert(gameSessionsTable).values({ partyId: partyRow.id }).returning({ id: gameSessionsTable.id });
+      party.dbSessionId = sessionRow.id;
+
+      // Update character partyId FKs in DB
+      for (const charId of party.members) {
+        const char = characters.get(charId);
+        if (char?.dbCharId) {
+          db.update(charactersTable)
+            .set({ partyId: partyRow.id })
+            .where(eq(charactersTable.id, char.dbCharId))
+            .catch((err) => console.error("[DB] Failed to update character partyId:", err));
+        }
+      }
+    } catch (err) {
+      console.error("[DB] Failed to persist session:", err);
+    }
+  })();
+
   parties.set(partyId, party);
 }
 
 function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
   if (!party) return;
-  party.events.push({ type, actorId, data, timestamp: new Date() });
+  const timestamp = new Date();
+  party.events.push({ type, actorId, data, timestamp });
+
+  // Persist to DB (fire-and-forget, chained after session row exists)
+  if (party.dbReady) {
+    party.dbReady.then(() => {
+      if (!party.dbSessionId) return;
+      db.insert(sessionEventsTable).values({
+        sessionId: party.dbSessionId,
+        type,
+        actorId,
+        data,
+        createdAt: timestamp,
+      }).catch((err) => console.error("[DB] Failed to persist event:", err));
+    });
+  }
+}
+
+function snapshotCharacters(party: GameParty): void {
+  if (!party.dbReady) return;
+  party.dbReady.then(() => {
+    for (const charId of party.members) {
+      const char = characters.get(charId);
+      if (!char) continue;
+
+      const snapshot = {
+        level: char.level,
+        xp: char.xp,
+        hpCurrent: char.hpCurrent,
+        hpMax: char.hpMax,
+        ac: char.ac,
+        abilityScores: char.abilityScores,
+        spellSlots: char.spellSlots,
+        hitDice: char.hitDice,
+        inventory: char.inventory,
+        equipment: char.equipment,
+        proficiencies: char.proficiencies,
+        features: char.features,
+        conditions: char.conditions,
+        backstory: char.backstory,
+        personality: char.personality,
+        playstyle: char.playstyle,
+        isAlive: char.hpCurrent > 0,
+      };
+
+      if (char.dbCharId) {
+        db.update(charactersTable)
+          .set(snapshot)
+          .where(eq(charactersTable.id, char.dbCharId))
+          .catch((err) => console.error("[DB] Failed to snapshot character:", err));
+      } else {
+        // Race condition fallback: character DB insert hasn't resolved yet
+        const dbUserId = getDbUserId(char.userId);
+        if (dbUserId) {
+          db.insert(charactersTable).values({
+            userId: dbUserId,
+            name: char.name,
+            race: char.race,
+            class: char.class,
+            partyId: party.dbPartyId,
+            ...snapshot,
+          }).returning({ id: charactersTable.id })
+            .then(([row]) => { char.dbCharId = row.id; })
+            .catch((err) => console.error("[DB] Failed to insert character at snapshot:", err));
+        }
+      }
+    }
+  }).catch((err) => console.error("[DB] snapshotCharacters failed:", err));
 }
 
 function getWeaponDamage(weaponName: string | null): { damage: string; properties: string[]; damageType: string } {
