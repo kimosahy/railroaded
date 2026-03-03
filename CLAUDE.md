@@ -17,66 +17,80 @@ Read these when you need depth. Don't memorize — look things up.
 
 ---
 
-## Current Sprint: v2 — Combat & Real-Time
+## Current Sprint: v2 — Persistence & Spectator Foundation
 
-Goal: Make combat actually work well. Fix the turn-by-turn experience so playtesting produces fun games, not frustrated agents.
+Goal: Make game data survive restarts and build the foundation for a spectator experience. Nothing audience-facing works until events persist.
+
+### Done (verified by playtest)
+
+- **Monster turn resolution** — `monster_attack` tool works, initiative auto-advances through monsters, DM can resolve monster turns. Confirmed working in Playtest Round 3. (See known-issues.md F1, commit cd1efc2)
 
 ### Sprint Backlog (in priority order)
 
-**P0 — Must fix (combat is broken without these)**
+**P0 — Persistence (nothing else works without this)**
 
-1. **Monster turn resolution flow**
-   - Problem: DM has `monster_attack` but no structured flow for "it's the goblin's turn."
-   - Goal: When initiative reaches a monster, server notifies DM explicitly. DM can auto-resolve (server picks target + attacks) or manually control each action.
-   - Files: `src/game/turns.ts`, `src/tools/dm-tools.ts`, `src/game/game-manager.ts`
-   - See: known-issues.md #1
+1. **Event persistence — wire `logEvent` to `session_events` table**
+   - Problem: `logEvent()` in game-manager.ts (line 1131) pushes events to `party.events` — an in-memory array. The `session_events` DB table exists in schema.ts (line 178) with matching shape (`sessionId`, `type`, `actorId`, `data` jsonb, `createdAt`) but is NEVER written to. game-manager.ts has zero DB imports. All game history is lost on server restart.
+   - Goal: Every `logEvent()` call writes to both the in-memory array (for real-time use) AND the `session_events` table (for persistence). Event sourcing pattern — the event log is the source of truth.
+   - Integration points: (a) Import DB connection into game-manager.ts, (b) make `logEvent` async and add DB insert, (c) add session-end snapshot that writes final character state to DB.
+   - Files: `src/game/game-manager.ts`, `src/db/schema.ts`, `src/db/index.ts`
+   - See: known-issues.md #3
 
-2. **WebSocket push for turn notifications**
-   - Problem: Agents poll to check if it's their turn. Delay can be 1-2+ minutes.
-   - Goal: Server pushes `your_turn` event via WebSocket when initiative reaches a player/DM. Agent acts immediately.
+2. **Party names — DM-generated at formation**
+   - Problem: Parties are unnamed, feel procedural. Spectator pages show blank party identifiers.
+   - Goal: When a party forms, generate a thematic party name based on composition (e.g., "The Ironwall Covenant" for a dwarf-heavy party). Store in DB `parties` table. Display everywhere parties are referenced.
+   - Ship alongside persistence — trivial addition once DB writes are working.
+   - Files: `src/game/game-manager.ts`, `src/db/schema.ts`
+
+3. **Monster naming bug — "undefined A" display**
+   - Problem: Monsters display as "undefined A" instead of "skeleton A" during combat. Cosmetic but visible to spectators and agents.
+   - Goal: Fix monster name resolution so spawned monsters display their template name correctly.
+   - Fix alongside persistence work — CC will already be in game-manager.ts.
+   - Files: `src/game/game-manager.ts`
+
+**P1 — Narrator & Spectator Layer (needs persisted events)**
+
+4. **Narrator layer — dramatic prose from raw events**
+   - Problem: Raw game events (turn orders, HP changes, skill checks) are mechanical data. Spectators need dramatic prose.
+   - Goal: A post-processing layer that takes persisted `session_events` and produces narrative commentary. Runs after each event resolves. NOT part of game logic — purely presentation.
+   - Architecture decision needed: server-side LLM call (adds cost + API dependency), dedicated narrator agent on OpenClaw, or post-session batch job.
+   - Files: New module, TBD after architecture decision
+
+5. **Homepage heartbeat — live feed on landing page**
+   - Problem: railroaded.ai landing page is static. No sign of life.
+   - Goal: Scrolling feed of curated highlights from recent/live games. Narrator-generated dramatic moments. Makes first-time visitors think the site is alive.
+   - Depends on: narrator layer output + persisted events
+   - Files: `website/` directory, new API endpoint
+
+**P2 — Combat Depth (improves gameplay)**
+
+6. **WebSocket push for turn notifications**
+   - Problem: Agents poll to check if it's their turn. 1-2+ minute delays.
+   - Goal: Server pushes `your_turn` event via WebSocket when initiative reaches a player/DM.
    - Files: `src/api/ws.ts`, `src/game/turns.ts`
    - See: known-issues.md #2
 
-3. **Bonus actions + reactions**
-   - Problem: No Cunning Action, no Healing Word as bonus action, no Shield as reaction, no opportunity attacks.
-   - Goal: Turn structure becomes: bonus action (optional) + action + reaction (triggered). Implement for existing class features and spells.
+7. **Bonus actions + reactions**
+   - Problem: No Cunning Action, no Healing Word as bonus, no Shield as reaction, no opportunity attacks.
+   - Goal: Turn structure: bonus action (optional) + action + reaction (triggered).
    - Files: `src/game/turns.ts`, `src/tools/player-tools.ts`, `src/engine/combat.ts`, `src/engine/spells.ts`
    - See: known-issues.md #4
 
-**P1 — Should fix (combat is dull without these)**
-
-4. **Death saves with drama**
-   - Problem: Death saves happen invisibly. No party awareness, no DM notification per roll.
-   - Goal: Each death save broadcasts to party via WebSocket. DM gets explicit notification. Natural 20 revival is announced. Build tension.
+8. **Death saves with drama**
+   - Problem: Death saves invisible. No party awareness, no DM notification.
+   - Goal: Each death save broadcasts via WebSocket. Natural 20 revival announced. Build tension.
    - Files: `src/engine/death.ts`, `src/api/ws.ts`, `src/game/turns.ts`
    - See: known-issues.md #5
 
-5. **Character state persistence audit**
-   - Problem: Unclear if HP, spell slots, XP, inventory, conditions survive session boundaries and server restarts.
-   - Goal: Verify all character state round-trips through DB correctly. Add tests. Fix any gaps.
-   - Files: `src/db/schema.ts`, `src/game/session.ts`, `src/game/game-manager.ts`
-   - See: known-issues.md #3
-
-**P2 — Nice to have (improves depth)**
-
-6. **Skill checks with context**
-   - Advantage/disadvantage, contested rolls, context-aware DCs, margin-of-success feedback.
-   - Files: `src/engine/checks.ts`, `src/tools/dm-tools.ts`
-   - See: known-issues.md #6
-
-7. **Loot flow end-to-end**
-   - Find → pick up → equip → use in combat → swap gear. Smooth item lifecycle.
-   - Files: `src/engine/loot.ts`, `src/tools/player-tools.ts`, `src/game/game-manager.ts`
-   - See: known-issues.md #7
-
 **P3 — Future sprints (don't build yet)**
+- Skill checks with context (advantage/disadvantage, contested rolls)
+- Loot flow end-to-end
 - Custom dungeon templates (DM-authored layouts)
 - Custom monster templates
 - Campaign/adventure arcs (multi-session)
 - Party chat log / session transcript
 - NPC persistence
-
-> **KARIM'S NOTES SLOT:** [Karim has additional sprint priorities to add here. Leave this section for his input.]
+- Worldbuilding accumulation (locations, NPCs, factions persist across sessions)
 
 ---
 
@@ -123,23 +137,13 @@ First playtest completed with AI agents (Poormetheus as player). Combat worked b
 
 ## Design Direction — Spectator Experience (Karim's Notes — March 2026)
 
-**Problem: Nothing persists.** Game data (journals, rankings, party names, session summaries) is generated during gameplay but lost — likely held in memory and never written to PostgreSQL, or lost on server restart. Every spectator-facing page appears empty. This is the #1 credibility killer and the foundation blocker for everything else.
+The sprint backlog above implements this vision in order. The key insight: `game-manager.ts` has **zero DB imports** — the entire persistence layer is greenfield. `logEvent()` pushes to an in-memory array that dies on restart. The `session_events` table exists in the schema but is never written to. The field shapes already match (`type`, `actorId`, `data`, `timestamp` → `type`, `actor_id`, `data` jsonb, `created_at`).
 
-**Problem: Parties have no names.** Unnamed parties feel procedural. DM agent should generate a thematic party name at formation based on composition and store it in the DB. One prompt addition, displayed everywhere.
-
-**Problem: The site isn't alive.** The spectator experience needs to feel like watching a live performance, not reading logs. Three layers to solve this:
-
-1. **Narrator Layer** — A post-processing LLM that takes raw game events (turn orders, HP changes, skill checks) and produces dramatic prose commentary. Runs after each event resolves. Not part of game logic — purely a presentation layer. Architectural decision needed: where does this LLM call live? Options: server-side (adds cost + external API dependency), dedicated narrator agent on OpenClaw, or post-session batch job.
-
-2. **Homepage Heartbeat** — A scrolling feed on the landing page of curated highlights from recent and live games. Not full logs — dramatic moments generated by the narrator. This is what makes a first-time visitor think the site is alive and click in.
-
-3. **Worldbuilding as Byproduct** — Every session generates lore (locations, NPCs, factions). Accumulate into a living world that grows with each session rather than resetting to empty.
-
-**Priority sequence:**
-1. Fix persistence (audit what writes to DB vs what stays in memory)
-2. Party names (ship alongside persistence fix)
-3. Narrator layer (once events persist reliably)
-4. Homepage heartbeat (narrator output surfaced on landing page)
+**Architecture layers (build in this order):**
+1. **Persistence** — Event sourcing. Every `logEvent()` writes to DB. Session-end snapshot captures final character state. This is P0 items 1-3 in the sprint backlog.
+2. **Narrator** — Post-processing LLM that turns raw events into dramatic prose. Not game logic. Architecture decision pending: server-side call, OpenClaw agent, or batch job.
+3. **Homepage heartbeat** — Narrator output surfaced on landing page. Scrolling feed of dramatic moments.
+4. **Worldbuilding as byproduct** — Sessions accumulate lore (locations, NPCs, factions) into a living world.
 
 ---
 
