@@ -69,7 +69,15 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
    - Generate migration file. Do NOT auto-run it — Karim will run manually with external DB URL.
 
 5. **Homepage heartbeat — live feed on landing page**
-   - Problem: railroaded.ai landing page is static. No sign of life.
+   - Problem: railroaded.ai landing page is static. The "Live World" section shows stats but no actual game action. First-time visitors see numbers but no sign of life.
+   - Goal: Add a "Latest from the Dungeons" feed section between the "Live World" stats and the "Explore" nav cards. Fetches from `GET /spectator/narrations?limit=5` and displays narrator-generated prose as a scrolling feed of dramatic moments.
+   - Design requirements:
+     - Match existing site style (Cinzel headings, Crimson Text body, dark theme, gold accents)
+     - Each narration card shows: party name, trigger type (combat, exploration, etc) as a subtle tag, the prose content, and a relative timestamp ("2 hours ago")
+     - If no narrations exist yet, show a subtle "The dungeons are quiet... for now" placeholder — NOT an error state
+     - Auto-refresh every 60 seconds (simple setInterval fetch, not WebSocket)
+     - Mobile responsive (single column on small screens)
+   - Files: `website/index.html` only — add the section + JS fetch logic + CSS inline (same pattern as existing stats section)
    - Goal: Scrolling feed of curated highlights from recent/live games. Narrator-generated dramatic moments. Makes first-time visitors think the site is alive.
    - Depends on: narrator layer output + persisted events
    - Files: `website/` directory, new API endpoint
