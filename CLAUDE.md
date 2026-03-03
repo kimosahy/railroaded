@@ -31,91 +31,84 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 
 ### Sprint Backlog (in priority order)
 
-**P1 — Narrator & Spectator Layer (needs persisted events — now done)**
+- **Narrator layer** — narrations table, POST /narrator/narrate (auth'd), GET /spectator/narrations (public). External narrator agent reads events and POSTs prose. (Commit 28f7619)
+- **Homepage heartbeat** — "Latest from the Dungeons" narration feed on index.html with auto-refresh, XSS-safe, graceful empty state. (Commit 36e240c)
+- **WebSocket turn notifications** — `notifyTurnChange()` pushes `your_turn` to players/DM when initiative advances. Broadcasts `turn_notify` to full party.
+- **Bonus actions + reactions** — TurnResources tracking (actionUsed, bonusUsed, reactionUsed), `bonus_action` tool (bonus spells, Cunning Action, Second Wind), `reaction` tool (Shield, opportunity attacks), `end_turn` tool (players must end turn explicitly). 154 tests.
+- **Death saves with drama** — WebSocket broadcasts on every death save result, nat 20 revival announcements, character death/stabilize/down notifications to party + DM. (Commit e8d4d30)
 
-4. **Narrator layer — narrations table + API endpoints**
-   - Context: An external narrator agent (Poormetheus on OpenClaw) reads game events, generates dramatic prose via LLM, and posts narrations back. **The server never calls an LLM.** The server only stores and serves narrations.
-   - What to build:
+### Sprint Backlog (in priority order)
 
-   **A. New `narrations` table in schema.ts:**
-   ```
-   narrations {
-     id: uuid PK
-     sessionId: uuid FK → game_sessions.id (required)
-     trigger: text (required) — what caused this narration: "combat_end", "session_end", "exploration", "rest", "death", "level_up"
-     eventRange: jsonb — { fromEventId: uuid, toEventId: uuid } — which events this narration covers
-     content: text (required) — the dramatic prose
-     createdAt: timestamp
-   }
-   ```
+**P3 — Gameplay Depth & Content Creation**
 
-   **B. POST /narrator/narrate — authenticated endpoint to submit narrations**
-   - Auth: Bearer token (any authenticated user). No new role needed.
-   - Body: `{ sessionId, trigger, eventRange?, content }`
-   - Validates sessionId exists in game_sessions table
-   - Returns the created narration with id
+9. **Skill checks with context**
+   - What exists: `request_check` takes player, ability, DC, skill. Rolls d20, returns pass/fail.
+   - What's missing: Margin of success/failure (return `margin` field). Advantage/disadvantage params (roll 2d20, take higher/lower). Contested rolls (new `request_contested_check` endpoint). Group checks returning individual results.
+   - Files: `src/game/game-manager.ts` (handleRequestCheck, handleRequestGroupCheck), `src/tools/dm-tools.ts`, `src/engine/checks.ts`
+   - Complexity: Low
 
-   **C. GET /spectator/narrations — public, returns recent narrations across all sessions**
-   - No auth required (spectator endpoint)
-   - Returns last 20 narrations, newest first
-   - Include: narration id, sessionId, trigger, content, createdAt, party name (join to parties via game_sessions)
+10. **Loot flow end-to-end**
+    - What exists: Characters have inventory. DM has `award_loot` with `item_id`. Items in `data/items.yaml`.
+    - What's missing: Discoverable loot catalog (`list_items` tool for DM). Use items in combat (Potion of Healing as action). Equipment swapping with stat recalc. Item descriptions in `get_inventory`. Loot drops on monster death.
+    - Files: `src/game/game-manager.ts`, `src/tools/player-tools.ts`, `src/tools/dm-tools.ts`, `src/engine/loot.ts`, `data/items.yaml`
+    - Complexity: Medium
 
-   **D. GET /spectator/narrations/:sessionId — public, returns narrations for a specific session**
-   - No auth required
-   - Returns all narrations for that session, ordered by createdAt
-   - Include: same fields as above
+11. **Custom dungeon templates**
+    - What exists: Server generates 3-room linear dungeon from YAML templates.
+    - What's missing: DM-defined room graphs (forks, secret rooms, loops). Interactable features (table=cover, weapon rack=lootable). DM scene override for room descriptions. Pre-placed encounters and loot per room.
+    - Schema: `rooms`, `room_connections`, `campaign_templates` tables already exist. Main work is template creation flow and feature interaction system.
+    - Files: `src/game/dungeon.ts`, `src/tools/dm-tools.ts`, new template creation endpoints, `data/templates/`
+    - Complexity: High (2-3 day sprint)
 
-   - Files: `src/db/schema.ts` (new table), new `src/api/narrator.ts` (POST endpoint), `src/api/spectator.ts` (GET endpoints), `src/index.ts` (mount narrator routes)
-   - Generate migration file. Do NOT auto-run it — Karim will run manually with external DB URL.
+12. **Custom monster templates**
+    - What exists: Fixed monster templates from `data/monsters.yaml`.
+    - What's missing: DM-defined stat blocks at runtime (custom HP, AC, attacks, vulnerabilities, immunities, behavior hints). Persist custom templates in DB for reuse across sessions. Monster abilities beyond basic attacks (recharge abilities, AoE, save-or-suck).
+    - Files: `src/game/game-manager.ts`, `src/tools/dm-tools.ts`, `src/db/schema.ts`, `data/monsters.yaml`
+    - Complexity: Medium
 
-5. **Homepage heartbeat — live feed on landing page**
-   - Problem: railroaded.ai landing page is static. The "Live World" section shows stats but no actual game action. First-time visitors see numbers but no sign of life.
-   - Goal: Add a "Latest from the Dungeons" feed section between the "Live World" stats and the "Explore" nav cards. Fetches from `GET /spectator/narrations?limit=5` and displays narrator-generated prose as a scrolling feed of dramatic moments.
-   - Design requirements:
-     - Match existing site style (Cinzel headings, Crimson Text body, dark theme, gold accents)
-     - Each narration card shows: party name, trigger type (combat, exploration, etc) as a subtle tag, the prose content, and a relative timestamp ("2 hours ago")
-     - If no narrations exist yet, show a subtle "The dungeons are quiet... for now" placeholder — NOT an error state
-     - Auto-refresh every 60 seconds (simple setInterval fetch, not WebSocket)
-     - Mobile responsive (single column on small screens)
-   - Files: `website/index.html` only — add the section + JS fetch logic + CSS inline (same pattern as existing stats section)
-   - Goal: Scrolling feed of curated highlights from recent/live games. Narrator-generated dramatic moments. Makes first-time visitors think the site is alive.
-   - Depends on: narrator layer output + persisted events
-   - Files: `website/` directory, new API endpoint
+**P4 — Persistence & World**
 
-**P2 — Combat Depth (improves gameplay)**
+13. **Campaign / adventure arcs (multi-session)**
+    - What exists: Single sessions only. No continuity.
+    - What's missing: Persistent parties across sessions (same characters reconvene). Multi-dungeon campaigns (complete Dungeon 1 → town → Dungeon 2). Between-session phase (rest, shop, NPC interactions). Level-up between sessions. Campaign state tracking (completed dungeons, story flags, factions).
+    - Schema: New `campaigns` table linking multiple `game_sessions` to persistent party + story state.
+    - Files: New `src/game/campaign.ts`, extend `src/game/session.ts`, new schema table
+    - Complexity: High (3-5 day sprint)
 
-6. **WebSocket push for turn notifications**
-   - Problem: Agents poll to check if it's their turn. 1-2+ minute delays between turns.
-   - Goal: Server pushes `your_turn` event via WebSocket when initiative advances to a player or DM.
-   - Context: `ws.ts` already has a `turn_notify` message type defined and `userConnections` map tracking authenticated WebSocket connections per userId. `session.ts` has `nextTurn()` which advances `currentTurn` index through `initiativeOrder`. The hook point is in game-manager.ts wherever `nextTurn()` is called — after advancing, look up the current combatant's userId, find their WebSocket connections, and push the notification.
-   - Include in the push message: partyId, sessionPhase, whose turn it is (characterId + name), current initiative order, round number.
-   - Files: `src/game/game-manager.ts` (call push after turn advance), `src/api/ws.ts` (export a `notifyTurn` function)
-   - See: known-issues.md #2
+14. **NPC persistence**
+    - What exists: `npc_templates` table in schema. DM has `voice_npc` tool. NPCs are ephemeral.
+    - What's missing: NPCs as persistent entities (name, personality, disposition, location, dialogue history). NPCs remember interactions. Disposition system (actions shift friendly/neutral/hostile). DM NPC management tools. NPC interactions logged as events.
+    - Schema: Extend `npc_templates`, add `npc_interactions` join table, disposition field, location reference.
+    - Files: `src/db/schema.ts`, `src/tools/dm-tools.ts`, `src/game/game-manager.ts`, new `src/game/npcs.ts`
+    - Complexity: Medium
 
-7. **Bonus actions + reactions**
-   - Problem: No Cunning Action, no Healing Word as bonus action, no Shield as reaction, no opportunity attacks. Martial/caster balance broken without these.
-   - Goal: Expand turn structure to: bonus action (optional) + action + reaction (triggered). Track per-turn what's been used (action spent, bonus spent, reaction spent). Reset each turn.
-   - Key additions: (a) `bonus_action` tool for players — casts bonus-action spells or uses class features like Cunning Action, (b) `reaction` tool — triggered by events (enemy moves away → opportunity attack, incoming damage → Shield spell), (c) per-turn tracking in session state: `{ actionUsed, bonusUsed, reactionUsed }`.
-   - Don't build a full trigger system for reactions yet — just add the `reaction` tool that players can call during other combatants' turns if they have their reaction available.
-   - Files: `src/game/turns.ts` or `src/game/session.ts`, `src/tools/player-tools.ts`, `src/engine/combat.ts`, `src/engine/spells.ts`
-   - See: known-issues.md #4
+15. **Worldbuilding accumulation**
+    - What exists: Nothing — no persistent world state across sessions.
+    - What's needed: World Entity Codex (tagged entity store: locations, NPCs, factions, items, events, lore). Auto-extraction batch job (post-session, extracts entities from events). DM codex tools (`create_world_entity`, `query_codex`). Cross-session continuity (new DMs can query what's known). Website "World" page.
+    - Schema: New `world_entities` table with JSONB for flexible schema.
+    - Files: New `src/game/codex.ts`, new schema, extend narrator batch, new spectator endpoint, new website page
+    - Complexity: Medium for MVP, High for full cross-session continuity
 
-8. **Death saves with drama**
-   - Problem: Death saves happen but are invisible. No party awareness, no DM notification. Should be the most tense moment in combat.
-   - Goal: Each death save result broadcasts via WebSocket to the entire party. Natural 20 revival gets a special announcement. Three failures = character death announced to all. DM is notified explicitly when a character goes down and when they stabilize/die.
-   - Hook into the existing death save logic in the engine — add WebSocket broadcast after each roll result.
-   - Files: `src/engine/death.ts`, `src/api/ws.ts`, `src/game/game-manager.ts`
-   - See: known-issues.md #5
+**P5 — Spectator Infrastructure**
 
-**P3 — Future sprints (don't build yet)**
-- Skill checks with context (advantage/disadvantage, contested rolls)
-- Loot flow end-to-end
-- Custom dungeon templates (DM-authored layouts)
-- Custom monster templates
-- Campaign/adventure arcs (multi-session)
-- Party chat log / session transcript
-- NPC persistence
-- Worldbuilding accumulation (locations, NPCs, factions persist across sessions)
+16. **Party chat log / session transcript**
+    - What exists: `party_chat` and `whisper` actions exist. Chat messages are session events. No dedicated transcript endpoint.
+    - What's missing: Full session transcript endpoint (`GET /spectator/sessions/{id}/transcript`). Character-perspective filtering (what Brog saw vs Wren). Narrator-enhanced transcripts. Exportable format (Markdown).
+    - Files: `src/api/spectator.ts`, `src/game/journal.ts`
+    - Complexity: Low
+
+17. **Automated session scheduling**
+    - Problem: Spectator experience only works if sessions are happening. Empty server = dead homepage.
+    - What's needed: Session scheduler (cron or timer that starts new sessions). Agent pool (8-12 pre-built character personas). Session cadence (3-4/day). Cost guardrails (per-session budget cap, daily spend limit, auto-pause). Graceful scheduling (one at a time until concurrency is proven).
+    - Files: New `src/game/scheduler.ts`, integration with OpenClaw crons, config for cadence/budget
+    - Complexity: Medium
+
+### Recommended Sprint Sequence
+
+- **Sprint A (gameplay depth):** Items 9 + 10 (skill checks + loot). Makes existing combat richer with minimal structural change.
+- **Sprint B (content creation):** Items 11 + 12 (custom dungeons + custom monsters). Unlocks DM creativity — when the platform stops being a tech demo.
+- **Sprint C (persistence + world):** Items 13 + 14 + 15 (campaigns + NPCs + worldbuilding). The long game — sessions have continuity, the world grows.
+- **Sprint D (spectator infra):** Items 16 + 17 (transcripts + automated scheduling). Makes the spectator experience self-sustaining.
 
 ---
 
