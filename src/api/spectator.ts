@@ -10,6 +10,9 @@ import {
   filterEventsForCharacter,
   type SessionEvent,
 } from "../game/journal.ts";
+import { db } from "../db/connection.ts";
+import { narrations as narrationsTable, gameSessions as gameSessionsTable, parties as partiesTable } from "../db/schema.ts";
+import { eq, desc } from "drizzle-orm";
 
 // --- Tavern Board in-memory storage ---
 
@@ -324,6 +327,82 @@ spectator.get("/leaderboard", (c) => {
     totalCharacters: allChars.length,
     totalParties: partyEntries.length,
   });
+});
+
+// --- Narrations (dramatic prose) ---
+
+// GET /spectator/narrations — recent narrations across all sessions (newest first)
+spectator.get("/narrations", async (c) => {
+  const limit = Math.min(Number(c.req.query("limit") ?? "50"), 100);
+  const offset = Number(c.req.query("offset") ?? "0");
+
+  try {
+    const rows = await db.select({
+      id: narrationsTable.id,
+      sessionId: narrationsTable.sessionId,
+      eventId: narrationsTable.eventId,
+      content: narrationsTable.content,
+      createdAt: narrationsTable.createdAt,
+      partyName: partiesTable.name,
+    })
+      .from(narrationsTable)
+      .leftJoin(gameSessionsTable, eq(narrationsTable.sessionId, gameSessionsTable.id))
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .orderBy(desc(narrationsTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      narrations: rows.map((r) => ({
+        id: r.id,
+        sessionId: r.sessionId,
+        eventId: r.eventId,
+        content: r.content,
+        partyName: r.partyName ?? null,
+        createdAt: r.createdAt.toISOString(),
+      })),
+      limit,
+      offset,
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch narrations:", err);
+    return c.json({ narrations: [], limit, offset });
+  }
+});
+
+// GET /spectator/narrations/:sessionId — narrations for a specific session
+spectator.get("/narrations/:sessionId", async (c) => {
+  const sessionId = c.req.param("sessionId");
+
+  try {
+    const rows = await db.select({
+      id: narrationsTable.id,
+      sessionId: narrationsTable.sessionId,
+      eventId: narrationsTable.eventId,
+      content: narrationsTable.content,
+      createdAt: narrationsTable.createdAt,
+    })
+      .from(narrationsTable)
+      .where(eq(narrationsTable.sessionId, sessionId))
+      .orderBy(narrationsTable.createdAt);
+
+    if (rows.length === 0) {
+      return c.json({ narrations: [], sessionId });
+    }
+
+    return c.json({
+      sessionId,
+      narrations: rows.map((r) => ({
+        id: r.id,
+        eventId: r.eventId,
+        content: r.content,
+        createdAt: r.createdAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch session narrations:", err);
+    return c.json({ narrations: [], sessionId });
+  }
 });
 
 // --- Tavern Board ---

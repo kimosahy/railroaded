@@ -8,6 +8,7 @@ import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
+import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
 import { loadPersistedState } from "./game/game-manager.ts";
 
@@ -76,6 +77,9 @@ app.route("/", mcp);
 
 // Spectator endpoints (public, no auth)
 app.route("/spectator", spectator);
+
+// Narrator endpoints (authenticated)
+app.route("/narrator", narrator);
 
 // OpenAPI spec (GET /api/docs)
 app.route("/", openapi);

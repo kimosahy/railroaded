@@ -8,6 +8,20 @@
       "when": 1772529127837,
       "tag": "0000_previous_firedrake",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1772555105588,
+      "tag": "0001_rapid_wolverine",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1772557575340,
+      "tag": "0002_cold_lake",
+      "breakpoints": true
     }
   ]
 }

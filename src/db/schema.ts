@@ -187,6 +187,18 @@ export const sessionEvents = pgTable("session_events", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// --- Narrations (dramatic prose from raw events) ---
+
+export const narrations = pgTable("narrations", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => gameSessions.id),
+  eventId: uuid("event_id").references(() => sessionEvents.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- Campaign Templates ---
 
 export const campaignTemplates = pgTable("campaign_templates", {
