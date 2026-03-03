@@ -116,3 +116,66 @@ CC fixed all 6 issues from the agent's bug report:
 - **In-memory storage:** Data lives in the server's RAM. Fast but disappears on restart. Opposite of a database.
 - **Deploy hooks:** A URL you can hit to trigger a deployment. Useful for manual or CI-triggered deploys.
 - **Vercel CLI:** Command-line tool to deploy directly from your machine, bypassing the Git-based auto-deploy.
+
+
+---
+
+## Session 3 — March 3, 2026 (PostgreSQL Connected + Seeded)
+
+### Goal
+Connect the Render PostgreSQL database so game data survives deploys and restarts. Prerequisite for v2 sprint.
+
+### What was done
+
+**1. Resumed quest-engine-db on Render**
+- DB already existed (created 7 days ago during v1 setup) but was suspended
+- Resumed via Render dashboard — PostgreSQL 18, Oregon (same region as web service)
+
+**2. Verified DATABASE_URL already set**
+- Environment variable was already configured on quest-engine-1 web service
+- Connection string pointed to the correct internal DB hostname
+
+**3. Added pre-deploy migration command**
+- Set Pre-Deploy Command to `bun run src/db/migrate.ts` in Render Settings > Build & Deploy
+- This runs Drizzle migrations automatically before each deploy
+
+**4. Generated Drizzle migration files**
+- First deploy failed: `Can't find meta/_journal.json file`
+- Root cause: `drizzle-kit generate` was never run — schema existed in code but no SQL migration files were committed
+- Ran `bun run db:generate` locally → created `drizzle/0000_previous_firedrake.sql` (18 tables)
+- Committed and pushed → auto-deploy succeeded
+
+**5. Seeded production database**
+- Ran `bun run db:seed` via Render Shell
+- Seeded: 16 monsters, 25 items, 3 campaign templates (Goblin Warren, Crypt of Whispers, Bandit Fortress — 8 rooms each)
+
+**6. Upgraded DB to paid plan**
+- Free tier expired March 26 — would have deleted all data
+- Upgraded to Basic-256mb: $6/month + $0.30/month storage (1 GB) = $6.30/month total
+- Storage at 8.32% used after seed
+
+**7. Verified end state**
+- `curl https://api.railroaded.ai/health` → status ok, uptime stable
+- DB status: Available, Basic-256mb, 256 MB RAM, 0.1 CPU, 1 GB storage
+
+### Current State
+- Website live at railroaded.ai ✅
+- API live at api.railroaded.ai ✅
+- PostgreSQL connected and seeded ✅
+- Data persists across deploys and restarts ✅
+- Pre-deploy migrations run automatically ✅
+- DB on paid plan ($6.30/month) — no expiry ✅
+- Combat fixes from Session 2 still untested with new DB
+
+### Monthly Hosting Costs
+| Service | Platform | Plan | Cost |
+|---------|----------|------|------|
+| quest-engine-1 | Render Web Service | Starter | $7/month |
+| quest-engine-db | Render PostgreSQL | Basic-256mb + 1GB | $6.30/month |
+| railroaded.ai | Vercel | Free | $0 |
+| **Total** | | | **$13.30/month** |
+
+### Concepts Learned
+- **Drizzle migrations:** Schema changes in code need to be turned into SQL migration files via `drizzle-kit generate`. These files must be committed to the repo. The `migrate()` function reads them at deploy time and applies them to the database.
+- **Pre-deploy commands:** Render can run a command after building but before starting your app. Perfect for database migrations — runs every deploy but only applies new changes.
+- **Free tier DB expiry:** Render's free PostgreSQL expires after 30 days. Data is deleted permanently. Paid plan ($6/month) removes the expiry.
