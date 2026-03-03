@@ -836,13 +836,25 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   if (!party) return { success: false, error: "Not a DM for any party." };
   if (!party.session) return { success: false, error: "No active session." };
 
-  // Look up monster templates
+  // Look up monster templates (case-insensitive, fall back to "name" field from agents)
   const toSpawn = params.monsters.map((m) => {
-    const template = monsterTemplates.get(m.template_name);
+    const rawName = m.template_name ?? (m as Record<string, unknown>).name as string ?? "unknown";
+    // Try exact match first, then case-insensitive
+    let template = monsterTemplates.get(rawName);
+    let resolvedName = rawName;
+    if (!template) {
+      for (const [key, val] of monsterTemplates) {
+        if (key.toLowerCase() === rawName.toLowerCase()) {
+          template = val;
+          resolvedName = key; // use the canonical capitalized name
+          break;
+        }
+      }
+    }
     if (!template) {
       // Create a default monster if template not loaded
       return {
-        templateName: m.template_name,
+        templateName: resolvedName,
         count: m.count,
         template: {
           hpMax: 10, ac: 12,
@@ -853,7 +865,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
         },
       };
     }
-    return { templateName: m.template_name, count: m.count, template };
+    return { templateName: resolvedName, count: m.count, template };
   });
 
   const monsters = spawnMonsters(toSpawn);
