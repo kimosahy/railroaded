@@ -164,7 +164,7 @@ dm.post("/request-save", async (c) => {
 });
 
 dm.post("/request-group-check", async (c) => {
-  const body = await c.req.json<{ ability: string; dc: number }>();
+  const body = await c.req.json<{ ability: string; dc: number; skill?: string }>();
   return respond(c, gm.handleRequestGroupCheck(c.get("user").userId, body));
 });
 

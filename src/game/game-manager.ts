@@ -1418,6 +1418,12 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
     proficiencyBonus: profBonus,
   });
 
+  const party = getPartyForCharacter(char.id);
+  logEvent(party, "ability_check", char.id, {
+    playerName: char.name, ability: params.ability, skill: params.skill,
+    dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
+  });
+
   return {
     success: true,
     data: {
@@ -1427,6 +1433,7 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
       dc: params.dc,
       roll: result.roll.total,
       success: result.success,
+      margin: result.margin,
       natural20: result.natural20,
       natural1: result.natural1,
     },
@@ -1444,41 +1451,59 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
     dc: params.dc,
   });
 
-  return {
-    success: true,
-    data: {
-      player: char.name, ability: params.ability, dc: params.dc,
-      roll: result.roll.total, success: result.success,
-    },
-  };
-}
-
-export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-
-  const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean);
-  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
-
-  const result = groupCheck({
-    characters: charList.map((c) => ({
-      id: c!.id,
-      abilityScores: c!.abilityScores,
-    })),
-    ability,
-    dc: params.dc,
+  const party = getPartyForCharacter(char.id);
+  logEvent(party, "saving_throw", char.id, {
+    playerName: char.name, ability: params.ability,
+    dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
   });
 
   return {
     success: true,
     data: {
-      ability: params.ability, dc: params.dc,
+      player: char.name, ability: params.ability, dc: params.dc,
+      roll: result.roll.total, success: result.success, margin: result.margin,
+    },
+  };
+}
+
+export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number; skill?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean) as GameCharacter[];
+  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+
+  const result = groupCheck({
+    characters: charList.map((c) => ({
+      id: c.id,
+      abilityScores: c.abilityScores,
+      proficiencyBonus: params.skill && c.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
+        ? proficiencyBonus(c.level) : 0,
+    })),
+    ability,
+    dc: params.dc,
+  });
+
+  logEvent(party, "group_check", null, {
+    ability: params.ability, skill: params.skill, dc: params.dc,
+    overallSuccess: result.success,
+    results: result.results.map((r) => ({
+      id: r.id, name: characters.get(r.id)?.name,
+      roll: r.check.roll.total, success: r.check.success, margin: r.check.margin,
+    })),
+  });
+
+  return {
+    success: true,
+    data: {
+      ability: params.ability, skill: params.skill, dc: params.dc,
       overallSuccess: result.success,
       results: result.results.map((r) => ({
         id: r.id,
         name: characters.get(r.id)?.name,
         roll: r.check.roll.total,
         success: r.check.success,
+        margin: r.check.margin,
       })),
     },
   };

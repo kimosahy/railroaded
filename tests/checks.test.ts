@@ -205,3 +205,94 @@ describe("proficiencyBonus", () => {
     expect(proficiencyBonus(5)).toBe(3);
   });
 });
+
+describe("margin", () => {
+  test("positive margin on pass", () => {
+    const result = abilityCheck({
+      abilityScores: standardScores,
+      ability: "str",
+      dc: 12,
+      randomFn: makeRoller([14]), // 14 + 3 = 17, margin = 17 - 12 = 5
+    });
+    expect(result.success).toBe(true);
+    expect(result.margin).toBe(5);
+  });
+
+  test("negative margin on fail", () => {
+    const result = abilityCheck({
+      abilityScores: standardScores,
+      ability: "str",
+      dc: 18,
+      randomFn: makeRoller([10]), // 10 + 3 = 13, margin = 13 - 18 = -5
+    });
+    expect(result.success).toBe(false);
+    expect(result.margin).toBe(-5);
+  });
+
+  test("zero margin on exact DC match", () => {
+    const result = abilityCheck({
+      abilityScores: standardScores,
+      ability: "str",
+      dc: 15,
+      randomFn: makeRoller([12]), // 12 + 3 = 15, margin = 0
+    });
+    expect(result.success).toBe(true);
+    expect(result.margin).toBe(0);
+  });
+
+  test("margin on saving throw", () => {
+    const result = savingThrow({
+      abilityScores: standardScores,
+      ability: "con",
+      dc: 14,
+      randomFn: makeRoller([13]), // 13 + 1 = 14, margin = 0
+    });
+    expect(result.success).toBe(true);
+    expect(result.margin).toBe(0);
+  });
+
+  test("margin with proficiency bonus", () => {
+    const result = abilityCheck({
+      abilityScores: standardScores,
+      ability: "wis",
+      dc: 12,
+      proficiencyBonus: 2,
+      randomFn: makeRoller([10]), // 10 + (-1) + 2 = 11, margin = 11 - 12 = -1
+    });
+    expect(result.success).toBe(false);
+    expect(result.margin).toBe(-1);
+  });
+});
+
+describe("groupCheck with skill proficiency", () => {
+  test("proficiency bonus applied per-character", () => {
+    const characters = [
+      {
+        id: "rogue",
+        abilityScores: { str: 10, dex: 16, con: 12, int: 10, wis: 10, cha: 10 },
+        proficiencyBonus: 2, // proficient in stealth
+      },
+      {
+        id: "fighter",
+        abilityScores: { str: 16, dex: 10, con: 14, int: 10, wis: 10, cha: 10 },
+        proficiencyBonus: 0, // not proficient
+      },
+    ];
+    // Rogue: roll 8 + 3 (DEX) + 2 (prof) = 13 >= 13 → pass
+    // Fighter: roll 8 + 0 (DEX) + 0 = 8 < 13 → fail
+    const result = groupCheck({
+      characters,
+      ability: "dex",
+      dc: 13,
+      randomFn: makeRoller([8, 8]),
+    });
+    expect(result.results[0]!.check.success).toBe(true);
+    expect(result.results[0]!.check.roll.total).toBe(13);
+    expect(result.results[0]!.check.margin).toBe(0);
+    expect(result.results[1]!.check.success).toBe(false);
+    expect(result.results[1]!.check.roll.total).toBe(8);
+    expect(result.results[1]!.check.margin).toBe(-5);
+    // 1 pass, 1 fail out of 2 → majority = ceil(2/2) = 1 → 1 >= 1 → success
+    expect(result.success).toBe(true);
+  });
+});

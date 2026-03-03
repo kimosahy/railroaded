@@ -12,6 +12,7 @@ export interface CheckResult {
   proficiencyBonus: number;
   dc: number;
   success: boolean;
+  margin: number; // total - dc (positive = passed by that much, negative = failed by that much)
   natural20: boolean;
   natural1: boolean;
 }
@@ -70,6 +71,7 @@ export function abilityCheck(params: {
     proficiencyBonus,
     dc,
     success: diceResult.total >= dc,
+    margin: diceResult.total - dc,
     natural20: rawD20 === 20,
     natural1: rawD20 === 1,
   };

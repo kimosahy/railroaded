@@ -356,7 +356,7 @@ function executeToolCall(
     case "request_save":
       return gm.handleRequestSave(userId, { player_id: args.player_id as string, ability: args.ability as string, dc: args.dc as number });
     case "request_group_check":
-      return gm.handleRequestGroupCheck(userId, { ability: args.ability as string, dc: args.dc as number });
+      return gm.handleRequestGroupCheck(userId, { ability: args.ability as string, dc: args.dc as number, skill: args.skill as string | undefined });
     case "deal_environment_damage":
       return gm.handleDealEnvironmentDamage(userId, { player_id: args.player_id as string, notation: args.notation as string, type: args.type as string });
     case "advance_scene":
