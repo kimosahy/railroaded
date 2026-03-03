@@ -61,6 +61,7 @@ import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc } from "drizzle-orm";
+import { broadcastToParty, sendToUser } from "../api/ws.ts";
 
 // --- In-memory state ---
 
@@ -108,6 +109,39 @@ const monsterTemplates = new Map<string, {
 let idCounter = 1;
 function nextId(prefix: string): string {
   return `${prefix}-${idCounter++}`;
+}
+
+/** Push WebSocket notifications when the current combatant changes. */
+function notifyTurnChange(party: GameParty): void {
+  if (!party.session || party.session.phase !== "combat") return;
+  const current = getCurrentCombatant(party.session);
+  if (!current) return;
+
+  broadcastToParty(party.id, {
+    type: "turn_notify",
+    entityId: current.entityId,
+    entityType: current.type,
+    phase: party.session.phase,
+  });
+
+  if (current.type === "player") {
+    const char = characters.get(current.entityId);
+    if (char) {
+      sendToUser(char.userId, {
+        type: "your_turn",
+        characterId: current.entityId,
+        phase: party.session.phase,
+      });
+    }
+  }
+
+  if (current.type === "monster" && party.dmUserId) {
+    sendToUser(party.dmUserId, {
+      type: "your_turn",
+      monsterId: current.entityId,
+      phase: party.session.phase,
+    });
+  }
 }
 
 // --- Character Management ---
@@ -386,6 +420,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     // Advance to next turn (if still in combat)
     if (party.session && party.session.phase === "combat") {
       party.session = nextTurn(party.session);
+      notifyTurnChange(party);
     }
 
     return {
@@ -407,6 +442,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
   // Advance to next turn even on miss
   if (party.session && party.session.phase === "combat") {
     party.session = nextTurn(party.session);
+    notifyTurnChange(party);
   }
 
   return {
@@ -474,6 +510,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
     // Advance to next turn
     party.session = nextTurn(party.session);
+    notifyTurnChange(party);
 
     return {
       success: true,
@@ -494,6 +531,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
   // Advance to next turn even on miss
   party.session = nextTurn(party.session);
+  notifyTurnChange(party);
 
   return {
     success: true,
@@ -890,6 +928,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     monsters: monsters.map((m) => ({ name: m.name, hp: m.hpMax, ac: m.ac })),
     initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
   });
+  notifyTurnChange(party);
 
   return {
     success: true,
