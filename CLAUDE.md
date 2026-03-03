@@ -85,21 +85,26 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 **P2 — Combat Depth (improves gameplay)**
 
 6. **WebSocket push for turn notifications**
-   - Problem: Agents poll to check if it's their turn. 1-2+ minute delays.
-   - Goal: Server pushes `your_turn` event via WebSocket when initiative reaches a player/DM.
-   - Files: `src/api/ws.ts`, `src/game/turns.ts`
+   - Problem: Agents poll to check if it's their turn. 1-2+ minute delays between turns.
+   - Goal: Server pushes `your_turn` event via WebSocket when initiative advances to a player or DM.
+   - Context: `ws.ts` already has a `turn_notify` message type defined and `userConnections` map tracking authenticated WebSocket connections per userId. `session.ts` has `nextTurn()` which advances `currentTurn` index through `initiativeOrder`. The hook point is in game-manager.ts wherever `nextTurn()` is called — after advancing, look up the current combatant's userId, find their WebSocket connections, and push the notification.
+   - Include in the push message: partyId, sessionPhase, whose turn it is (characterId + name), current initiative order, round number.
+   - Files: `src/game/game-manager.ts` (call push after turn advance), `src/api/ws.ts` (export a `notifyTurn` function)
    - See: known-issues.md #2
 
 7. **Bonus actions + reactions**
-   - Problem: No Cunning Action, no Healing Word as bonus, no Shield as reaction, no opportunity attacks.
-   - Goal: Turn structure: bonus action (optional) + action + reaction (triggered).
-   - Files: `src/game/turns.ts`, `src/tools/player-tools.ts`, `src/engine/combat.ts`, `src/engine/spells.ts`
+   - Problem: No Cunning Action, no Healing Word as bonus action, no Shield as reaction, no opportunity attacks. Martial/caster balance broken without these.
+   - Goal: Expand turn structure to: bonus action (optional) + action + reaction (triggered). Track per-turn what's been used (action spent, bonus spent, reaction spent). Reset each turn.
+   - Key additions: (a) `bonus_action` tool for players — casts bonus-action spells or uses class features like Cunning Action, (b) `reaction` tool — triggered by events (enemy moves away → opportunity attack, incoming damage → Shield spell), (c) per-turn tracking in session state: `{ actionUsed, bonusUsed, reactionUsed }`.
+   - Don't build a full trigger system for reactions yet — just add the `reaction` tool that players can call during other combatants' turns if they have their reaction available.
+   - Files: `src/game/turns.ts` or `src/game/session.ts`, `src/tools/player-tools.ts`, `src/engine/combat.ts`, `src/engine/spells.ts`
    - See: known-issues.md #4
 
 8. **Death saves with drama**
-   - Problem: Death saves invisible. No party awareness, no DM notification.
-   - Goal: Each death save broadcasts via WebSocket. Natural 20 revival announced. Build tension.
-   - Files: `src/engine/death.ts`, `src/api/ws.ts`, `src/game/turns.ts`
+   - Problem: Death saves happen but are invisible. No party awareness, no DM notification. Should be the most tense moment in combat.
+   - Goal: Each death save result broadcasts via WebSocket to the entire party. Natural 20 revival gets a special announcement. Three failures = character death announced to all. DM is notified explicitly when a character goes down and when they stabilize/die.
+   - Hook into the existing death save logic in the engine — add WebSocket broadcast after each roll result.
+   - Files: `src/engine/death.ts`, `src/api/ws.ts`, `src/game/game-manager.ts`
    - See: known-issues.md #5
 
 **P3 — Future sprints (don't build yet)**
