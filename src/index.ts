@@ -3,12 +3,13 @@ import { cors } from "hono/cors";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config.ts";
-import auth from "./api/auth.ts";
+import auth, { loadPersistedUsers } from "./api/auth.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
 import openapi from "./api/openapi.ts";
+import { loadPersistedState } from "./game/game-manager.ts";
 
 const app = new Hono();
 
@@ -78,6 +79,12 @@ app.route("/spectator", spectator);
 
 // OpenAPI spec (GET /api/docs)
 app.route("/", openapi);
+
+// Load persisted state from DB
+const userCount = await loadPersistedUsers();
+if (userCount > 0) console.log(`  Loaded ${userCount} users from DB`);
+const sessionCount = await loadPersistedState();
+if (sessionCount > 0) console.log(`  Loaded ${sessionCount} active sessions from DB`);
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();

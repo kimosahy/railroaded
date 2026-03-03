@@ -59,8 +59,8 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable } from "../db/schema.ts";
-import { getDbUserId } from "../api/auth.ts";
-import { eq } from "drizzle-orm";
+import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
+import { eq, asc } from "drizzle-orm";
 
 // --- In-memory state ---
 
@@ -1229,7 +1229,8 @@ function formParty(match: MatchResult): void {
   // Persist party + session to DB (fire-and-forget)
   party.dbReady = (async () => {
     try {
-      const [partyRow] = await db.insert(partiesTable).values({ name: partyName }).returning({ id: partiesTable.id });
+      const dmDbUserId = match.dm.userId ? getDbUserId(match.dm.userId) : null;
+      const [partyRow] = await db.insert(partiesTable).values({ name: partyName, dmUserId: dmDbUserId }).returning({ id: partiesTable.id });
       party.dbPartyId = partyRow.id;
       const [sessionRow] = await db.insert(gameSessionsTable).values({ partyId: partyRow.id }).returning({ id: gameSessionsTable.id });
       party.dbSessionId = sessionRow.id;
@@ -1447,6 +1448,136 @@ try {
   initGameData();
 } catch (e) {
   console.error("Failed to load game data on startup:", (e as Error).message);
+}
+
+// --- Restart loading ---
+
+export async function loadPersistedState(): Promise<number> {
+  try {
+    // Find active sessions
+    const activeSessions = await db.select().from(gameSessionsTable).where(eq(gameSessionsTable.isActive, true));
+    let loaded = 0;
+
+    for (const sessionRow of activeSessions) {
+      // Load party
+      const [partyRow] = await db.select().from(partiesTable).where(eq(partiesTable.id, sessionRow.partyId));
+      if (!partyRow) continue;
+
+      // Load characters for this party
+      const charRows = await db.select().from(charactersTable).where(eq(charactersTable.partyId, partyRow.id));
+      if (charRows.length === 0) continue;
+
+      // Load events
+      const eventRows = await db.select().from(sessionEventsTable)
+        .where(eq(sessionEventsTable.sessionId, sessionRow.id))
+        .orderBy(asc(sessionEventsTable.createdAt));
+
+      const partyId = nextId("party");
+      const memberIds: string[] = [];
+
+      // Rebuild characters
+      for (const row of charRows) {
+        const userId = findUserIdByDbId(row.userId);
+        if (!userId) continue;
+
+        const charId = nextId("char");
+        const abilityScores = row.abilityScores as AbilityScores;
+        const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+        const hitDice = row.hitDice as CharacterSheet["hitDice"];
+        const equipment = row.equipment as CharacterSheet["equipment"];
+
+        const char: GameCharacter = {
+          name: row.name,
+          race: row.race,
+          class: row.class,
+          level: row.level,
+          xp: row.xp,
+          abilityScores,
+          hpMax: row.hpMax,
+          hpCurrent: row.hpCurrent,
+          ac: row.ac,
+          spellSlots,
+          hitDice,
+          inventory: row.inventory,
+          equipment,
+          proficiencies: row.proficiencies,
+          features: row.features,
+          backstory: row.backstory,
+          personality: row.personality,
+          playstyle: row.playstyle,
+          id: charId,
+          userId,
+          partyId,
+          conditions: (row.conditions as string[]) ?? [],
+          dbCharId: row.id,
+        };
+
+        characters.set(charId, char);
+        charactersByUser.set(userId, charId);
+        memberIds.push(charId);
+      }
+
+      if (memberIds.length === 0) continue;
+
+      // Rebuild events
+      const events: SessionEvent[] = eventRows.map((e) => ({
+        type: e.type,
+        actorId: e.actorId,
+        data: e.data as Record<string, unknown>,
+        timestamp: e.createdAt,
+      }));
+
+      // Recreate test dungeon (can't restore original dungeon state)
+      const testRooms = [
+        { id: "room-1", name: "Entrance Hall", description: "A dark stone entrance with torches flickering on the walls.", type: "entry" as const, features: ["Torches", "Stone archway"] },
+        { id: "room-2", name: "Guard Room", description: "A room with overturned furniture. Signs of a struggle.", type: "chamber" as const, features: ["Overturned table", "Weapon rack"] },
+        { id: "room-3", name: "Boss Chamber", description: "A large chamber with a throne at the far end.", type: "boss" as const, features: ["Throne", "Treasure chest"] },
+      ];
+      const testConnections = [
+        { fromRoomId: "room-1", toRoomId: "room-2", type: "passage" as const },
+        { fromRoomId: "room-2", toRoomId: "room-3", type: "door" as const },
+      ];
+
+      // Find DM userId — look for a user that is a DM for this session
+      // The DM isn't stored on the party row, so we check event actors or fall back to null
+      let dmUserId: string | null = null;
+      const dmDbId = partyRow.dmUserId;
+      if (dmDbId) {
+        dmUserId = findUserIdByDbId(dmDbId);
+      }
+
+      const party: GameParty = {
+        id: partyId,
+        name: partyRow.name ?? "Unnamed Party",
+        members: memberIds,
+        dmUserId,
+        dungeonState: createDungeonState(testRooms, testConnections, "room-1"),
+        session: {
+          id: nextId("session"),
+          partyId,
+          phase: "exploration", // reset to exploration (can't restore combat)
+          currentTurn: 0,
+          initiativeOrder: [],
+          isActive: true,
+          startedAt: sessionRow.startedAt,
+          endedAt: null,
+        },
+        monsters: [],
+        events,
+        dbPartyId: partyRow.id,
+        dbSessionId: sessionRow.id,
+        dbReady: Promise.resolve(),
+      };
+
+      parties.set(partyId, party);
+      loaded++;
+    }
+
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load persisted state:", err);
+    return 0;
+  }
 }
 
 // --- State access for testing ---
