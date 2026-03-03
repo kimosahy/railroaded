@@ -108,10 +108,12 @@ export function getAllowedActions(
         return [
           "attack", "cast", "dodge", "dash", "disengage",
           "help", "hide", "use_item", "move",
+          "bonus_action", "end_turn",
           "party_chat", "get_status", "get_available_actions",
         ];
       }
       return [
+        "reaction",
         "party_chat", "get_status", "get_available_actions",
       ];
     case "roleplay":

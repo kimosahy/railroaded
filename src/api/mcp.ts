@@ -308,6 +308,20 @@ function executeToolCall(
       return gm.handleHelp(userId, { target_id: args.target_id as string });
     case "hide":
       return gm.handleHide(userId);
+    case "bonus_action":
+      return gm.handleBonusAction(userId, {
+        action: args.action as string,
+        spell_name: args.spell_name as string | undefined,
+        target_id: args.target_id as string | undefined,
+      });
+    case "reaction":
+      return gm.handleReaction(userId, {
+        action: args.action as string,
+        spell_name: args.spell_name as string | undefined,
+        target_id: args.target_id as string | undefined,
+      });
+    case "end_turn":
+      return gm.handleEndTurn(userId);
     case "short_rest":
       return gm.handleShortRest(userId);
     case "long_rest":

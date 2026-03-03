@@ -39,8 +39,10 @@ import {
   removeCombatant,
   endSession as endSessionState,
   shouldCombatEnd,
+  freshTurnResources,
   type SessionState,
   type InitiativeSlot,
+  type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
@@ -141,6 +143,24 @@ function notifyTurnChange(party: GameParty): void {
       monsterId: current.entityId,
       phase: party.session.phase,
     });
+  }
+}
+
+// --- Turn Resource Helpers ---
+
+function getTurnResources(party: GameParty, entityId: string): TurnResources {
+  return party.session?.turnResources[entityId] ?? freshTurnResources();
+}
+
+function setTurnResources(party: GameParty, entityId: string, resources: TurnResources): void {
+  if (party.session) {
+    party.session.turnResources[entityId] = resources;
+  }
+}
+
+function resetTurnResources(party: GameParty, entityId: string): void {
+  if (party.session) {
+    party.session.turnResources[entityId] = freshTurnResources();
   }
 }
 
@@ -355,9 +375,16 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
 
   const actions = getAllowedActions(phase, isCurrentTurn);
 
+  const turnResourceState = party?.session && phase === "combat"
+    ? getTurnResources(party, char.id)
+    : undefined;
+
   return {
     success: true,
-    data: { phase, isYourTurn: isCurrentTurn, availableActions: actions },
+    data: {
+      phase, isYourTurn: isCurrentTurn, availableActions: actions,
+      ...(turnResourceState ? { turnResources: turnResourceState } : {}),
+    },
   };
 }
 
@@ -370,9 +397,18 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     return { success: false, error: "You can only attack during combat." };
   }
 
+  // Check action resource
+  const resources = getTurnResources(party, char.id);
+  if (resources.actionUsed) {
+    return { success: false, error: "You've already used your action this turn." };
+  }
+
   // Find target monster
   const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
   if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
+
+  // Consume action resource
+  setTurnResources(party, char.id, { ...resources, actionUsed: true });
 
   // Determine weapon type from properties
   const weaponDamage = getWeaponDamage(char.equipment.weapon);
@@ -417,19 +453,12 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       }
     }
 
-    // Advance to next turn (if still in combat)
-    if (party.session && party.session.phase === "combat") {
-      party.session = nextTurn(party.session);
-      notifyTurnChange(party);
-    }
-
     return {
       success: true,
       data: {
         hit: true, critical: result.critical, damage: result.totalDamage,
         damageType: result.damageType, targetHP: monster.hpCurrent,
         killed, naturalRoll: result.naturalRoll,
-        nextTurn: party.session?.phase === "combat" ? getCurrentCombatant(party.session)?.entityId ?? null : null,
       },
     };
   }
@@ -439,17 +468,10 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     hit: false, fumble: result.fumble,
   });
 
-  // Advance to next turn even on miss
-  if (party.session && party.session.phase === "combat") {
-    party.session = nextTurn(party.session);
-    notifyTurnChange(party);
-  }
-
   return {
     success: true,
     data: {
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
-      nextTurn: party.session?.phase === "combat" ? getCurrentCombatant(party.session)?.entityId ?? null : null,
     },
   };
 }
@@ -550,6 +572,23 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   const spell = spellDefs.get(params.spell_name);
   if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
 
+  // Validate casting time — bonus_action/reaction spells must use those tools
+  if (spell.castingTime === "bonus_action") {
+    return { success: false, error: `${spell.name} is a bonus action spell. Use the bonus_action tool instead.` };
+  }
+  if (spell.castingTime === "reaction") {
+    return { success: false, error: `${spell.name} is a reaction spell. Use the reaction tool instead.` };
+  }
+
+  // Check action resource in combat
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) {
+      return { success: false, error: "You've already used your action this turn." };
+    }
+  }
+
   const result = castSpell({
     spell,
     casterAbilityScores: char.abilityScores,
@@ -561,10 +600,14 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     return { success: false, error: result.error };
   }
 
+  // Consume action resource after successful cast
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
+
   // Update spell slots
   char.spellSlots = result.remainingSlots;
-
-  const party = getPartyForCharacter(char.id);
 
   // Apply effect to target if applicable
   if (spell.isHealing && params.target_id && result.totalEffect) {
@@ -611,31 +654,60 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
-  // In a full implementation, this would set a "dodging" flag
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
   return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
 }
 
 export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
   return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
 }
 
 export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
   return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
 }
 
 export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
   return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
 }
 
 export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
   const result = abilityCheck({
     abilityScores: char.abilityScores,
     ability: "dex",
@@ -767,6 +839,13 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 
+  const party = getPartyForCharacter(char.id);
+  if (party?.session?.phase === "combat") {
+    const resources = getTurnResources(party, char.id);
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  }
+
   const itemIdx = char.inventory.indexOf(params.item_id);
   if (itemIdx === -1) {
     return { success: false, error: `Item "${params.item_id}" not found in inventory.` };
@@ -796,6 +875,251 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
   }
 
   return { success: true, data: { item: params.item_id, message: "Item used." } };
+}
+
+// --- End Turn / Bonus Action / Reaction ---
+
+export function handleEndTurn(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Not in combat." };
+  }
+
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== char.id) {
+    return { success: false, error: "It's not your turn." };
+  }
+
+  party.session = nextTurn(party.session);
+  const nextCombatant = getCurrentCombatant(party.session);
+  resetTurnResources(party, nextCombatant?.entityId ?? "");
+  notifyTurnChange(party);
+
+  return {
+    success: true,
+    data: {
+      ended: true,
+      nextTurn: nextCombatant?.entityId ?? null,
+      nextType: nextCombatant?.type ?? null,
+    },
+  };
+}
+
+export function handleBonusAction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Not in combat." };
+  }
+
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== char.id) {
+    return { success: false, error: "It's not your turn." };
+  }
+
+  const resources = getTurnResources(party, char.id);
+  if (resources.bonusUsed) {
+    return { success: false, error: "You've already used your bonus action this turn." };
+  }
+
+  switch (params.action) {
+    case "cast": {
+      if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
+      const spell = spellDefs.get(params.spell_name);
+      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+      if (spell.castingTime !== "bonus_action") {
+        return { success: false, error: `${spell.name} is not a bonus action spell.` };
+      }
+
+      const result = castSpell({
+        spell,
+        casterAbilityScores: char.abilityScores,
+        casterClass: char.class,
+        spellSlots: char.spellSlots,
+      });
+      if (!result.success) return { success: false, error: result.error };
+
+      char.spellSlots = result.remainingSlots;
+      setTurnResources(party, char.id, { ...resources, bonusUsed: true });
+
+      // Apply healing/damage effects
+      if (spell.isHealing && params.target_id && result.totalEffect) {
+        const target = characters.get(params.target_id);
+        if (target) {
+          const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
+          target.hpCurrent = hp.current;
+          logEvent(party, "heal", char.id, {
+            healerName: char.name, targetName: target.name, amount: result.totalEffect, bonusAction: true,
+          });
+        }
+      } else if (!spell.isHealing && params.target_id && result.totalEffect) {
+        const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+        if (target) {
+          const { monster } = damageMonster(target, result.totalEffect);
+          const idx = party.monsters.findIndex((m) => m.id === target.id);
+          if (idx !== -1) party.monsters[idx] = monster;
+        }
+      }
+
+      logEvent(party, "bonus_action", char.id, {
+        action: "cast", spellName: params.spell_name, effect: result.totalEffect,
+      });
+
+      return {
+        success: true,
+        data: { action: "cast", spell: params.spell_name, effect: result.totalEffect, remainingSlots: result.remainingSlots },
+      };
+    }
+
+    case "dash":
+    case "disengage":
+    case "hide": {
+      if (!char.features.includes("Cunning Action")) {
+        return { success: false, error: `Only Rogues with Cunning Action can ${params.action} as a bonus action.` };
+      }
+      setTurnResources(party, char.id, { ...resources, bonusUsed: true });
+      logEvent(party, "bonus_action", char.id, { action: params.action, cunningAction: true });
+      return {
+        success: true,
+        data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.` },
+      };
+    }
+
+    case "second_wind": {
+      if (!char.features.includes("Second Wind")) {
+        return { success: false, error: "Only Fighters with Second Wind can use this ability." };
+      }
+      const healRoll = roll(`1d10+${char.level}`);
+      const hp = applyHealing({ current: char.hpCurrent, max: char.hpMax, temp: 0 }, healRoll.total);
+      char.hpCurrent = hp.current;
+      setTurnResources(party, char.id, { ...resources, bonusUsed: true });
+      logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total });
+      return {
+        success: true,
+        data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax },
+      };
+    }
+
+    default:
+      return { success: false, error: `Unknown bonus action: ${params.action}. Use cast, dash, disengage, hide, or second_wind.` };
+  }
+}
+
+export function handleReaction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Not in combat." };
+  }
+
+  const current = getCurrentCombatant(party.session);
+  if (current?.entityId === char.id) {
+    return { success: false, error: "You can't use a reaction on your own turn. Reactions are for other combatants' turns." };
+  }
+
+  const resources = getTurnResources(party, char.id);
+  if (resources.reactionUsed) {
+    return { success: false, error: "You've already used your reaction this round." };
+  }
+
+  switch (params.action) {
+    case "cast": {
+      if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
+      const spell = spellDefs.get(params.spell_name);
+      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+      if (spell.castingTime !== "reaction") {
+        return { success: false, error: `${spell.name} is not a reaction spell.` };
+      }
+
+      const result = castSpell({
+        spell,
+        casterAbilityScores: char.abilityScores,
+        casterClass: char.class,
+        spellSlots: char.spellSlots,
+      });
+      if (!result.success) return { success: false, error: result.error };
+
+      char.spellSlots = result.remainingSlots;
+      setTurnResources(party, char.id, { ...resources, reactionUsed: true });
+
+      logEvent(party, "reaction", char.id, {
+        action: "cast", spellName: params.spell_name, effect: result.totalEffect,
+      });
+
+      return {
+        success: true,
+        data: { action: "cast", spell: params.spell_name, effect: result.totalEffect, remainingSlots: result.remainingSlots },
+      };
+    }
+
+    case "opportunity_attack": {
+      if (!params.target_id) return { success: false, error: "target_id is required for opportunity attacks." };
+
+      const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+      if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
+
+      const weaponDamage = getWeaponDamage(char.equipment.weapon);
+      const profBonus = proficiencyBonus(char.level);
+      const attackParams = meleeAttackParams(char.abilityScores, profBonus, weaponDamage);
+      const result = resolveAttack({ ...attackParams, targetAC: target.ac });
+
+      setTurnResources(party, char.id, { ...resources, reactionUsed: true });
+
+      if (result.hit) {
+        const { monster, killed } = damageMonster(target, result.totalDamage);
+        const idx = party.monsters.findIndex((m) => m.id === target.id);
+        if (idx !== -1) party.monsters[idx] = monster;
+
+        logEvent(party, "reaction", char.id, {
+          action: "opportunity_attack", targetName: target.name,
+          hit: true, damage: result.totalDamage, killed,
+        });
+
+        if (killed && party.session) {
+          party.session = removeCombatant(party.session, target.id);
+          if (shouldCombatEnd(party.session)) {
+            const xp = calculateEncounterXP(party.monsters);
+            const xpEach = Math.floor(xp / party.members.length);
+            for (const mid of party.members) {
+              const m = characters.get(mid);
+              if (m) m.xp += xpEach;
+            }
+            party.session = exitCombat(party.session);
+            logEvent(party, "combat_end", null, { xpAwarded: xp });
+            snapshotCharacters(party);
+          }
+        }
+
+        return {
+          success: true,
+          data: {
+            action: "opportunity_attack", hit: true,
+            damage: result.totalDamage, damageType: result.damageType,
+            killed, naturalRoll: result.naturalRoll,
+          },
+        };
+      }
+
+      logEvent(party, "reaction", char.id, {
+        action: "opportunity_attack", targetName: target.name, hit: false,
+      });
+
+      return {
+        success: true,
+        data: { action: "opportunity_attack", hit: false, naturalRoll: result.naturalRoll },
+      };
+    }
+
+    default:
+      return { success: false, error: `Unknown reaction: ${params.action}. Use cast or opportunity_attack.` };
+  }
 }
 
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {

@@ -368,6 +368,86 @@ export const playerTools: PlayerToolDefinition[] = [
     handler: "handleHide",
   },
 
+  // ── Bonus Action / Reaction / End Turn ─────────────────────────────────
+  {
+    name: "bonus_action",
+    description:
+      "Use your bonus action. Cast a bonus-action spell (Healing Word, Shield of " +
+      "Faith, Spiritual Weapon) or use a class feature (Rogue: Cunning Action " +
+      "for dash/disengage/hide; Fighter: Second Wind to heal 1d10+level). " +
+      "You get one bonus action per turn, separate from your main action.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description:
+            "What to do with your bonus action: 'cast' a bonus-action spell, " +
+            "'dash'/'disengage'/'hide' (Rogue Cunning Action only), or " +
+            "'second_wind' (Fighter only).",
+          enum: ["cast", "dash", "disengage", "hide", "second_wind"],
+        },
+        spell_name: {
+          type: "string",
+          description: "The spell to cast (required if action is 'cast'). Must be a bonus-action spell.",
+        },
+        target_id: {
+          type: "string",
+          description: "Target for the spell or ability, if applicable.",
+        },
+      },
+      required: ["action"],
+      additionalProperties: false,
+    },
+    handler: "handleBonusAction",
+  },
+
+  {
+    name: "reaction",
+    description:
+      "Use your reaction (on another combatant's turn). Cast a reaction spell " +
+      "(Shield: +5 AC until your next turn) or make an opportunity attack " +
+      "against a target. You get one reaction per round, which resets at the " +
+      "start of your turn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: {
+          type: "string",
+          description:
+            "What to do with your reaction: 'cast' a reaction spell (e.g. Shield) " +
+            "or 'opportunity_attack' against a target moving away from you.",
+          enum: ["cast", "opportunity_attack"],
+        },
+        spell_name: {
+          type: "string",
+          description: "The spell to cast (required if action is 'cast'). Must be a reaction spell.",
+        },
+        target_id: {
+          type: "string",
+          description: "Target for the opportunity attack (required if action is 'opportunity_attack').",
+        },
+      },
+      required: ["action"],
+      additionalProperties: false,
+    },
+    handler: "handleReaction",
+  },
+
+  {
+    name: "end_turn",
+    description:
+      "End your turn in combat. Call this when you are done with your action " +
+      "and bonus action (if any). Advances initiative to the next combatant. " +
+      "You must explicitly end your turn — actions no longer auto-advance.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+    handler: "handleEndTurn",
+  },
+
   // ── Resting ─────────────────────────────────────────────────────────────
   {
     name: "short_rest",

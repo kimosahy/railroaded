@@ -5,12 +5,23 @@
 
 import type { SessionPhase, PartyStatus } from "../types.ts";
 
+export interface TurnResources {
+  actionUsed: boolean;
+  bonusUsed: boolean;
+  reactionUsed: boolean;
+}
+
+export function freshTurnResources(): TurnResources {
+  return { actionUsed: false, bonusUsed: false, reactionUsed: false };
+}
+
 export interface SessionState {
   id: string;
   partyId: string;
   phase: SessionPhase;
   currentTurn: number;
   initiativeOrder: InitiativeSlot[];
+  turnResources: Record<string, TurnResources>;
   isActive: boolean;
   startedAt: Date;
   endedAt: Date | null;
@@ -35,6 +46,7 @@ export function createSession(params: SessionCreateParams): Omit<SessionState, "
     phase: "exploration",
     currentTurn: 0,
     initiativeOrder: [],
+    turnResources: {},
     isActive: true,
     startedAt: new Date(),
     endedAt: null,
@@ -49,11 +61,16 @@ export function enterCombat(
   session: SessionState,
   initiativeOrder: InitiativeSlot[]
 ): SessionState {
+  const turnResources: Record<string, TurnResources> = {};
+  for (const slot of initiativeOrder) {
+    turnResources[slot.entityId] = freshTurnResources();
+  }
   return {
     ...session,
     phase: "combat",
     currentTurn: 0,
     initiativeOrder,
+    turnResources,
   };
 }
 
@@ -123,6 +140,7 @@ export function exitCombat(session: SessionState): SessionState {
     phase: "exploration",
     initiativeOrder: [],
     currentTurn: 0,
+    turnResources: {},
   };
 }
 
