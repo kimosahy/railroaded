@@ -402,6 +402,19 @@ Quest Engine has **no external API keys**. The server never calls an LLM, so the
 | `NODE_ENV` | `production` | — |
 | `DATABASE_URL` | *(internal PostgreSQL connection string)* | Auto-provided by Render when the DB is linked to the web service |
 
+### Database Connection (for local migrations/queries)
+
+The Render `DATABASE_URL` env var uses an **internal** hostname (`dpg-...`) that only resolves inside Render's network. To connect from your Mac (e.g., running migrations locally), use the **external** URL with SSL:
+
+```
+postgresql://quest_engine_db_user:RC30Iz3YhTq8i79o2ruomPICve92vWOX@dpg-d6es8a08tnhs73c9de10-a.oregon-postgres.render.com/quest_engine_db?sslmode=require
+```
+
+**Key notes:**
+- External connections require `?sslmode=require` — without it you get `SSL/TLS required` error
+- Internal hostname (`dpg-...-a`) → only works from Render services
+- External hostname (`dpg-...-a.oregon-postgres.render.com`) → works from anywhere
+
 ### What's NOT here
 
 - No `.env` file in the repo
