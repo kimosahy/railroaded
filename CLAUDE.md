@@ -24,37 +24,49 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 ### Done (verified by playtest)
 
 - **Monster turn resolution** — `monster_attack` tool works, initiative auto-advances through monsters, DM can resolve monster turns. Confirmed working in Playtest Round 3. (See known-issues.md F1, commit cd1efc2)
+- **Event persistence** — `logEvent()` writes to both in-memory array and `session_events` DB table. Character snapshots at session-end and combat-end. (Commits 60812e2, 54b53fb, 5f455f0)
+- **Party names** — Procedural generator using race/class composition. Stored in DB, surfaced in all party endpoints. (Commit 54b53fb)
+- **Load from DB on restart** — `loadPersistedState()` rebuilds characters/parties/events from DB at startup. (Commit 5f455f0)
+- **Monster naming bug** — Case-insensitive template lookup, fallback for missing field. "undefined A" → "Skeleton A". (Commit d25e55b)
 
 ### Sprint Backlog (in priority order)
 
-**P0 — Persistence (nothing else works without this)**
+**P1 — Narrator & Spectator Layer (needs persisted events — now done)**
 
-1. **Event persistence — wire `logEvent` to `session_events` table**
-   - Problem: `logEvent()` in game-manager.ts (line 1131) pushes events to `party.events` — an in-memory array. The `session_events` DB table exists in schema.ts (line 178) with matching shape (`sessionId`, `type`, `actorId`, `data` jsonb, `createdAt`) but is NEVER written to. game-manager.ts has zero DB imports. All game history is lost on server restart.
-   - Goal: Every `logEvent()` call writes to both the in-memory array (for real-time use) AND the `session_events` table (for persistence). Event sourcing pattern — the event log is the source of truth.
-   - Integration points: (a) Import DB connection into game-manager.ts, (b) make `logEvent` async and add DB insert, (c) add session-end snapshot that writes final character state to DB.
-   - Files: `src/game/game-manager.ts`, `src/db/schema.ts`, `src/db/index.ts`
-   - See: known-issues.md #3
+4. **Narrator layer — narrations table + API endpoints**
+   - Context: An external narrator agent (Poormetheus on OpenClaw) reads game events, generates dramatic prose via LLM, and posts narrations back. **The server never calls an LLM.** The server only stores and serves narrations.
+   - What to build:
 
-2. **Party names — DM-generated at formation**
-   - Problem: Parties are unnamed, feel procedural. Spectator pages show blank party identifiers.
-   - Goal: When a party forms, generate a thematic party name based on composition (e.g., "The Ironwall Covenant" for a dwarf-heavy party). Store in DB `parties` table. Display everywhere parties are referenced.
-   - Ship alongside persistence — trivial addition once DB writes are working.
-   - Files: `src/game/game-manager.ts`, `src/db/schema.ts`
+   **A. New `narrations` table in schema.ts:**
+   ```
+   narrations {
+     id: uuid PK
+     sessionId: uuid FK → game_sessions.id (required)
+     trigger: text (required) — what caused this narration: "combat_end", "session_end", "exploration", "rest", "death", "level_up"
+     eventRange: jsonb — { fromEventId: uuid, toEventId: uuid } — which events this narration covers
+     content: text (required) — the dramatic prose
+     createdAt: timestamp
+   }
+   ```
 
-3. **Monster naming bug — "undefined A" display**
-   - Problem: Monsters display as "undefined A" instead of "skeleton A" during combat. Cosmetic but visible to spectators and agents.
-   - Goal: Fix monster name resolution so spawned monsters display their template name correctly.
-   - Fix alongside persistence work — CC will already be in game-manager.ts.
-   - Files: `src/game/game-manager.ts`
+   **B. POST /narrator/narrate — authenticated endpoint to submit narrations**
+   - Auth: Bearer token (any authenticated user). No new role needed.
+   - Body: `{ sessionId, trigger, eventRange?, content }`
+   - Validates sessionId exists in game_sessions table
+   - Returns the created narration with id
 
-**P1 — Narrator & Spectator Layer (needs persisted events)**
+   **C. GET /spectator/narrations — public, returns recent narrations across all sessions**
+   - No auth required (spectator endpoint)
+   - Returns last 20 narrations, newest first
+   - Include: narration id, sessionId, trigger, content, createdAt, party name (join to parties via game_sessions)
 
-4. **Narrator layer — dramatic prose from raw events**
-   - Problem: Raw game events (turn orders, HP changes, skill checks) are mechanical data. Spectators need dramatic prose.
-   - Goal: A post-processing layer that takes persisted `session_events` and produces narrative commentary. Runs after each event resolves. NOT part of game logic — purely presentation.
-   - Architecture decision needed: server-side LLM call (adds cost + API dependency), dedicated narrator agent on OpenClaw, or post-session batch job.
-   - Files: New module, TBD after architecture decision
+   **D. GET /spectator/narrations/:sessionId — public, returns narrations for a specific session**
+   - No auth required
+   - Returns all narrations for that session, ordered by createdAt
+   - Include: same fields as above
+
+   - Files: `src/db/schema.ts` (new table), new `src/api/narrator.ts` (POST endpoint), `src/api/spectator.ts` (GET endpoints), `src/index.ts` (mount narrator routes)
+   - Generate migration file. Do NOT auto-run it — Karim will run manually with external DB URL.
 
 5. **Homepage heartbeat — live feed on landing page**
    - Problem: railroaded.ai landing page is static. No sign of life.
@@ -141,7 +153,7 @@ The sprint backlog above implements this vision in order. The key insight: `game
 
 **Architecture layers (build in this order):**
 1. **Persistence** — Event sourcing. Every `logEvent()` writes to DB. Session-end snapshot captures final character state. This is P0 items 1-3 in the sprint backlog.
-2. **Narrator** — Post-processing LLM that turns raw events into dramatic prose. Not game logic. Architecture decision pending: server-side call, OpenClaw agent, or batch job.
+2. **Narrator** — External narrator agent (Poormetheus on OpenClaw) reads persisted events via spectator API, generates dramatic prose via LLM, POSTs narrations back to server. Server stores and serves — never calls an LLM. Per-encounter trigger frequency (combat_end, session_end, etc).
 3. **Homepage heartbeat** — Narrator output surfaced on landing page. Scrolling feed of dramatic moments.
 4. **Worldbuilding as byproduct** — Sessions accumulate lore (locations, NPCs, factions) into a living world.
 
