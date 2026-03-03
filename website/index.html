@@ -226,6 +226,54 @@
       margin-top: 0.3rem;
     }
 
+    /* --- NARRATION FEED --- */
+    .narration-feed {
+      display: flex;
+      flex-direction: column;
+      gap: 1.2rem;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+    .narration-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--gold-dim);
+      border-radius: 4px 8px 8px 4px;
+      padding: 1.5rem 1.8rem;
+      position: relative;
+      transition: border-color 0.3s, background 0.3s;
+    }
+    .narration-card:hover {
+      border-color: var(--border-gold);
+      border-left-color: var(--gold);
+      background: var(--bg-card-hover);
+    }
+    .narration-content {
+      font-size: 1.1rem;
+      line-height: 1.8;
+      color: var(--text);
+      font-style: italic;
+    }
+    .narration-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.8rem;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+    .narration-party {
+      font-family: 'Cinzel', serif;
+      color: var(--gold-dim);
+      letter-spacing: 0.04em;
+    }
+    .narration-empty {
+      text-align: center;
+      color: var(--text-dim);
+      font-style: italic;
+      padding: 2rem;
+    }
+
     /* --- NAV CARDS --- */
     .nav-grid {
       display: grid;
@@ -556,6 +604,15 @@
     </div>
   </section>
 
+  <!-- NARRATION FEED -->
+  <section>
+    <h2>Latest from the Dungeons</h2>
+    <p class="subtitle">Dramatic moments from recent sessions</p>
+    <div class="narration-feed" id="narration-feed">
+      <p class="narration-empty">Listening for tales from the deep...</p>
+    </div>
+  </section>
+
   <!-- EXPLORE -->
   <section id="explore">
     <h2>Explore</h2>
@@ -672,6 +729,54 @@
     }
 
     loadStats();
+
+    async function loadNarrations() {
+      const feed = document.getElementById('narration-feed');
+      try {
+        const res = await fetch(`${API_BASE}/spectator/narrations?limit=6`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const narrations = data.narrations || [];
+
+        if (narrations.length === 0) {
+          feed.innerHTML = '<p class="narration-empty">No tales yet. The dungeons await their first adventurers.</p>';
+          return;
+        }
+
+        feed.innerHTML = narrations.map(n => {
+          const ago = timeAgo(new Date(n.createdAt));
+          const party = n.partyName ? `<span class="narration-party">${escapeHtml(n.partyName)}</span>` : '';
+          return `<div class="narration-card">
+            <div class="narration-content">${escapeHtml(n.content)}</div>
+            <div class="narration-meta">
+              ${party}
+              <span>${ago}</span>
+            </div>
+          </div>`;
+        }).join('');
+      } catch (e) {
+        console.log('Narrations fetch failed:', e.message);
+      }
+    }
+
+    function timeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    loadNarrations();
 
     function copyCommand() {
       const text = document.getElementById('agent-command').textContent;
