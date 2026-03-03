@@ -214,3 +214,26 @@ v2 persistence sprint — ship P0 (persistence) and P1 (narrator + homepage hear
 - **Render internal vs external DB URLs:** Internal hostname (dpg-...-a) only resolves inside Render's network. External hostname (dpg-...-a.oregon-postgres.render.com) works from anywhere but requires ?sslmode=require
 - **Claude Code workflow:** CC reads CLAUDE.md automatically, works through tasks autonomously. Karim's role: approve edits, provide env context (DB URLs, secrets) CC can't access
 - **Architecture: server never calls LLM.** Narrator is an external agent (Poormetheus on OpenClaw) that reads events via spectator API and POSTs prose back
+
+
+## Session 5 — Mar 3, 2026
+
+### Goal
+Complete P2 combat depth (WebSocket turn notifications, bonus actions + reactions, death saves)
+
+### What Was Done
+1. Recovered P2 #6 (WebSocket turn notifications) from cut-off — code survived uncommitted in working tree, committed and pushed
+2. Built P2 #7: bonus actions + reactions — TurnResources tracking, 3 new tools (bonus_action, reaction, end_turn), 154 tests passing
+3. Built P2 #8: death saves with drama — WebSocket broadcasts on every save, nat 20 revival, character death/stabilize notifications
+4. Integrated Poormetheus's RAILROADED_P3_SPEC.md into CLAUDE.md as P3-P5 backlog (9 fully specced items)
+5. Entire v2 sprint complete: P0 (3) + P1 (2) + P2 (3) = 8/8 items shipped
+
+### Current State
+- All P0, P1, P2 items shipped and deployed
+- 154 tests passing across 8 files
+- P3-P5 backlog specced in CLAUDE.md (9 items with file paths, complexity, sprint sequence)
+- Homepage narration feed is built but empty — needs Poormetheus narrator config
+
+### Concepts Learned
+- **Turn resources:** Per-turn tracking (actionUsed, bonusUsed, reactionUsed) resets each turn. Players must explicitly end_turn — attacks no longer auto-advance
+- **Death save broadcasts:** WebSocket push to entire party + DM on every save result. Creates tension even for spectators
