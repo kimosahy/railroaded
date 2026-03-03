@@ -144,19 +144,21 @@ export function getAllowedDMActions(phase: SessionPhase): string[] {
       return [
         ...always,
         "spawn_encounter", "request_check", "request_save",
-        "request_group_check", "deal_environment_damage",
+        "request_group_check", "request_contested_check", "deal_environment_damage",
         "award_xp", "award_loot", "end_session",
       ];
     case "combat":
       return [
         ...always,
-        "monster_attack", "request_save", "deal_environment_damage",
+        "monster_attack", "request_check", "request_save",
+        "request_contested_check", "deal_environment_damage",
         "award_xp", "award_loot",
       ];
     case "roleplay":
       return [
         ...always,
         "request_check", "request_save", "request_group_check",
+        "request_contested_check",
         "spawn_encounter", "award_xp", "award_loot", "end_session",
       ];
     case "rest":

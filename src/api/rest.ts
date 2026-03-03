@@ -154,18 +154,26 @@ dm.post("/voice-npc", async (c) => {
 });
 
 dm.post("/request-check", async (c) => {
-  const body = await c.req.json<{ player_id: string; ability: string; dc: number; skill?: string }>();
+  const body = await c.req.json<{ player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }>();
   return respond(c, gm.handleRequestCheck(c.get("user").userId, body));
 });
 
 dm.post("/request-save", async (c) => {
-  const body = await c.req.json<{ player_id: string; ability: string; dc: number }>();
+  const body = await c.req.json<{ player_id: string; ability: string; dc: number; advantage?: boolean; disadvantage?: boolean }>();
   return respond(c, gm.handleRequestSave(c.get("user").userId, body));
 });
 
 dm.post("/request-group-check", async (c) => {
-  const body = await c.req.json<{ ability: string; dc: number; skill?: string }>();
+  const body = await c.req.json<{ ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }>();
   return respond(c, gm.handleRequestGroupCheck(c.get("user").userId, body));
+});
+
+dm.post("/request-contested-check", async (c) => {
+  const body = await c.req.json<{
+    player_id_1: string; ability_1: string; skill_1?: string; advantage_1?: boolean; disadvantage_1?: boolean;
+    player_id_2: string; ability_2: string; skill_2?: string; advantage_2?: boolean; disadvantage_2?: boolean;
+  }>();
+  return respond(c, gm.handleRequestContestedCheck(c.get("user").userId, body));
 });
 
 dm.post("/environment-damage", async (c) => {

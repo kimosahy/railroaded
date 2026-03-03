@@ -116,6 +116,8 @@ export function groupCheck(params: {
   }[];
   ability: AbilityName;
   dc: number;
+  advantage?: boolean;
+  disadvantage?: boolean;
   randomFn?: (sides: number) => number;
 }): { results: { id: string; check: CheckResult }[]; success: boolean } {
   const results = params.characters.map((char) => ({
@@ -125,6 +127,8 @@ export function groupCheck(params: {
       ability: params.ability,
       dc: params.dc,
       proficiencyBonus: char.proficiencyBonus,
+      advantage: params.advantage,
+      disadvantage: params.disadvantage,
       randomFn: params.randomFn,
     }),
   }));

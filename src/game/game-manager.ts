@@ -1403,7 +1403,7 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
   return { success: true, data: { npc: params.npc_id, dialogue: params.dialogue } };
 }
 
-export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
@@ -1416,6 +1416,8 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
     ability,
     dc: params.dc,
     proficiencyBonus: profBonus,
+    advantage: params.advantage,
+    disadvantage: params.disadvantage,
   });
 
   const party = getPartyForCharacter(char.id);
@@ -1440,7 +1442,7 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
   };
 }
 
-export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
@@ -1449,6 +1451,8 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
     abilityScores: char.abilityScores,
     ability,
     dc: params.dc,
+    advantage: params.advantage,
+    disadvantage: params.disadvantage,
   });
 
   const party = getPartyForCharacter(char.id);
@@ -1466,28 +1470,37 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
   };
 }
 
-export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number; skill?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean) as GameCharacter[];
   const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
 
-  const result = groupCheck({
-    characters: charList.map((c) => ({
+  // Roll individually so we can pass advantage/disadvantage per character
+  const results = charList.map((c) => {
+    const profBonus = params.skill && c.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
+      ? proficiencyBonus(c.level) : 0;
+    return {
       id: c.id,
-      abilityScores: c.abilityScores,
-      proficiencyBonus: params.skill && c.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
-        ? proficiencyBonus(c.level) : 0,
-    })),
-    ability,
-    dc: params.dc,
+      check: abilityCheck({
+        abilityScores: c.abilityScores,
+        ability,
+        dc: params.dc,
+        proficiencyBonus: profBonus,
+        advantage: params.advantage,
+        disadvantage: params.disadvantage,
+      }),
+    };
   });
+
+  const successes = results.filter((r) => r.check.success).length;
+  const overallSuccess = successes >= Math.ceil(results.length / 2);
 
   logEvent(party, "group_check", null, {
     ability: params.ability, skill: params.skill, dc: params.dc,
-    overallSuccess: result.success,
-    results: result.results.map((r) => ({
+    overallSuccess,
+    results: results.map((r) => ({
       id: r.id, name: characters.get(r.id)?.name,
       roll: r.check.roll.total, success: r.check.success, margin: r.check.margin,
     })),
@@ -1497,14 +1510,78 @@ export function handleRequestGroupCheck(userId: string, params: { ability: strin
     success: true,
     data: {
       ability: params.ability, skill: params.skill, dc: params.dc,
-      overallSuccess: result.success,
-      results: result.results.map((r) => ({
+      overallSuccess,
+      results: results.map((r) => ({
         id: r.id,
         name: characters.get(r.id)?.name,
         roll: r.check.roll.total,
         success: r.check.success,
         margin: r.check.margin,
       })),
+    },
+  };
+}
+
+export function handleRequestContestedCheck(userId: string, params: {
+  player_id_1: string; ability_1: string; skill_1?: string; advantage_1?: boolean; disadvantage_1?: boolean;
+  player_id_2: string; ability_2: string; skill_2?: string; advantage_2?: boolean; disadvantage_2?: boolean;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char1 = resolveCharacter(params.player_id_1);
+  if (!char1) return { success: false, error: `Player ${params.player_id_1} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  const char2 = resolveCharacter(params.player_id_2);
+  if (!char2) return { success: false, error: `Player ${params.player_id_2} not found. Use character IDs from get_party_state (e.g. char-1).` };
+
+  const ability1 = params.ability_1 as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const ability2 = params.ability_2 as "str" | "dex" | "con" | "int" | "wis" | "cha";
+
+  const profBonus1 = params.skill_1 && char1.proficiencies.some((p) => p.toLowerCase().includes(params.skill_1!.toLowerCase()))
+    ? proficiencyBonus(char1.level) : 0;
+  const profBonus2 = params.skill_2 && char2.proficiencies.some((p) => p.toLowerCase().includes(params.skill_2!.toLowerCase()))
+    ? proficiencyBonus(char2.level) : 0;
+
+  const result1 = abilityCheck({
+    abilityScores: char1.abilityScores,
+    ability: ability1,
+    dc: 0,
+    proficiencyBonus: profBonus1,
+    advantage: params.advantage_1,
+    disadvantage: params.disadvantage_1,
+  });
+
+  const result2 = abilityCheck({
+    abilityScores: char2.abilityScores,
+    ability: ability2,
+    dc: 0,
+    proficiencyBonus: profBonus2,
+    advantage: params.advantage_2,
+    disadvantage: params.disadvantage_2,
+  });
+
+  // Higher total wins; ties go to the initiator (player 1)
+  const winner = result1.roll.total >= result2.roll.total ? 1 : 2;
+  const margin = result1.roll.total - result2.roll.total;
+
+  const party = getPartyForCharacter(char1.id);
+  logEvent(party, "contested_check", null, {
+    player1: { id: char1.id, name: char1.name, ability: params.ability_1, skill: params.skill_1, roll: result1.roll.total },
+    player2: { id: char2.id, name: char2.name, ability: params.ability_2, skill: params.skill_2, roll: result2.roll.total },
+    winner, margin,
+  });
+
+  return {
+    success: true,
+    data: {
+      player1: {
+        id: char1.id, name: char1.name, ability: params.ability_1, skill: params.skill_1,
+        roll: result1.roll.total, natural20: result1.natural20, natural1: result1.natural1,
+      },
+      player2: {
+        id: char2.id, name: char2.name, ability: params.ability_2, skill: params.skill_2,
+        roll: result2.roll.total, natural20: result2.natural20, natural1: result2.natural1,
+      },
+      winner,
+      winnerName: winner === 1 ? char1.name : char2.name,
+      margin,
     },
   };
 }

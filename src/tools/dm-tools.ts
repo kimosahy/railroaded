@@ -74,6 +74,20 @@ const dcProperty: JSONSchemaProperty = {
   maximum: 30,
 };
 
+const advantageProperty: JSONSchemaProperty = {
+  type: "boolean",
+  description:
+    "Roll with advantage (roll 2d20, take the higher). Grant advantage for favorable " +
+    "circumstances, allied help, or class features. Advantage and disadvantage cancel out.",
+};
+
+const disadvantageProperty: JSONSchemaProperty = {
+  type: "boolean",
+  description:
+    "Roll with disadvantage (roll 2d20, take the lower). Impose disadvantage for unfavorable " +
+    "circumstances, obscured vision, or hostile conditions. Advantage and disadvantage cancel out.",
+};
+
 // ---------------------------------------------------------------------------
 // Tool definitions
 // ---------------------------------------------------------------------------
@@ -260,9 +274,10 @@ export const dmTools: readonly ToolDefinition[] = [
       "Ask the server to run an ability check or skill check for a specific player. " +
       "You set the DC and which ability to use; the server rolls the d20, applies the " +
       "player's modifier and proficiency bonus (if a skill is specified and the character " +
-      "is proficient), and returns the result including the natural roll, total, and " +
-      "whether the check succeeded. You then narrate the outcome based on success or " +
-      "failure. The server handles all the math — you never need to calculate modifiers.",
+      "is proficient), and returns the result including the natural roll, total, margin " +
+      "(how much they passed/failed by), and whether the check succeeded. You can grant " +
+      "advantage or impose disadvantage based on circumstances. You then narrate the " +
+      "outcome. The server handles all the math.",
     inputSchema: {
       type: "object",
       properties: {
@@ -276,6 +291,8 @@ export const dmTools: readonly ToolDefinition[] = [
             "'persuasion', 'athletics', 'arcana', 'investigation'). If provided and the " +
             "character is proficient, their proficiency bonus is added to the roll.",
         },
+        advantage: advantageProperty,
+        disadvantage: disadvantageProperty,
       },
       required: ["player_id", "ability", "dc"],
     },
@@ -287,15 +304,18 @@ export const dmTools: readonly ToolDefinition[] = [
     description:
       "Force a player to make a saving throw. The server rolls the d20 and applies " +
       "the player's ability modifier (plus proficiency if they have saving throw " +
-      "proficiency). Natural 20 always succeeds, natural 1 always fails. Use this for " +
-      "traps, environmental hazards, spell effects, and any situation where the character " +
-      "is resisting an effect. You narrate the consequence based on the result.",
+      "proficiency). Natural 20 always succeeds, natural 1 always fails. You can grant " +
+      "advantage (e.g. resistance aura) or impose disadvantage (e.g. restrained condition). " +
+      "Use this for traps, environmental hazards, spell effects, and any situation where " +
+      "the character is resisting an effect. You narrate the consequence based on the result.",
     inputSchema: {
       type: "object",
       properties: {
         player_id: playerIdProperty,
         ability: abilityProperty,
         dc: dcProperty,
+        advantage: advantageProperty,
+        disadvantage: disadvantageProperty,
       },
       required: ["player_id", "ability", "dc"],
     },
@@ -307,10 +327,11 @@ export const dmTools: readonly ToolDefinition[] = [
     description:
       "All party members make the same ability check simultaneously. The server rolls " +
       "for each player and returns individual results plus an overall outcome (majority " +
-      "rules: if at least half succeed, the group succeeds). Use this for situations " +
-      "where the whole party is affected — sneaking past guards, navigating treacherous " +
-      "terrain, resisting an area effect. You get back each player's roll so you can " +
-      "narrate individual reactions.",
+      "rules: if at least half succeed, the group succeeds). You can grant advantage or " +
+      "impose disadvantage on the entire group (e.g. advantage from a helpful spell, " +
+      "disadvantage from poor visibility). Use this for situations where the whole party " +
+      "is affected — sneaking past guards, navigating treacherous terrain, resisting an " +
+      "area effect.",
     inputSchema: {
       type: "object",
       properties: {
@@ -322,10 +343,69 @@ export const dmTools: readonly ToolDefinition[] = [
             "Optional skill name for the group check (e.g., 'stealth', 'perception'). " +
             "Proficiency is applied per-character based on their individual proficiencies.",
         },
+        advantage: advantageProperty,
+        disadvantage: disadvantageProperty,
       },
       required: ["ability", "dc"],
     },
     handler: "handleRequestGroupCheck",
+  },
+
+  {
+    name: "request_contested_check",
+    description:
+      "Two characters make opposing ability checks — e.g. grapple (Athletics vs " +
+      "Athletics/Acrobatics), shove (Athletics vs Athletics/Acrobatics), or hiding " +
+      "(Stealth vs Perception). Each character rolls their respective ability check; " +
+      "the higher total wins. Ties go to the initiator (player 1). Returns both rolls, " +
+      "totals, the margin between them, and the winner.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id_1: {
+          ...playerIdProperty,
+          description: "The initiating character (wins ties). Use get_party_state() for IDs.",
+        },
+        ability_1: {
+          ...abilityProperty,
+          description: "The ability score for player 1's check.",
+        },
+        skill_1: {
+          type: "string",
+          description: "Optional skill for player 1 (e.g. 'athletics'). Adds proficiency if proficient.",
+        },
+        advantage_1: {
+          ...advantageProperty,
+          description: "Grant advantage to player 1.",
+        },
+        disadvantage_1: {
+          ...disadvantageProperty,
+          description: "Impose disadvantage on player 1.",
+        },
+        player_id_2: {
+          ...playerIdProperty,
+          description: "The opposing character.",
+        },
+        ability_2: {
+          ...abilityProperty,
+          description: "The ability score for player 2's check.",
+        },
+        skill_2: {
+          type: "string",
+          description: "Optional skill for player 2 (e.g. 'acrobatics'). Adds proficiency if proficient.",
+        },
+        advantage_2: {
+          ...advantageProperty,
+          description: "Grant advantage to player 2.",
+        },
+        disadvantage_2: {
+          ...disadvantageProperty,
+          description: "Impose disadvantage on player 2.",
+        },
+      },
+      required: ["player_id_1", "ability_1", "player_id_2", "ability_2"],
+    },
+    handler: "handleRequestContestedCheck",
   },
 
   // -- Environmental damage -------------------------------------------------

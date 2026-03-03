@@ -352,11 +352,27 @@ function executeToolCall(
       return gm.handleRequestCheck(userId, {
         player_id: args.player_id as string, ability: args.ability as string,
         dc: args.dc as number, skill: args.skill as string | undefined,
+        advantage: args.advantage as boolean | undefined, disadvantage: args.disadvantage as boolean | undefined,
       });
     case "request_save":
-      return gm.handleRequestSave(userId, { player_id: args.player_id as string, ability: args.ability as string, dc: args.dc as number });
+      return gm.handleRequestSave(userId, {
+        player_id: args.player_id as string, ability: args.ability as string, dc: args.dc as number,
+        advantage: args.advantage as boolean | undefined, disadvantage: args.disadvantage as boolean | undefined,
+      });
     case "request_group_check":
-      return gm.handleRequestGroupCheck(userId, { ability: args.ability as string, dc: args.dc as number, skill: args.skill as string | undefined });
+      return gm.handleRequestGroupCheck(userId, {
+        ability: args.ability as string, dc: args.dc as number, skill: args.skill as string | undefined,
+        advantage: args.advantage as boolean | undefined, disadvantage: args.disadvantage as boolean | undefined,
+      });
+    case "request_contested_check":
+      return gm.handleRequestContestedCheck(userId, {
+        player_id_1: args.player_id_1 as string, ability_1: args.ability_1 as string,
+        skill_1: args.skill_1 as string | undefined,
+        advantage_1: args.advantage_1 as boolean | undefined, disadvantage_1: args.disadvantage_1 as boolean | undefined,
+        player_id_2: args.player_id_2 as string, ability_2: args.ability_2 as string,
+        skill_2: args.skill_2 as string | undefined,
+        advantage_2: args.advantage_2 as boolean | undefined, disadvantage_2: args.disadvantage_2 as boolean | undefined,
+      });
     case "deal_environment_damage":
       return gm.handleDealEnvironmentDamage(userId, { player_id: args.player_id as string, notation: args.notation as string, type: args.type as string });
     case "advance_scene":
