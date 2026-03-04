@@ -2219,7 +2219,7 @@ export function handleListItems(_userId: string, params: { category?: string }):
   };
 }
 
-export function handleEndSession(userId: string, params: { summary: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
@@ -2241,11 +2241,44 @@ export function handleEndSession(userId: string, params: { summary: string }): {
     });
   }
 
+  // Update campaign state if this party has one
+  let campaignUpdate: Record<string, unknown> | null = null;
+  if (party.campaignId) {
+    const campaign = campaignsMap.get(party.campaignId);
+    if (campaign) {
+      campaign.sessionCount++;
+      if (params.completed_dungeon && !campaign.completedDungeons.includes(params.completed_dungeon)) {
+        campaign.completedDungeons.push(params.completed_dungeon);
+      }
+      campaignUpdate = {
+        campaign_name: campaign.name,
+        campaign_session_count: campaign.sessionCount,
+        completed_dungeons: campaign.completedDungeons,
+      };
+
+      // Persist campaign updates to DB
+      if (campaign.dbCampaignId) {
+        db.update(campaignsTable)
+          .set({
+            sessionCount: campaign.sessionCount,
+            completedDungeons: campaign.completedDungeons,
+          })
+          .where(eq(campaignsTable.id, campaign.dbCampaignId))
+          .catch((err) => console.error("[DB] Failed to update campaign:", err));
+      }
+    }
+  }
+
   const eventSummary = summarizeSession(party.events);
 
   return {
     success: true,
-    data: { ended: true, summary: params.summary, eventLog: eventSummary },
+    data: {
+      ended: true,
+      summary: params.summary,
+      eventLog: eventSummary,
+      ...(campaignUpdate ?? {}),
+    },
   };
 }
 

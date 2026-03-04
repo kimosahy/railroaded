@@ -251,7 +251,7 @@ dm.post("/story-flag", async (c) => {
 });
 
 dm.post("/end-session", async (c) => {
-  const body = await c.req.json<{ summary: string }>();
+  const body = await c.req.json<{ summary: string; completed_dungeon?: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));
 });
 

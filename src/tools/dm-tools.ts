@@ -693,6 +693,12 @@ export const dmTools: readonly ToolDefinition[] = [
             "loot found, NPCs encountered, and story developments. This becomes part of " +
             "the permanent adventure record and is shown to spectators on the website.",
         },
+        completed_dungeon: {
+          type: "string",
+          description:
+            "Name of the dungeon completed this session (if any). Tracked on the campaign record. " +
+            "Only set this if the dungeon was actually completed, not abandoned mid-run.",
+        },
       },
       required: ["summary"],
     },

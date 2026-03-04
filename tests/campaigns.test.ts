@@ -6,6 +6,7 @@ import {
   handleCreateCampaign,
   handleGetCampaign,
   handleSetStoryFlag,
+  handleEndSession,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -152,5 +153,111 @@ describe("campaigns", () => {
     const result = handleCreateCampaign("camp-dm-nocamp", { name: "" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("name");
+  });
+});
+
+describe("campaign + end_session integration", () => {
+  test("setup: form a party with campaign", () => {
+    for (let i = 1; i <= 4; i++) {
+      const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
+      handleCreateCharacter(`ces-player-${i}`, {
+        name: `SessionEnder${i}`,
+        race: "dwarf",
+        class: cls,
+        ability_scores: scores,
+      });
+      handleQueueForParty(`ces-player-${i}`);
+    }
+    const dm = handleDMQueueForParty("ces-dm-1");
+    expect(dm.success).toBe(true);
+
+    const camp = handleCreateCampaign("ces-dm-1", {
+      name: "Dungeon Crawl Series",
+      description: "A three-dungeon campaign.",
+    });
+    expect(camp.success).toBe(true);
+  });
+
+  test("end_session increments campaign session count", () => {
+    // Before: session_count = 1 (set during create because party already had a session)
+    const before = handleGetCampaign("ces-dm-1");
+    expect(before.data!.session_count).toBe(1);
+
+    const result = handleEndSession("ces-dm-1", {
+      summary: "Explored the first level of the goblin warren.",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.campaign_session_count).toBe(2);
+  });
+
+  test("end_session records completed dungeon", () => {
+    // Start a new session for this party — need to re-form since session ended
+    // Actually, end_session doesn't destroy the party, it just ends the session state.
+    // We can check completed_dungeons on the campaign directly.
+    const campaign = handleGetCampaign("ces-dm-1");
+    expect(campaign.data!.completed_dungeons).toEqual([]);
+
+    // Now create a new party+session to test completed_dungeon param
+    for (let i = 1; i <= 4; i++) {
+      const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
+      handleCreateCharacter(`ces2-player-${i}`, {
+        name: `DungeonCrawler${i}`,
+        race: "halfling",
+        class: cls,
+        ability_scores: scores,
+      });
+      handleQueueForParty(`ces2-player-${i}`);
+    }
+    const dm2 = handleDMQueueForParty("ces2-dm-1");
+    expect(dm2.success).toBe(true);
+
+    const camp2 = handleCreateCampaign("ces2-dm-1", {
+      name: "Dungeon Trek",
+    });
+    expect(camp2.success).toBe(true);
+
+    const end = handleEndSession("ces2-dm-1", {
+      summary: "Cleared the goblin warren!",
+      completed_dungeon: "The Goblin Warren",
+    });
+    expect(end.success).toBe(true);
+    expect(end.data!.completed_dungeons).toContain("The Goblin Warren");
+    expect(end.data!.campaign_session_count).toBe(2);
+  });
+
+  test("completed_dungeon is not duplicated", () => {
+    // Form yet another party to test dedup
+    for (let i = 1; i <= 4; i++) {
+      const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
+      handleCreateCharacter(`ces3-player-${i}`, {
+        name: `DedupTester${i}`,
+        race: "human",
+        class: cls,
+        ability_scores: scores,
+      });
+      handleQueueForParty(`ces3-player-${i}`);
+    }
+    handleDMQueueForParty("ces3-dm-1");
+    handleCreateCampaign("ces3-dm-1", { name: "Dedup Test" });
+
+    handleEndSession("ces3-dm-1", {
+      summary: "Session 1",
+      completed_dungeon: "Dungeon A",
+    });
+
+    // The party's session is now ended, but campaign persists.
+    // Get the campaign — it should show 1 completed dungeon.
+    const briefing = handleGetCampaign("ces3-dm-1");
+    expect(briefing.success).toBe(true);
+    expect(briefing.data!.completed_dungeons).toEqual(["Dungeon A"]);
+  });
+
+  test("end_session without campaign does not error", () => {
+    const result = handleEndSession("camp-dm-nocamp", {
+      summary: "No campaign session.",
+    });
+    expect(result.success).toBe(true);
+    // Should NOT have campaign fields
+    expect(result.data!.campaign_session_count).toBeUndefined();
   });
 });

@@ -400,7 +400,7 @@ function executeToolCall(
     case "loot_room":
       return gm.handleLootRoom(userId, { player_id: args.player_id as string });
     case "end_session":
-      return gm.handleEndSession(userId, { summary: args.summary as string });
+      return gm.handleEndSession(userId, { summary: args.summary as string, completed_dungeon: args.completed_dungeon as string | undefined });
     case "create_custom_monster":
       return gm.handleCreateCustomMonster(userId, {
         name: args.name as string,
