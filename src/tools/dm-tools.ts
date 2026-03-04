@@ -801,6 +801,17 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleCreateCustomMonster",
   },
+  {
+    name: "list_monster_templates",
+    description:
+      "List all available monster templates (both built-in and custom). Shows name, HP, AC, XP, and attack names. " +
+      "Use this to see what monsters are available for spawn_encounter.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    handler: "handleListCustomMonsters",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

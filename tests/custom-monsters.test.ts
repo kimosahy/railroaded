@@ -6,6 +6,7 @@ import {
   handleCreateCustomMonster,
   handleSpawnEncounter,
   handleGetRoomState,
+  handleListCustomMonsters,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -131,5 +132,33 @@ describe("create_custom_monster", () => {
     });
     expect(result.success).toBe(true);
     expect(result.data!.xp_value).toBe(60); // floor(20 * 12 / 4)
+  });
+
+  test("list_monster_templates includes custom and built-in monsters", () => {
+    const result = handleListCustomMonsters("cm-dm-1");
+    expect(result.success).toBe(true);
+    const templates = result.data!.templates as { name: string; hp_max: number; ac: number }[];
+    // Should include at least the YAML templates + the custom ones we created
+    expect(templates.length).toBeGreaterThanOrEqual(3);
+    // Check our custom monster is in the list
+    const treant = templates.find((t) => t.name === "Corrupted Treant");
+    expect(treant).toBeDefined();
+    expect(treant!.hp_max).toBe(50);
+    expect(treant!.ac).toBe(15);
+  });
+
+  test("list_monster_templates shows attack names", () => {
+    const result = handleListCustomMonsters("cm-dm-1");
+    expect(result.success).toBe(true);
+    const templates = result.data!.templates as { name: string; attacks: string[] }[];
+    const treant = templates.find((t) => t.name === "Corrupted Treant");
+    expect(treant!.attacks).toContain("Slam");
+    expect(treant!.attacks).toContain("Root Whip");
+  });
+
+  test("list_monster_templates fails for non-DM", () => {
+    const result = handleListCustomMonsters("cm-player-1");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
   });
 });

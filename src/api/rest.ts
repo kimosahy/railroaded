@@ -236,6 +236,8 @@ dm.post("/create-custom-monster", async (c) => {
   return respond(c, gm.handleCreateCustomMonster(c.get("user").userId, body as Parameters<typeof gm.handleCreateCustomMonster>[1]));
 });
 
+dm.get("/monster-templates", (c) => respond(c, gm.handleListCustomMonsters(c.get("user").userId)));
+
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));

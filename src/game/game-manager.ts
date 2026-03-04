@@ -62,7 +62,7 @@ import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
-import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable } from "../db/schema.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -2282,6 +2282,14 @@ export function handleCreateCustomMonster(userId: string, params: {
 
   monsterTemplates.set(params.name, template);
 
+  // Persist to DB (fire-and-forget)
+  const dbUserId = getDbUserId(userId);
+  db.insert(customMonsterTemplatesTable).values({
+    name: params.name,
+    createdByUserId: dbUserId ?? undefined,
+    statBlock: template,
+  }).catch((err) => console.error("[DB] Failed to persist custom monster:", err));
+
   logEvent(party, "custom_monster_created", null, {
     name: params.name,
     hpMax: template.hpMax,
@@ -2299,6 +2307,31 @@ export function handleCreateCustomMonster(userId: string, params: {
       xp_value: template.xpValue,
     },
   };
+}
+
+/**
+ * List custom (non-YAML) monster templates. DM-only.
+ */
+export function handleListCustomMonsters(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  // Custom monsters are those NOT in the YAML seed set.
+  // We track this by checking if they were loaded from YAML during initGameData.
+  // Since we can't easily distinguish, we'll return ALL monster templates —
+  // the DM needs visibility into what's available for spawn_encounter.
+  const templates: { name: string; hp_max: number; ac: number; xp_value: number; attacks: string[] }[] = [];
+  for (const [name, t] of monsterTemplates) {
+    templates.push({
+      name,
+      hp_max: t.hpMax,
+      ac: t.ac,
+      xp_value: t.xpValue,
+      attacks: t.attacks.map((a) => a.name),
+    });
+  }
+
+  return { success: true, data: { templates } };
 }
 
 // --- Internal helpers ---
@@ -2902,6 +2935,27 @@ export async function loadPersistedState(): Promise<number> {
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load persisted state:", err);
+    return 0;
+  }
+}
+
+/**
+ * Load custom monster templates from DB into the in-memory monsterTemplates map.
+ * Called at startup so DM-created monsters persist across restarts.
+ */
+export async function loadCustomMonsters(): Promise<number> {
+  try {
+    const rows = await db.select().from(customMonsterTemplatesTable);
+    let loaded = 0;
+    for (const row of rows) {
+      const stat = row.statBlock;
+      if (!stat || monsterTemplates.has(row.name)) continue; // don't overwrite YAML templates
+      monsterTemplates.set(row.name, stat);
+      loaded++;
+    }
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load custom monsters:", err);
     return 0;
   }
 }

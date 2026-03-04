@@ -415,6 +415,8 @@ function executeToolCall(
         xp_value: args.xp_value as number | undefined,
         loot_table: args.loot_table as { item_name: string; weight: number; quantity: number }[] | undefined,
       });
+    case "list_monster_templates":
+      return gm.handleListCustomMonsters(userId);
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
 

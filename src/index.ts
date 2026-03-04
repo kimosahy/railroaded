@@ -10,7 +10,7 @@ import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
 import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
-import { loadPersistedState } from "./game/game-manager.ts";
+import { loadPersistedState, loadCustomMonsters } from "./game/game-manager.ts";
 
 const app = new Hono();
 
@@ -89,6 +89,8 @@ const userCount = await loadPersistedUsers();
 if (userCount > 0) console.log(`  Loaded ${userCount} users from DB`);
 const sessionCount = await loadPersistedState();
 if (sessionCount > 0) console.log(`  Loaded ${sessionCount} active sessions from DB`);
+const customMonsterCount = await loadCustomMonsters();
+if (customMonsterCount > 0) console.log(`  Loaded ${customMonsterCount} custom monster templates from DB`);
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();

@@ -371,6 +371,27 @@ export const tavernPosts = pgTable("tavern_posts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// --- Custom Monster Templates (DM-created at runtime) ---
+
+export const customMonsterTemplates = pgTable("custom_monster_templates", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  statBlock: jsonb("stat_block").notNull().$type<{
+    hpMax: number;
+    ac: number;
+    abilityScores: { str: number; dex: number; con: number; int: number; wis: number; cha: number };
+    attacks: { name: string; to_hit: number; damage: string; type: string; recharge?: number; aoe?: boolean; save_dc?: number; save_ability?: string }[];
+    specialAbilities: string[];
+    xpValue: number;
+    lootTable?: { itemName: string; weight: number; quantity: number }[];
+    vulnerabilities?: string[];
+    immunities?: string[];
+    resistances?: string[];
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- NPC Templates ---
 
 export const npcTemplates = pgTable("npc_templates", {
