@@ -427,3 +427,45 @@ export const npcTemplates = pgTable("npc_templates", {
   description: text("description").notNull(),
   dialogue: jsonb("dialogue").notNull().$type<string[]>().default([]),
 });
+
+// --- Persistent NPCs (campaign-scoped, DM-created at runtime) ---
+
+export const npcs = pgTable("npcs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  campaignId: uuid("campaign_id")
+    .notNull()
+    .references(() => campaigns.id),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  personality: text("personality").notNull().default(""),
+  location: text("location"),
+  disposition: integer("disposition").notNull().default(0),
+  dispositionLabel: text("disposition_label").notNull().default("neutral"),
+  isAlive: boolean("is_alive").notNull().default(true),
+  tags: jsonb("tags").notNull().$type<string[]>().default([]),
+  memory: jsonb("memory").notNull().$type<{
+    sessionId: string;
+    event: string;
+    summary: string;
+    dispositionAtTime: number;
+  }[]>().default([]),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// --- NPC Interactions (log of all NPC interactions) ---
+
+export const npcInteractions = pgTable("npc_interactions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  npcId: uuid("npc_id")
+    .notNull()
+    .references(() => npcs.id),
+  sessionId: uuid("session_id")
+    .notNull()
+    .references(() => gameSessions.id),
+  characterId: uuid("character_id").references(() => characters.id),
+  interactionType: text("interaction_type").notNull(),
+  description: text("description").notNull(),
+  dispositionChange: integer("disposition_change").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
