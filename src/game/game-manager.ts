@@ -1000,6 +1000,10 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 
+  if (char.conditions.includes("dead")) {
+    return { success: false, error: "Dead characters cannot rest." };
+  }
+
   const conMod = abilityModifier(char.abilityScores.con);
   const result = doShortRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
@@ -1031,6 +1035,10 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 
+  if (char.conditions.includes("dead")) {
+    return { success: false, error: "Dead characters cannot rest." };
+  }
+
   const result = doLongRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
     hitDice: char.hitDice,
@@ -1042,7 +1050,8 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   char.hpCurrent = result.hpAfter;
   char.hitDice = { ...char.hitDice, current: result.hitDiceTotal };
   char.spellSlots = result.newSpellSlots;
-  char.conditions = [];
+  // Clear conditions (unconscious, stable, etc.) but preserve "dead" — though we already block dead above
+  char.conditions = char.conditions.filter((c) => c === "dead");
 
   return {
     success: true,
@@ -2764,10 +2773,11 @@ function snapshotCharacters(party: GameParty): void {
         proficiencies: char.proficiencies,
         features: char.features,
         conditions: char.conditions,
+        deathSaves: char.deathSaves,
         backstory: char.backstory,
         personality: char.personality,
         playstyle: char.playstyle,
-        isAlive: char.hpCurrent > 0,
+        isAlive: char.hpCurrent > 0 && !char.conditions.includes("dead"),
       };
 
       if (char.dbCharId) {
