@@ -198,6 +198,21 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleSpawnEncounter",
   },
 
+  {
+    name: "trigger_encounter",
+    description:
+      "Trigger the pre-placed encounter in the current room. Dungeon templates define " +
+      "suggested encounters for specific rooms — this tool spawns that encounter automatically " +
+      "without needing to specify a monster list. Use get_room_state to see if the current " +
+      "room has a suggested encounter waiting. Each room's encounter can only be triggered once. " +
+      "If you want a custom encounter instead, use spawn_encounter.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    handler: "handleTriggerEncounter",
+  },
+
   // -- Monster combat -------------------------------------------------------
 
   {

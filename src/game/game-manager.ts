@@ -54,7 +54,7 @@ import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } 
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
-import { getRandomTemplate, type DungeonTemplate } from "./templates.ts";
+import { getRandomTemplate, type DungeonTemplate, type TemplateEncounter } from "./templates.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
@@ -86,6 +86,8 @@ interface GameParty {
   session: SessionState | null;
   monsters: MonsterInstance[];
   events: SessionEvent[];
+  templateEncounters: Map<string, TemplateEncounter>; // roomId → encounter
+  triggeredEncounters: Set<string>;                   // roomIds already triggered
   dbPartyId: string | null;     // UUID from parties table
   dbSessionId: string | null;   // UUID from game_sessions table
   dbReady: Promise<void> | null; // resolves when DB session row exists
@@ -1476,6 +1478,27 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   };
 }
 
+export function handleTriggerEncounter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session) return { success: false, error: "No active session." };
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+
+  const room = getCurrentRoom(party.dungeonState);
+  if (!room) return { success: false, error: "No current room." };
+
+  const enc = party.templateEncounters.get(room.id);
+  if (!enc) return { success: false, error: `No pre-placed encounter in room "${room.name}". Use spawn_encounter to create a custom one.` };
+  if (party.triggeredEncounters.has(room.id)) return { success: false, error: `Encounter "${enc.name}" in room "${room.name}" has already been triggered.` };
+
+  // Mark as triggered before spawning
+  party.triggeredEncounters.add(room.id);
+
+  // Delegate to handleSpawnEncounter with the template's monster list
+  const monsters = enc.monsters.map((m) => ({ template_name: m.templateName, count: m.count }));
+  return handleSpawnEncounter(userId, { monsters });
+}
+
 export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -1774,12 +1797,27 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
   const exits = getAvailableExits(party.dungeonState);
   const aliveMonsters = getAliveMonsters(party.monsters);
 
+  // Check for pre-placed encounter in this room
+  let suggestedEncounter: Record<string, unknown> | null = null;
+  if (room) {
+    const enc = party.templateEncounters.get(room.id);
+    if (enc && !party.triggeredEncounters.has(room.id)) {
+      suggestedEncounter = {
+        id: enc.id,
+        name: enc.name,
+        difficulty: enc.difficulty,
+        monsters: enc.monsters.map((m) => ({ templateName: m.templateName, count: m.count })),
+      };
+    }
+  }
+
   return {
     success: true,
     data: {
       room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
       monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac })),
+      suggestedEncounter,
     },
   };
 }
@@ -2035,6 +2073,18 @@ function generatePartyName(memberIds: string[]): string {
   return `The ${adj} ${noun}`;
 }
 
+function encountersFromTemplate(template: DungeonTemplate): Map<string, TemplateEncounter> {
+  const map = new Map<string, TemplateEncounter>();
+  const encounterById = new Map(template.encounters.map((e) => [e.id, e]));
+  for (const room of template.rooms) {
+    if (room.suggestedEncounter) {
+      const enc = encounterById.get(room.suggestedEncounter);
+      if (enc) map.set(room.id, enc);
+    }
+  }
+  return map;
+}
+
 function dungeonStateFromTemplate(template: DungeonTemplate): DungeonState {
   const rooms = template.rooms.map((r) => ({
     id: r.id,
@@ -2081,6 +2131,8 @@ function formParty(match: MatchResult): void {
     session: null,
     monsters: [],
     events: [],
+    templateEncounters: new Map(),
+    triggeredEncounters: new Set(),
     dbPartyId: null,
     dbSessionId: null,
     dbReady: null,
@@ -2102,6 +2154,7 @@ function formParty(match: MatchResult): void {
 
   // Load dungeon from a template (pick random), with hardcoded fallback
   const template = getRandomTemplate();
+  party.templateEncounters = template ? encountersFromTemplate(template) : new Map();
   party.dungeonState = template
     ? dungeonStateFromTemplate(template)
     : createDungeonState(fallbackRooms(), fallbackConnections(), "room-1");
@@ -2521,6 +2574,8 @@ export async function loadPersistedState(): Promise<number> {
         },
         monsters: [],
         events,
+        templateEncounters: restoreTemplate ? encountersFromTemplate(restoreTemplate) : new Map(),
+        triggeredEncounters: new Set(),
         dbPartyId: partyRow.id,
         dbSessionId: sessionRow.id,
         dbReady: Promise.resolve(),
