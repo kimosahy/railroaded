@@ -17,9 +17,9 @@ Read these when you need depth. Don't memorize — look things up.
 
 ---
 
-## Current Sprint: v2 — Persistence & Spectator Foundation
+## Current Sprint: Sprint C — Persistence & World
 
-Goal: Make game data survive restarts and build the foundation for a spectator experience. Nothing audience-facing works until events persist.
+Goal: Multi-session campaigns with persistent characters, NPCs that remember you, and a growing world. Build in phase order (1→5) — each phase depends on the previous.
 
 ### Done (verified by playtest)
 
@@ -39,55 +39,199 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 
 ### Sprint Backlog (in priority order)
 
-**P3 — Gameplay Depth & Content Creation**
+**P3 — Gameplay Depth & Content Creation (COMPLETE)**
 
-9. **Skill checks with context**
-   - What exists: `request_check` takes player, ability, DC, skill. Rolls d20, returns pass/fail.
-   - What's missing: Margin of success/failure (return `margin` field). Advantage/disadvantage params (roll 2d20, take higher/lower). Contested rolls (new `request_contested_check` endpoint). Group checks returning individual results.
-   - Files: `src/game/game-manager.ts` (handleRequestCheck, handleRequestGroupCheck), `src/tools/dm-tools.ts`, `src/engine/checks.ts`
-   - Complexity: Low
+9. ~~**Skill checks with context**~~ ✅ Margin field, advantage/disadvantage, contested checks, group checks. (Commits 106c40b, 9f71e57)
+10. ~~**Loot flow end-to-end**~~ ✅ Item catalog, data-driven items, equip/unequip, loot drops on monster death. (Commit c93dc62)
+11. ~~**Custom dungeon templates**~~ ✅ YAML template loader (3 templates), random template selection at session start, pre-placed encounters (`trigger_encounter` tool), pre-placed loot (`loot_room` tool), `interact_with_feature` tool, `override_room_description` tool. (Commits d97eb37 → 127bfbb)
+12. ~~**Custom monster templates**~~ ✅ `create_custom_monster` DM tool, recharge/AoE/save-based attacks, DB persistence via `custom_monster_templates` table, `list_monster_templates` tool. (Commits 3c8e558 → 5378c5e)
 
-10. **Loot flow end-to-end**
-    - What exists: Characters have inventory. DM has `award_loot` with `item_id`. Items in `data/items.yaml`.
-    - What's missing: Discoverable loot catalog (`list_items` tool for DM). Use items in combat (Potion of Healing as action). Equipment swapping with stat recalc. Item descriptions in `get_inventory`. Loot drops on monster death.
-    - Files: `src/game/game-manager.ts`, `src/tools/player-tools.ts`, `src/tools/dm-tools.ts`, `src/engine/loot.ts`, `data/items.yaml`
-    - Complexity: Medium
+**P4 — Persistence & World (Sprint C)**
 
-11. **Custom dungeon templates**
-    - What exists: Server generates 3-room linear dungeon from YAML templates.
-    - What's missing: DM-defined room graphs (forks, secret rooms, loops). Interactable features (table=cover, weapon rack=lootable). DM scene override for room descriptions. Pre-placed encounters and loot per room.
-    - Schema: `rooms`, `room_connections`, `campaign_templates` tables already exist. Main work is template creation flow and feature interaction system.
-    - Files: `src/game/dungeon.ts`, `src/tools/dm-tools.ts`, new template creation endpoints, `data/templates/`
-    - Complexity: High (2-3 day sprint)
+Spec by Poormetheus. 5 phases, each depends on the one before it. Build in order.
 
-12. **Custom monster templates**
-    - What exists: Fixed monster templates from `data/monsters.yaml`.
-    - What's missing: DM-defined stat blocks at runtime (custom HP, AC, attacks, vulnerabilities, immunities, behavior hints). Persist custom templates in DB for reuse across sessions. Monster abilities beyond basic attacks (recharge abilities, AoE, save-or-suck).
-    - Files: `src/game/game-manager.ts`, `src/tools/dm-tools.ts`, `src/db/schema.ts`, `data/monsters.yaml`
-    - Complexity: Medium
+### Phase 1: Campaign Shell (item 13a)
 
-**P4 — Persistence & World**
+Everything else hangs off the campaign container. Build this first.
 
-13. **Campaign / adventure arcs (multi-session)**
-    - What exists: Single sessions only. No continuity.
-    - What's missing: Persistent parties across sessions (same characters reconvene). Multi-dungeon campaigns (complete Dungeon 1 → town → Dungeon 2). Between-session phase (rest, shop, NPC interactions). Level-up between sessions. Campaign state tracking (completed dungeons, story flags, factions).
-    - Schema: New `campaigns` table linking multiple `game_sessions` to persistent party + story state.
-    - Files: New `src/game/campaign.ts`, extend `src/game/session.ts`, new schema table
-    - Complexity: High (3-5 day sprint)
+**Schema:**
+```sql
+CREATE TABLE campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  dm_user_id UUID NOT NULL REFERENCES users(id),
+  party_id UUID NOT NULL REFERENCES parties(id),
+  status TEXT NOT NULL DEFAULT 'active',       -- active | paused | completed | abandoned
+  current_chapter INTEGER NOT NULL DEFAULT 1,
+  story_flags JSONB NOT NULL DEFAULT '{}',     -- {"ruins_cleared": true, "unoren_allied": true}
+  total_sessions INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
-14. **NPC persistence**
-    - What exists: `npc_templates` table in schema. DM has `voice_npc` tool. NPCs are ephemeral.
-    - What's missing: NPCs as persistent entities (name, personality, disposition, location, dialogue history). NPCs remember interactions. Disposition system (actions shift friendly/neutral/hostile). DM NPC management tools. NPC interactions logged as events.
-    - Schema: Extend `npc_templates`, add `npc_interactions` join table, disposition field, location reference.
-    - Files: `src/db/schema.ts`, `src/tools/dm-tools.ts`, `src/game/game-manager.ts`, new `src/game/npcs.ts`
-    - Complexity: Medium
+ALTER TABLE game_sessions ADD COLUMN campaign_id UUID REFERENCES campaigns(id);
+ALTER TABLE game_sessions ADD COLUMN session_number INTEGER;
+ALTER TABLE game_sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'dungeon'; -- dungeon | town | travel
+```
 
-15. **Worldbuilding accumulation**
-    - What exists: Nothing — no persistent world state across sessions.
-    - What's needed: World Entity Codex (tagged entity store: locations, NPCs, factions, items, events, lore). Auto-extraction batch job (post-session, extracts entities from events). DM codex tools (`create_world_entity`, `query_codex`). Cross-session continuity (new DMs can query what's known). Website "World" page.
-    - Schema: New `world_entities` table with JSONB for flexible schema.
-    - Files: New `src/game/codex.ts`, new schema, extend narrator batch, new spectator endpoint, new website page
-    - Complexity: Medium for MVP, High for full cross-session continuity
+**Build:**
+- `campaigns` table + Drizzle migration
+- `campaign_id` columns on `game_sessions`, `characters`, `parties`
+- `create_campaign` DM tool — creates campaign, links to party
+- `start_session` modified to accept campaign_id, auto-increment session_number
+- `handleEndSession` modified to update campaign.total_sessions
+- Campaign briefing endpoint: `GET /spectator/campaigns/{id}/briefing` — returns party, session count, story flags, known NPCs, active quests
+- `set_story_flag` / `get_story_flags` DM tools
+
+### Phase 2: Character Persistence Across Sessions (item 13b)
+
+Campaigns are meaningless without persistent characters.
+
+**Schema:**
+```sql
+ALTER TABLE characters ADD COLUMN campaign_id UUID REFERENCES campaigns(id);
+ALTER TABLE characters ADD COLUMN died_in_session UUID REFERENCES game_sessions(id);
+ALTER TABLE characters ADD COLUMN cause_of_death TEXT;
+ALTER TABLE characters ADD COLUMN gold INTEGER NOT NULL DEFAULT 0;
+```
+
+**Build:**
+- On session end, snapshot ALL character state to DB (HP, XP, inventory, conditions, gold, spell slots)
+- On new session start within a campaign, load character state from DB instead of creating fresh
+- Character death handling: set `is_alive = false`, `died_in_session`, `cause_of_death`
+- Dead characters stay in DB — part of campaign history. Player can create a new character and join the same party
+- `award_gold` DM tool
+- Level-up auto-application when XP threshold met (5e standard: L2=300, L3=900, L4=2700, L5=6500). Server applies HP increase, new spell slots, class features. Level cap 5
+- Also snapshot character state on phase transitions (combat → exploration), not just session end — covers crash recovery
+
+### Phase 3: NPC System (item 14)
+
+NPCs make the world feel lived-in. The emotional core of between-session play.
+
+**Schema:**
+```sql
+CREATE TABLE npcs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  personality TEXT NOT NULL DEFAULT '',
+  location TEXT,
+  disposition INTEGER NOT NULL DEFAULT 0,      -- -100 (hostile) to +100 (devoted)
+  disposition_label TEXT NOT NULL DEFAULT 'neutral',
+  is_alive BOOLEAN NOT NULL DEFAULT TRUE,
+  tags JSONB NOT NULL DEFAULT '[]',            -- ["merchant", "quest_giver"]
+  memory JSONB NOT NULL DEFAULT '[]',          -- [{sessionId, event, summary, disposition_at_time}]
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE npc_interactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  npc_id UUID NOT NULL REFERENCES npcs(id),
+  session_id UUID NOT NULL REFERENCES game_sessions(id),
+  character_id UUID REFERENCES characters(id),
+  interaction_type TEXT NOT NULL,              -- dialogue | trade | combat | quest_given | quest_completed | gift | theft | betrayal
+  description TEXT NOT NULL,
+  disposition_change INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Disposition scale:** -100 hostile, -50 unfriendly, -25 wary, 0 neutral, +25 friendly, +50 allied, +100 devoted. DM sets exact shift via `update_npc_disposition(npc_id, change, reason)`.
+
+**NPC memory:** `npcs.memory` JSONB array stores last 20 specific events (not just vibes). Format: `{sessionId, event, summary, disposition_at_time}`. Full history lives in `npc_interactions`. Memory gives the DM agent narrative fuel to roleplay the NPC.
+
+**Build:**
+- `npcs` + `npc_interactions` tables + migrations
+- `create_npc` DM tool (name, description, personality, location, tags)
+- `get_npc` / `list_npcs` DM tools
+- `update_npc_disposition` DM tool — auto-computes label, writes interaction log, updates memory array
+- `voice_npc` modified to log the interaction and reference the persistent NPC entity
+- `talk_to_npc` player tool (signals DM that player wants to interact with specific NPC)
+- Disposition label auto-computation from score thresholds
+- NPC memory pruning (keep last 20, oldest pruned)
+
+### Phase 4: Between-Session Phase (item 13c)
+
+This is where campaigns become campaigns instead of disconnected sessions. Requires characters (Phase 2) and NPCs (Phase 3).
+
+**New phase:** Add `town` to session phase enum. Between-session is a session of type `town` that starts automatically after a dungeon session ends.
+
+**DM tools in town:**
+- `narrate` — set the scene
+- `voice_npc` — roleplay NPCs
+- `create_npc` — introduce new NPCs
+- `update_npc_disposition` — adjust relationships
+- `offer_quest` — present quest hooks (logged as story flag when accepted)
+- `set_story_flag` — mark campaign progress
+- `advance_to_dungeon` — transition to next dungeon session (creates new session)
+- `trigger_long_rest` — full party resource restore
+
+**Player tools in town:**
+- `party_chat` / `whisper` — roleplay and plan
+- `talk_to_npc` — initiate NPC interaction
+- `buy_item` / `sell_item` — trade with merchant NPCs (requires NPC with `merchant` tag + gold). Prices scale by disposition: friendly = 10% discount, hostile = 25% markup, allied = 20% discount
+- `journal_add` — write diary entry
+- `get_status` — check character sheet
+
+**Level-up:** Automatic when XP threshold met during town phase. Server applies mechanical changes (HP, spell slots, class features). DM narrates the growth.
+
+### Phase 5: World Codex (item 15)
+
+The long game. Makes Session 20 feel different from Session 2 for spectators.
+
+**Schema:**
+```sql
+CREATE TABLE world_entities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID REFERENCES campaigns(id),   -- NULL = global/shared across campaigns
+  type TEXT NOT NULL,                          -- location | faction | lore | event | artifact
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  tags JSONB NOT NULL DEFAULT '[]',
+  relationships JSONB NOT NULL DEFAULT '[]',   -- [{entityId, type: "located_in" | "allied_with" | "created_by"}]
+  first_session_id UUID REFERENCES game_sessions(id),
+  discovered_by JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE world_entity_mentions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id UUID NOT NULL REFERENCES world_entities(id),
+  session_id UUID NOT NULL REFERENCES game_sessions(id),
+  context TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Build:**
+- `world_entities` + `world_entity_mentions` tables + migrations
+- `create_world_entity` / `update_world_entity` / `query_codex` DM tools
+- `promote_to_global` DM tool (make entity visible across campaigns — nulls campaign_id)
+- `GET /spectator/codex` endpoint for website
+- Campaign briefing endpoint enhanced with known locations, NPCs, active quests, recent summary
+- Auto-extraction batch job (post-session): extract entities from session events. Simple approach — can be LLM-powered later but start with rule-based extraction from event types
+
+### Campaign Briefing Endpoint (final form after Phase 5)
+
+`GET /spectator/campaigns/{id}/briefing` returns everything a new DM needs to run the next session:
+- Campaign name, sessions completed, status
+- Party: members with name/class/level/status (alive/dead + cause)
+- Story flags
+- Known locations, known NPCs (with disposition labels)
+- Active quests
+- Recent summary (1-2 sentence recap of last session)
+
+### Design Rules for Sprint C
+
+- **Character death is permanent.** Dead characters stay in DB for history. Player creates new character, joins party during next town phase
+- **Party changes happen between sessions only.** Never mid-dungeon
+- **Two campaigns can share a world.** `world_entities.campaign_id = NULL` means global. Default is campaign-scoped. DM opts in to global via `promote_to_global`
+- **NPCs belong to campaigns.** One NPC per campaign. If the same NPC appears in two campaigns, they're two separate DB rows
+- **Session crash recovery:** Event sourcing already handles this. Additionally snapshot character state on phase transitions (not just session end) to minimize data loss window
 
 **P5 — Spectator Infrastructure**
 
@@ -103,11 +247,11 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
     - Files: New `src/game/scheduler.ts`, integration with OpenClaw crons, config for cadence/budget
     - Complexity: Medium
 
-### Recommended Sprint Sequence
+### Sprint Sequence
 
-- **Sprint A (gameplay depth):** Items 9 + 10 (skill checks + loot). Makes existing combat richer with minimal structural change.
-- **Sprint B (content creation):** Items 11 + 12 (custom dungeons + custom monsters). Unlocks DM creativity — when the platform stops being a tech demo.
-- **Sprint C (persistence + world):** Items 13 + 14 + 15 (campaigns + NPCs + worldbuilding). The long game — sessions have continuity, the world grows.
+- ~~**Sprint A (gameplay depth):** Items 9 + 10~~ ✅ Complete
+- ~~**Sprint B (content creation):** Items 11 + 12~~ ✅ Complete
+- **Sprint C (persistence + world):** Items 13 + 14 + 15. Five phases — campaign shell → character persistence → NPCs → between-session → world codex. Full spec above.
 - **Sprint D (spectator infra):** Items 16 + 17 (transcripts + automated scheduling). Makes the spectator experience self-sustaining.
 
 ---
@@ -117,7 +261,7 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 1. **Read the file before you touch it.** This is existing code. Understand what's there before changing it.
 2. **One backlog item at a time.** Complete it (code + test + commit) before starting the next.
 3. **Don't refactor.** If something works but looks ugly, leave it. We're adding features, not polishing.
-4. **game-manager.ts is sacred.** It's 1265 lines and everything flows through it. Be surgical. Change only what's needed. Don't restructure it.
+4. **game-manager.ts is sacred.** It's ~2,950 lines and everything flows through it. Be surgical. Change only what's needed. Don't restructure it.
 5. **New tools need approval.** Adding a tool to player-tools.ts or dm-tools.ts changes the agent API. Flag it — don't just add it.
 6. **Test everything.** `bun test` must pass before every commit. Add tests for new engine logic.
 7. **Commit after each item.** Not at the end. Each backlog item = at least one commit.
@@ -129,8 +273,8 @@ Goal: Make game data survive restarts and build the foundation for a spectator e
 
 Everything from the original spec is implemented and deployed. Key facts:
 
-- **8,745 lines of TypeScript** across 32 source files.
-- **7 test files** (1,462 lines) covering all engine modules.
+- **~11,500 lines of TypeScript** across source files, ~2,800 lines of tests.
+- **238 tests** covering all engine modules.
 - **Full game loop works:** Character creation → matchmaking → party formation → session start → exploration → combat → rest → session end.
 - **Three transports operational:** REST, WebSocket, MCP.
 - **Database:** PostgreSQL via Drizzle ORM with full schema (16 tables).
