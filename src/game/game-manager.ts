@@ -98,6 +98,20 @@ interface GameParty {
   dbReady: Promise<void> | null; // resolves when DB session row exists
 }
 
+interface CampaignQuest {
+  id: string;
+  title: string;
+  description: string;
+  status: "active" | "completed" | "failed";
+  giver_npc_id?: string;
+}
+
+interface SessionHistoryEntry {
+  session_number: number;
+  summary: string;
+  completed_dungeon?: string;
+}
+
 interface GameCampaign {
   id: string;
   name: string;
@@ -106,6 +120,8 @@ interface GameCampaign {
   partyId: string | null;          // in-memory party ID once assigned
   storyFlags: Record<string, unknown>;
   completedDungeons: string[];
+  quests: CampaignQuest[];
+  sessionHistory: SessionHistoryEntry[];
   sessionCount: number;
   status: "active" | "completed" | "abandoned";
   dbCampaignId: string | null;     // UUID from campaigns table
@@ -2423,22 +2439,22 @@ export function handleEndSession(userId: string, params: { summary: string; comp
       if (params.completed_dungeon && !campaign.completedDungeons.includes(params.completed_dungeon)) {
         campaign.completedDungeons.push(params.completed_dungeon);
       }
+
+      // Record session history
+      campaign.sessionHistory.push({
+        session_number: campaign.sessionCount,
+        summary: params.summary,
+        completed_dungeon: params.completed_dungeon,
+      });
+
       campaignUpdate = {
         campaign_name: campaign.name,
         campaign_session_count: campaign.sessionCount,
         completed_dungeons: campaign.completedDungeons,
       };
 
-      // Persist campaign updates to DB
-      if (campaign.dbCampaignId) {
-        db.update(campaignsTable)
-          .set({
-            sessionCount: campaign.sessionCount,
-            completedDungeons: campaign.completedDungeons,
-          })
-          .where(eq(campaignsTable.id, campaign.dbCampaignId))
-          .catch((err) => console.error("[DB] Failed to update campaign:", err));
-      }
+      // Persist campaign updates to DB (quests + sessionHistory stored in storyFlags)
+      persistCampaignState(campaign);
     }
   }
 
@@ -2481,6 +2497,8 @@ export function handleCreateCampaign(userId: string, params: {
     partyId: party.id,
     storyFlags: {},
     completedDungeons: [],
+    quests: [],
+    sessionHistory: [],
     sessionCount: party.session ? 1 : 0,
     status: "active",
     dbCampaignId: null,
@@ -2536,23 +2554,45 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
     return { success: false, error: "Campaign not found." };
   }
 
-  // Gather party member info
+  // Gather full party member info for briefing
   const members = party.members.map((mid) => {
     const c = characters.get(mid);
-    return c ? { name: c.name, class: c.class, level: c.level, hp: c.hpCurrent, hpMax: c.hpMax } : null;
+    if (!c) return null;
+    const nextLevelXp = c.level < MAX_LEVEL ? XP_THRESHOLDS[c.level + 1] : null;
+    return {
+      id: c.id,
+      name: c.name,
+      race: c.race,
+      class: c.class,
+      level: c.level,
+      xp: c.xp,
+      xp_next_level: nextLevelXp,
+      hp: c.hpCurrent,
+      hpMax: c.hpMax,
+      ac: c.ac,
+      gold: c.gold,
+      conditions: c.conditions,
+      equipment: c.equipment,
+      inventory: c.inventory,
+      spell_slots: c.spellSlots,
+      features: c.features,
+    };
   }).filter(Boolean);
 
-  // Gather campaign NPCs
+  // Gather campaign NPCs with personality and recent memory
   const campaignNpcs = [...npcsMap.values()]
     .filter((n) => n.campaignId === campaign.id)
     .map((n) => ({
       npc_id: n.id,
       name: n.name,
+      description: n.description,
+      personality: n.personality,
       location: n.location,
       disposition: n.disposition,
       disposition_label: n.dispositionLabel,
       is_alive: n.isAlive,
       tags: n.tags,
+      recent_memory: n.memory.slice(-5),
     }));
 
   return {
@@ -2564,7 +2604,9 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
       status: campaign.status,
       session_count: campaign.sessionCount,
       completed_dungeons: campaign.completedDungeons,
-      story_flags: campaign.storyFlags,
+      story_flags: Object.fromEntries(Object.entries(campaign.storyFlags).filter(([k]) => !k.startsWith("__"))),
+      quests: campaign.quests,
+      previous_sessions: campaign.sessionHistory,
       party_name: party.name,
       party_members: members,
       npcs: campaignNpcs,
@@ -2627,19 +2669,15 @@ export function handleStartCampaignSession(userId: string): { success: boolean; 
     sessionNumber: campaign.sessionCount + 1,
   });
 
-  // Gather party info
-  const members = party.members.map((mid) => {
-    const c = characters.get(mid);
-    return c ? { name: c.name, class: c.class, level: c.level, hp: c.hpCurrent, hpMax: c.hpMax, gold: c.gold } : null;
-  }).filter(Boolean);
+  // Return the full campaign briefing so the DM has everything
+  const briefing = handleGetCampaign(userId);
+  if (!briefing.success) return briefing;
 
   return {
     success: true,
     data: {
-      campaign: campaign.name,
+      ...briefing.data!,
       session_number: campaign.sessionCount + 1,
-      party_name: party.name,
-      party_members: members,
       message: "New campaign session started! The party reconvenes for another adventure.",
     },
   };
@@ -2663,22 +2701,129 @@ export function handleSetStoryFlag(userId: string, params: {
     return { success: false, error: "Story flag key is required." };
   }
 
-  campaign.storyFlags[params.key.trim()] = params.value;
-
-  // Persist to DB
-  if (campaign.dbCampaignId) {
-    db.update(campaignsTable)
-      .set({ storyFlags: campaign.storyFlags })
-      .where(eq(campaignsTable.id, campaign.dbCampaignId))
-      .catch((err) => console.error("[DB] Failed to update story flags:", err));
+  // Reject reserved keys
+  const trimmedKey = params.key.trim();
+  if (trimmedKey.startsWith("__")) {
+    return { success: false, error: "Keys starting with '__' are reserved." };
   }
 
-  logEvent(party, "story_flag_set", null, { key: params.key, value: params.value });
+  campaign.storyFlags[trimmedKey] = params.value;
+  persistCampaignState(campaign);
+
+  logEvent(party, "story_flag_set", null, { key: trimmedKey, value: params.value });
 
   return {
     success: true,
-    data: { story_flags: campaign.storyFlags },
+    data: { story_flags: Object.fromEntries(Object.entries(campaign.storyFlags).filter(([k]) => !k.startsWith("__"))) },
   };
+}
+
+// --- Quest Tracking ---
+
+export function handleAddQuest(userId: string, params: {
+  title: string;
+  description: string;
+  giver_npc_id?: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+
+  if (!params.title || params.title.trim().length === 0) {
+    return { success: false, error: "Quest title is required." };
+  }
+
+  const quest: CampaignQuest = {
+    id: nextId("quest"),
+    title: params.title.trim(),
+    description: params.description?.trim() ?? "",
+    status: "active",
+    giver_npc_id: params.giver_npc_id,
+  };
+
+  ctx.campaign.quests.push(quest);
+  persistCampaignState(ctx.campaign);
+
+  logEvent(ctx.party, "quest_added", null, { questId: quest.id, title: quest.title });
+
+  return {
+    success: true,
+    data: {
+      quest_id: quest.id,
+      title: quest.title,
+      description: quest.description,
+      status: quest.status,
+      giver_npc_id: quest.giver_npc_id,
+    },
+  };
+}
+
+export function handleUpdateQuest(userId: string, params: {
+  quest_id: string;
+  status?: "active" | "completed" | "failed";
+  description?: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+
+  const quest = ctx.campaign.quests.find((q) => q.id === params.quest_id);
+  if (!quest) return { success: false, error: `Quest "${params.quest_id}" not found.` };
+
+  if (params.status) quest.status = params.status;
+  if (params.description !== undefined) quest.description = params.description.trim();
+
+  persistCampaignState(ctx.campaign);
+
+  logEvent(ctx.party, "quest_updated", null, { questId: quest.id, title: quest.title, status: quest.status });
+
+  return {
+    success: true,
+    data: {
+      quest_id: quest.id,
+      title: quest.title,
+      description: quest.description,
+      status: quest.status,
+      giver_npc_id: quest.giver_npc_id,
+    },
+  };
+}
+
+export function handleListQuests(userId: string, params: { status?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+
+  let quests = ctx.campaign.quests;
+  if (params.status) quests = quests.filter((q) => q.status === params.status);
+
+  return {
+    success: true,
+    data: {
+      quests: quests.map((q) => ({
+        quest_id: q.id,
+        title: q.title,
+        description: q.description,
+        status: q.status,
+        giver_npc_id: q.giver_npc_id,
+      })),
+    },
+  };
+}
+
+function persistCampaignState(campaign: GameCampaign): void {
+  if (!campaign.dbCampaignId) return;
+  // Store quests + sessionHistory in storyFlags under reserved keys
+  const flagsWithMeta = {
+    ...campaign.storyFlags,
+    __quests: campaign.quests,
+    __sessionHistory: campaign.sessionHistory,
+  };
+  db.update(campaignsTable)
+    .set({
+      sessionCount: campaign.sessionCount,
+      completedDungeons: campaign.completedDungeons,
+      storyFlags: flagsWithMeta,
+    })
+    .where(eq(campaignsTable.id, campaign.dbCampaignId))
+    .catch((err) => console.error("[DB] Failed to update campaign:", err));
 }
 
 // --- NPC Management ---
@@ -3699,6 +3844,8 @@ export async function loadCampaigns(): Promise<number> {
         partyId: linkedPartyId,
         storyFlags: (row.storyFlags as Record<string, unknown>) ?? {},
         completedDungeons: (row.completedDungeons as string[]) ?? [],
+        quests: ((row.storyFlags as Record<string, unknown>)?.__quests as CampaignQuest[]) ?? [],
+        sessionHistory: ((row.storyFlags as Record<string, unknown>)?.__sessionHistory as SessionHistoryEntry[]) ?? [],
         sessionCount: row.sessionCount,
         status: row.status as "active" | "completed" | "abandoned",
         dbCampaignId: row.id,

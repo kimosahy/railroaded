@@ -371,8 +371,9 @@ describe("campaign reconvening", () => {
 
     const start = handleStartCampaignSession("recon-dm-1");
     expect(start.success).toBe(true);
-    expect(start.data!.campaign).toBe("The Reconvening Arc");
+    expect(start.data!.name).toBe("The Reconvening Arc");
     expect(start.data!.party_members).toBeDefined();
+    expect(start.data!.message).toContain("reconvenes");
   });
 
   test("characters retain level/gold/xp after reconvening", () => {

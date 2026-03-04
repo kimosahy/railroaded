@@ -1043,6 +1043,77 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleUpdateNpcDisposition",
   },
+
+  // -- Quest Tracking ---------------------------------------------------------
+
+  {
+    name: "add_quest",
+    description:
+      "Add a quest or objective to the campaign tracker. Quests persist across sessions " +
+      "and appear in the campaign briefing. Use this when the party receives a new quest, " +
+      "mission, or objective from an NPC, discovery, or event.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Short quest title (e.g., 'Rescue the Blacksmith's Daughter', 'Clear the Goblin Warren').",
+        },
+        description: {
+          type: "string",
+          description: "Quest details — what needs to be done, where, and why.",
+        },
+        giver_npc_id: {
+          type: "string",
+          description: "ID of the NPC who gave this quest (from create_npc). Optional.",
+        },
+      },
+      required: ["title", "description"],
+    },
+    handler: "handleAddQuest",
+  },
+  {
+    name: "update_quest",
+    description:
+      "Update a quest's status or description. Mark quests as completed when the party " +
+      "fulfills the objective, or failed if they can no longer complete it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        quest_id: {
+          type: "string",
+          description: "The quest ID (from add_quest or list_quests).",
+        },
+        status: {
+          type: "string",
+          enum: ["active", "completed", "failed"],
+          description: "New quest status.",
+        },
+        description: {
+          type: "string",
+          description: "Updated description (e.g., to add new information the party discovered).",
+        },
+      },
+      required: ["quest_id"],
+    },
+    handler: "handleUpdateQuest",
+  },
+  {
+    name: "list_quests",
+    description:
+      "List all quests in the current campaign, optionally filtered by status.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        status: {
+          type: "string",
+          enum: ["active", "completed", "failed"],
+          description: "Filter by quest status. Omit to see all quests.",
+        },
+      },
+    },
+    handler: "handleListQuests",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

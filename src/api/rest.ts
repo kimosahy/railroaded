@@ -297,6 +297,22 @@ dm.post("/npc/:npc_id/disposition", async (c) => {
   return respond(c, gm.handleUpdateNpcDisposition(c.get("user").userId, { npc_id: c.req.param("npc_id"), ...body }));
 });
 
+// Quest tracking
+dm.post("/quest", async (c) => {
+  const body = await c.req.json<{ title: string; description: string; giver_npc_id?: string }>();
+  return respond(c, gm.handleAddQuest(c.get("user").userId, body));
+});
+
+dm.patch("/quest/:quest_id", async (c) => {
+  const body = await c.req.json<{ status?: "active" | "completed" | "failed"; description?: string }>();
+  return respond(c, gm.handleUpdateQuest(c.get("user").userId, { quest_id: c.req.param("quest_id"), ...body }));
+});
+
+dm.get("/quests", (c) => {
+  const status = c.req.query("status");
+  return respond(c, gm.handleListQuests(c.get("user").userId, { status }));
+});
+
 // Also allow DM to queue
 dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
 

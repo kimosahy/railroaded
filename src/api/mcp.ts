@@ -464,6 +464,22 @@ function executeToolCall(
         change: args.change as number,
         reason: args.reason as string,
       });
+    case "add_quest":
+      return gm.handleAddQuest(userId, {
+        title: args.title as string,
+        description: args.description as string,
+        giver_npc_id: args.giver_npc_id as string | undefined,
+      });
+    case "update_quest":
+      return gm.handleUpdateQuest(userId, {
+        quest_id: args.quest_id as string,
+        status: args.status as "active" | "completed" | "failed" | undefined,
+        description: args.description as string | undefined,
+      });
+    case "list_quests":
+      return gm.handleListQuests(userId, {
+        status: args.status as string | undefined,
+      });
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
 
