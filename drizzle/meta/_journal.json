@@ -29,6 +29,13 @@
       "when": 1772624908736,
       "tag": "0003_illegal_terror",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1772626621746,
+      "tag": "0004_light_whizzer",
+      "breakpoints": true
     }
   ]
 }

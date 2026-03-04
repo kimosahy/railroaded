@@ -3149,6 +3149,54 @@ export async function loadCustomMonsters(): Promise<number> {
   }
 }
 
+/**
+ * Load campaigns from DB into memory.
+ * Re-links campaigns to parties by matching dbPartyId.
+ */
+export async function loadCampaigns(): Promise<number> {
+  try {
+    const rows = await db.select().from(campaignsTable);
+    let loaded = 0;
+    for (const row of rows) {
+      if (row.status === "abandoned") continue; // skip abandoned campaigns
+
+      const campaignId = nextId("campaign");
+
+      // Find the in-memory party linked to this campaign's DB party
+      let linkedPartyId: string | null = null;
+      if (row.partyId) {
+        for (const [pid, p] of parties) {
+          if (p.dbPartyId === row.partyId) {
+            linkedPartyId = pid;
+            p.campaignId = campaignId;
+            break;
+          }
+        }
+      }
+
+      const campaign: GameCampaign = {
+        id: campaignId,
+        name: row.name,
+        description: row.description,
+        createdByUserId: row.createdByUserId ? findUserIdByDbId(row.createdByUserId) : null,
+        partyId: linkedPartyId,
+        storyFlags: (row.storyFlags as Record<string, unknown>) ?? {},
+        completedDungeons: (row.completedDungeons as string[]) ?? [],
+        sessionCount: row.sessionCount,
+        status: row.status as "active" | "completed" | "abandoned",
+        dbCampaignId: row.id,
+      };
+
+      campaignsMap.set(campaignId, campaign);
+      loaded++;
+    }
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load campaigns:", err);
+    return 0;
+  }
+}
+
 // --- State access for testing ---
 
 export function getState() {
