@@ -260,6 +260,8 @@ dm.post("/end-session", async (c) => {
   return respond(c, gm.handleEndSession(c.get("user").userId, body));
 });
 
+dm.post("/start-campaign-session", (c) => respond(c, gm.handleStartCampaignSession(c.get("user").userId)));
+
 // Monster attack — DM executes a monster's turn
 dm.post("/monster-attack", async (c) => {
   const body = await c.req.json<{ monster_id: string; target_id: string; attack_name?: string }>();

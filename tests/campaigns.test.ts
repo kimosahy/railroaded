@@ -7,9 +7,12 @@ import {
   handleGetCampaign,
   handleSetStoryFlag,
   handleEndSession,
+  handleStartCampaignSession,
   handleAwardGold,
+  handleAwardXp,
   handleGetStatus,
   handleGetInventory,
+  handleLook,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -325,5 +328,70 @@ describe("gold", () => {
     const result = handleAwardGold("gold-dm-1", { amount: 0 });
     expect(result.success).toBe(false);
     expect(result.error).toContain("non-zero");
+  });
+});
+
+describe("campaign reconvening", () => {
+  test("setup: form party + campaign + award gold/xp", () => {
+    const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
+    for (let i = 1; i <= 4; i++) {
+      handleCreateCharacter(`recon-player-${i}`, {
+        name: `ReconHero${i}`,
+        race: "human",
+        class: classes[i - 1],
+        ability_scores: scores,
+      });
+      handleQueueForParty(`recon-player-${i}`);
+    }
+    const dm = handleDMQueueForParty("recon-dm-1");
+    expect(dm.success).toBe(true);
+
+    const camp = handleCreateCampaign("recon-dm-1", {
+      name: "The Reconvening Arc",
+    });
+    expect(camp.success).toBe(true);
+
+    // Award some gold and XP so we can verify persistence
+    handleAwardGold("recon-dm-1", { amount: 200 }); // 50 each
+    handleAwardXp("recon-dm-1", { amount: 1200 }); // 300 each → level 2
+  });
+
+  test("start_campaign_session fails while session is active", () => {
+    const result = handleStartCampaignSession("recon-dm-1");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("already active");
+  });
+
+  test("end session then start new campaign session", () => {
+    const end = handleEndSession("recon-dm-1", {
+      summary: "First session complete.",
+      completed_dungeon: "The Goblin Caves",
+    });
+    expect(end.success).toBe(true);
+
+    const start = handleStartCampaignSession("recon-dm-1");
+    expect(start.success).toBe(true);
+    expect(start.data!.campaign).toBe("The Reconvening Arc");
+    expect(start.data!.party_members).toBeDefined();
+  });
+
+  test("characters retain level/gold/xp after reconvening", () => {
+    const status = handleGetStatus("recon-player-1");
+    expect(status.data!.level).toBe(2);
+    expect(status.data!.gold).toBe(65); // 15 starting + 50 awarded
+    expect(status.data!.xp).toBe(300);
+  });
+
+  test("party is in new dungeon after reconvening", () => {
+    const look = handleLook("recon-player-1");
+    expect(look.success).toBe(true);
+    expect(look.data!.room).toBeDefined();
+  });
+
+  test("start_campaign_session fails without campaign", () => {
+    // Use the gold-dm who has no campaign
+    const result = handleStartCampaignSession("gold-dm-1");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No active campaign");
   });
 });

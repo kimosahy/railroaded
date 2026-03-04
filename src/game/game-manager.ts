@@ -2507,6 +2507,79 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
   };
 }
 
+export function handleStartCampaignSession(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!party.campaignId) {
+    return { success: false, error: "No active campaign for this party. Use create_campaign first." };
+  }
+
+  // Check session state — must not have an active session
+  if (party.session && !party.session.endedAt) {
+    return { success: false, error: "Session already active. End the current session before starting a new one." };
+  }
+
+  const campaign = campaignsMap.get(party.campaignId);
+  if (!campaign) return { success: false, error: "Campaign not found." };
+
+  // Reset party state for new session
+  party.monsters = [];
+  party.events = [];
+  party.triggeredEncounters = new Set();
+  party.lootedRooms = new Set();
+
+  // Load a new dungeon
+  const template = getRandomTemplate();
+  party.templateEncounters = template ? encountersFromTemplate(template) : new Map();
+  party.templateLootTables = template ? lootTablesFromTemplate(template) : new Map();
+  party.dungeonState = template
+    ? dungeonStateFromTemplate(template)
+    : createDungeonState(fallbackRooms(), fallbackConnections(), "room-1");
+
+  // Create new session
+  party.session = {
+    id: nextId("session"),
+    ...createSession({ partyId: party.id }),
+  };
+
+  // Persist new session to DB (fire-and-forget)
+  party.dbReady = (async () => {
+    try {
+      if (!party.dbPartyId) return;
+      const [sessionRow] = await db.insert(gameSessionsTable).values({
+        partyId: party.dbPartyId,
+        campaignId: campaign.dbCampaignId ?? undefined,
+      }).returning({ id: gameSessionsTable.id });
+      party.dbSessionId = sessionRow.id;
+    } catch (err) {
+      console.error("[DB] Failed to persist campaign session:", err);
+    }
+  })();
+
+  logEvent(party, "session_start", null, {
+    campaignName: campaign.name,
+    sessionNumber: campaign.sessionCount + 1,
+  });
+
+  // Gather party info
+  const members = party.members.map((mid) => {
+    const c = characters.get(mid);
+    return c ? { name: c.name, class: c.class, level: c.level, hp: c.hpCurrent, hpMax: c.hpMax, gold: c.gold } : null;
+  }).filter(Boolean);
+
+  return {
+    success: true,
+    data: {
+      campaign: campaign.name,
+      session_number: campaign.sessionCount + 1,
+      party_name: party.name,
+      party_members: members,
+      message: "New campaign session started! The party reconvenes for another adventure.",
+    },
+  };
+}
+
 export function handleSetStoryFlag(userId: string, params: {
   key: string;
   value: unknown;

@@ -727,6 +727,20 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleEndSession",
   },
+  {
+    name: "start_campaign_session",
+    description:
+      "Start a new session for an existing campaign. The party reconvenes with their " +
+      "current character state (level, HP, gold, inventory, spell slots). A new dungeon " +
+      "is generated and the party enters it. Use this after end_session to continue a " +
+      "multi-session campaign. Requires an active campaign (use create_campaign first).",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleStartCampaignSession",
+  },
 
   // -- Custom monster creation -----------------------------------------------
 
