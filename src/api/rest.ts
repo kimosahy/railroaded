@@ -216,6 +216,11 @@ dm.post("/award-xp", async (c) => {
   return respond(c, gm.handleAwardXp(c.get("user").userId, body));
 });
 
+dm.post("/award-gold", async (c) => {
+  const body = await c.req.json<{ amount: number; player_id?: string }>();
+  return respond(c, gm.handleAwardGold(c.get("user").userId, body));
+});
+
 dm.get("/items", (c) => {
   const category = c.req.query("category");
   return respond(c, gm.handleListItems(c.get("user").userId, { category }));

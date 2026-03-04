@@ -104,6 +104,7 @@ export const characters = pgTable("characters", {
   class: classEnum("class").notNull(),
   level: integer("level").notNull().default(1),
   xp: integer("xp").notNull().default(0),
+  gold: integer("gold").notNull().default(0),
   abilityScores: jsonb("ability_scores").notNull().$type<{
     str: number;
     dex: number;

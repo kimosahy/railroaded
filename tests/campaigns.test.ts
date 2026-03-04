@@ -7,6 +7,9 @@ import {
   handleGetCampaign,
   handleSetStoryFlag,
   handleEndSession,
+  handleAwardGold,
+  handleGetStatus,
+  handleGetInventory,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -259,5 +262,68 @@ describe("campaign + end_session integration", () => {
     expect(result.success).toBe(true);
     // Should NOT have campaign fields
     expect(result.data!.campaign_session_count).toBeUndefined();
+  });
+});
+
+describe("gold", () => {
+  test("setup: form a party for gold tests", () => {
+    const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
+    for (let i = 1; i <= 4; i++) {
+      handleCreateCharacter(`gold-player-${i}`, {
+        name: `GoldHero${i}`,
+        race: "human",
+        class: classes[i - 1],
+        ability_scores: scores,
+      });
+      handleQueueForParty(`gold-player-${i}`);
+    }
+    const dm = handleDMQueueForParty("gold-dm-1");
+    expect(dm.success).toBe(true);
+  });
+
+  test("characters start with class-based gold", () => {
+    // Fighter, rogue, cleric start with 15; wizard starts with 10
+    const fighter = handleGetStatus("gold-player-1");
+    expect(fighter.data!.gold).toBe(15);
+
+    const wizard = handleGetStatus("gold-player-4");
+    expect(wizard.data!.gold).toBe(10);
+  });
+
+  test("gold appears in inventory", () => {
+    const inv = handleGetInventory("gold-player-1");
+    expect(inv.data!.gold).toBe(15);
+  });
+
+  test("award_gold to specific player", () => {
+    const result = handleAwardGold("gold-dm-1", { player_id: "gold-player-1", amount: 50 });
+    expect(result.success).toBe(true);
+    expect(result.data!.amount).toBe(50);
+    expect(result.data!.new_total).toBe(65); // 15 + 50
+
+    const status = handleGetStatus("gold-player-1");
+    expect(status.data!.gold).toBe(65);
+  });
+
+  test("award_gold split among party", () => {
+    const result = handleAwardGold("gold-dm-1", { amount: 100 });
+    expect(result.success).toBe(true);
+    expect(result.data!.gold_each).toBe(25); // 100 / 4
+
+    // Fighter had 65, now 90
+    const status = handleGetStatus("gold-player-1");
+    expect(status.data!.gold).toBe(90);
+  });
+
+  test("negative gold (spending) cannot go below 0", () => {
+    const result = handleAwardGold("gold-dm-1", { player_id: "gold-player-4", amount: -999 });
+    expect(result.success).toBe(true);
+    expect(result.data!.new_total).toBe(0);
+  });
+
+  test("zero amount is rejected", () => {
+    const result = handleAwardGold("gold-dm-1", { amount: 0 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("non-zero");
   });
 });

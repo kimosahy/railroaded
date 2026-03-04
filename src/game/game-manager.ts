@@ -277,6 +277,7 @@ export function handleCreateCharacter(userId: string, params: {
       class: sheet.class,
       level: sheet.level,
       xp: sheet.xp,
+      gold: sheet.gold,
       abilityScores: sheet.abilityScores,
       hpCurrent: sheet.hpCurrent,
       hpMax: sheet.hpMax,
@@ -372,6 +373,7 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
       class: char.class,
       level: char.level,
       xp: char.xp,
+      gold: char.gold,
       hp: { current: char.hpCurrent, max: char.hpMax },
       ac: char.ac,
       abilityScores: char.abilityScores,
@@ -431,6 +433,7 @@ export function handleGetInventory(userId: string): { success: boolean; data?: R
     data: {
       equipment: char.equipment,
       inventory: inventoryDetails,
+      gold: char.gold,
     },
   };
 }
@@ -2034,6 +2037,35 @@ export function handleAwardXp(userId: string, params: { amount: number }): { suc
   return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length } };
 }
 
+export function handleAwardGold(userId: string, params: { player_id?: string; amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (params.amount === 0) return { success: false, error: "Amount must be non-zero." };
+
+  if (params.player_id) {
+    // Award to specific player
+    const char = resolveCharacter(params.player_id);
+    if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+    char.gold = Math.max(0, char.gold + params.amount);
+    logEvent(party, "gold_award", null, { characterName: char.name, amount: params.amount, newTotal: char.gold });
+    return { success: true, data: { player: char.name, amount: params.amount, new_total: char.gold } };
+  }
+
+  // Split evenly among party
+  const goldEach = Math.floor(params.amount / party.members.length);
+  const results: { name: string; received: number; new_total: number }[] = [];
+  for (const mid of party.members) {
+    const c = characters.get(mid);
+    if (c) {
+      c.gold = Math.max(0, c.gold + goldEach);
+      results.push({ name: c.name, received: goldEach, new_total: c.gold });
+    }
+  }
+  logEvent(party, "gold_award", null, { totalAmount: params.amount, goldEach, results });
+  return { success: true, data: { total_amount: params.amount, gold_each: goldEach, results } };
+}
+
 export function handleAwardLoot(userId: string, params: { player_id: string; item_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
@@ -2762,6 +2794,7 @@ function snapshotCharacters(party: GameParty): void {
       const snapshot = {
         level: char.level,
         xp: char.xp,
+        gold: char.gold,
         hpCurrent: char.hpCurrent,
         hpMax: char.hpMax,
         ac: char.ac,
@@ -3049,6 +3082,7 @@ export async function loadPersistedState(): Promise<number> {
           class: row.class,
           level: row.level,
           xp: row.xp,
+          gold: row.gold ?? 0,
           abilityScores,
           hpMax: row.hpMax,
           hpCurrent: row.hpCurrent,

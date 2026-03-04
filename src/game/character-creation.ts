@@ -21,6 +21,7 @@ export interface CharacterSheet {
   class: CharacterClass;
   level: number;
   xp: number;
+  gold: number;
   abilityScores: AbilityScores;
   hpMax: number;
   hpCurrent: number;
@@ -249,12 +250,21 @@ export function createCharacter(params: {
 
   const proficiencies = classProficiencies(params.class);
 
+  // Starting gold by class (simplified 5e averages)
+  const startingGold: Record<CharacterClass, number> = {
+    fighter: 15,
+    rogue: 15,
+    cleric: 15,
+    wizard: 10,
+  };
+
   return {
     name: params.name,
     race: params.race,
     class: params.class,
     level,
     xp: 0,
+    gold: startingGold[params.class],
     abilityScores: finalScores,
     hpMax,
     hpCurrent: hpMax,

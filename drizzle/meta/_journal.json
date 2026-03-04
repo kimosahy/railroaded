@@ -36,6 +36,13 @@
       "when": 1772626621746,
       "tag": "0004_light_whizzer",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772627437985,
+      "tag": "0005_orange_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

@@ -601,6 +601,29 @@ export const dmTools: readonly ToolDefinition[] = [
   },
 
   {
+    name: "award_gold",
+    description:
+      "Award gold to the party or a specific player. If player_id is omitted, gold is split " +
+      "evenly among all party members. Use negative amounts to deduct gold (e.g., for purchases). " +
+      "Gold persists across sessions in campaigns.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "integer",
+          description: "Amount of gold to award (positive) or deduct (negative).",
+        },
+        player_id: {
+          type: "string",
+          description: "Optional: award to a specific player (e.g., 'char-1'). If omitted, splits among party.",
+        },
+      },
+      required: ["amount"],
+    },
+    handler: "handleAwardGold",
+  },
+
+  {
     name: "award_loot",
     description:
       "Give a specific item to a player character. The item must exist in the server's " +

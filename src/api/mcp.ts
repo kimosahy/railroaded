@@ -393,6 +393,8 @@ function executeToolCall(
       return gm.handleGetRoomState(userId);
     case "award_xp":
       return gm.handleAwardXp(userId, { amount: args.amount as number });
+    case "award_gold":
+      return gm.handleAwardGold(userId, { amount: args.amount as number, player_id: args.player_id as string | undefined });
     case "list_items":
       return gm.handleListItems(userId, { category: args.category as string | undefined });
     case "award_loot":
