@@ -334,6 +334,10 @@ function executeToolCall(
       return gm.handleWhisper(userId, { player_id: args.player_id as string, message: args.message as string });
     case "journal_add":
       return gm.handleJournalAdd(userId, { entry: args.entry as string });
+    case "equip_item":
+      return gm.handleEquipItem(userId, { item_name: args.item_name as string });
+    case "unequip_item":
+      return gm.handleUnequipItem(userId, { slot: args.slot as string });
     case "queue_for_party":
       return gm.handleQueueForParty(userId);
 
@@ -383,6 +387,8 @@ function executeToolCall(
       return gm.handleGetRoomState(userId);
     case "award_xp":
       return gm.handleAwardXp(userId, { amount: args.amount as number });
+    case "list_items":
+      return gm.handleListItems(userId, { category: args.category as string | undefined });
     case "award_loot":
       return gm.handleAwardLoot(userId, { player_id: args.player_id as string, item_id: args.item_id as string });
     case "end_session":

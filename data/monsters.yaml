@@ -26,6 +26,13 @@
       type: piercing
   special_abilities:
     - "Nimble Escape: Disengage or Hide as a bonus action"
+  loot_table:
+    - item_name: Gold Coins
+      weight: 4
+      quantity: 1
+    - item_name: Dagger
+      weight: 2
+      quantity: 1
 
 - name: Skeleton
   challenge_rating: 0.25
@@ -96,6 +103,13 @@
   special_abilities:
     - "Pack Tactics: Advantage on attack if ally is within 5ft of target"
     - "Sunlight Sensitivity: Disadvantage on attacks in sunlight"
+  loot_table:
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Torch
+      weight: 2
+      quantity: 1
 
 # --- Tier 2: Standard (CR 1/8 - 1/2) ---
 
@@ -122,6 +136,16 @@
       type: piercing
   special_abilities:
     - "Martial Advantage: +2d6 damage once per turn if ally is within 5ft of target"
+  loot_table:
+    - item_name: Longsword
+      weight: 2
+      quantity: 1
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Potion of Healing
+      weight: 1
+      quantity: 1
 
 - name: Zombie
   challenge_rating: 0.25
@@ -165,6 +189,16 @@
       damage: "1d8+1"
       type: piercing
   special_abilities: []
+  loot_table:
+    - item_name: Gold Coins
+      weight: 4
+      quantity: 1
+    - item_name: Dagger
+      weight: 2
+      quantity: 1
+    - item_name: Leather Armor
+      weight: 1
+      quantity: 1
 
 - name: Giant Rat
   challenge_rating: 0.125
@@ -209,6 +243,16 @@
       type: piercing
   special_abilities:
     - "Aggressive: Move up to speed toward hostile creature as a bonus action"
+  loot_table:
+    - item_name: Handaxe
+      weight: 2
+      quantity: 1
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Potion of Healing
+      weight: 1
+      quantity: 1
 
 # --- Tier 3: Tough (CR 1-2) ---
 
@@ -236,6 +280,16 @@
   special_abilities:
     - "Surprise Attack: +2d6 damage if target is surprised"
     - "Brute: Extra damage die on melee (included in attack)"
+  loot_table:
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Potion of Healing
+      weight: 2
+      quantity: 1
+    - item_name: Mace
+      weight: 1
+      quantity: 1
 
 - name: Ghoul
   challenge_rating: 1
@@ -285,6 +339,19 @@
   special_abilities:
     - "Multiattack: Two scimitar attacks and one dagger attack"
     - "Parry: +2 AC against one melee attack (reaction)"
+  loot_table:
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Potion of Greater Healing
+      weight: 1
+      quantity: 1
+    - item_name: Longsword
+      weight: 1
+      quantity: 1
+    - item_name: Chain Shirt
+      weight: 1
+      quantity: 1
 
 - name: Ogre
   challenge_rating: 2
@@ -308,6 +375,16 @@
       damage: "2d6+4"
       type: piercing
   special_abilities: []
+  loot_table:
+    - item_name: Gold Coins
+      weight: 3
+      quantity: 1
+    - item_name: Potion of Healing
+      weight: 2
+      quantity: 1
+    - item_name: Greatsword
+      weight: 1
+      quantity: 1
 
 # --- Boss Tier (CR 3-4) ---
 
@@ -340,6 +417,16 @@
     - "Life Drain: On hit, target must DC 13 CON save or max HP reduced by damage dealt"
     - "Multiattack: Two longsword attacks or two longbow attacks"
     - "Sunlight Sensitivity: Disadvantage on attacks in sunlight"
+  loot_table:
+    - item_name: +1 Longsword
+      weight: 1
+      quantity: 1
+    - item_name: Potion of Greater Healing
+      weight: 2
+      quantity: 1
+    - item_name: Gold Coins
+      weight: 2
+      quantity: 1
 
 - name: Hobgoblin Warlord
   challenge_rating: 3
@@ -366,6 +453,19 @@
     - "Multiattack: Two greatsword attacks"
     - "Martial Advantage: +2d6 damage once per turn if ally is within 5ft"
     - "Leadership: Allies within 30ft add d4 to attack rolls and saves (recharges on short rest)"
+  loot_table:
+    - item_name: Greatsword
+      weight: 2
+      quantity: 1
+    - item_name: Chain Mail
+      weight: 1
+      quantity: 1
+    - item_name: Potion of Greater Healing
+      weight: 2
+      quantity: 1
+    - item_name: Gold Coins
+      weight: 2
+      quantity: 1
 
 - name: Young Dragon
   challenge_rating: 4
@@ -392,3 +492,19 @@
     - "Multiattack: One bite and two claw attacks"
     - "Fire Breath (Recharge 5-6): 30ft cone, DC 14 DEX save, 10d6 fire (half on save)"
     - "Frightful Presence: DC 14 WIS save or frightened for 1 minute"
+  loot_table:
+    - item_name: +1 Longsword
+      weight: 1
+      quantity: 1
+    - item_name: +1 Longbow
+      weight: 1
+      quantity: 1
+    - item_name: Ring of Protection
+      weight: 1
+      quantity: 1
+    - item_name: Potion of Greater Healing
+      weight: 2
+      quantity: 1
+    - item_name: Gold Coins
+      weight: 2
+      quantity: 1

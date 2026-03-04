@@ -102,37 +102,45 @@ export function castSpell(params: {
   casterClass: CharacterClass;
   spellSlots: SpellSlots;
   randomFn?: (sides: number) => number;
+  freecast?: boolean;
 }): CastResult {
-  const { spell, casterAbilityScores, casterClass, spellSlots, randomFn } = params;
+  const { spell, casterAbilityScores, casterClass, spellSlots, randomFn, freecast } = params;
 
-  // Check class can cast this spell
-  if (!spell.classes.includes(casterClass)) {
-    return {
-      spell,
-      success: false,
-      error: `${casterClass} cannot cast ${spell.name}`,
-      remainingSlots: spellSlots,
-    };
-  }
+  // Freecast (scrolls) skips class and slot checks
+  let newSlots: SpellSlots;
+  if (freecast) {
+    newSlots = { ...spellSlots };
+  } else {
+    // Check class can cast this spell
+    if (!spell.classes.includes(casterClass)) {
+      return {
+        spell,
+        success: false,
+        error: `${casterClass} cannot cast ${spell.name}`,
+        remainingSlots: spellSlots,
+      };
+    }
 
-  // Check and expend spell slot
-  if (!hasSpellSlot(spellSlots, spell.level)) {
-    return {
-      spell,
-      success: false,
-      error: `No level ${spell.level} spell slots remaining`,
-      remainingSlots: spellSlots,
-    };
-  }
+    // Check and expend spell slot
+    if (!hasSpellSlot(spellSlots, spell.level)) {
+      return {
+        spell,
+        success: false,
+        error: `No level ${spell.level} spell slots remaining`,
+        remainingSlots: spellSlots,
+      };
+    }
 
-  const newSlots = expendSpellSlot(spellSlots, spell.level);
-  if (!newSlots) {
-    return {
-      spell,
-      success: false,
-      error: `Failed to expend spell slot`,
-      remainingSlots: spellSlots,
-    };
+    const expended = expendSpellSlot(spellSlots, spell.level);
+    if (!expended) {
+      return {
+        spell,
+        success: false,
+        error: `Failed to expend spell slot`,
+        remainingSlots: spellSlots,
+      };
+    }
+    newSlots = expended;
   }
 
   // Roll damage or healing if applicable

@@ -629,6 +629,49 @@ export const playerTools: PlayerToolDefinition[] = [
     handler: "handleJournalAdd",
   },
 
+  // ── Equipment ──────────────────────────────────────────────────────────
+  {
+    name: "equip_item",
+    description:
+      "Equip a weapon, armor, or shield from your inventory. Replaces the " +
+      "currently equipped item in that slot (the old item returns to your " +
+      "inventory). Automatically recalculates your AC when equipping armor " +
+      "or shields. Use get_inventory() to see what you can equip.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_name: {
+          type: "string",
+          description: "Name of the item to equip from your inventory.",
+          minLength: 1,
+        },
+      },
+      required: ["item_name"],
+      additionalProperties: false,
+    },
+    handler: "handleEquipItem",
+  },
+
+  {
+    name: "unequip_item",
+    description:
+      "Unequip an item from a slot, returning it to your inventory. " +
+      "Recalculates AC when removing armor or shield.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slot: {
+          type: "string",
+          description: "The equipment slot to unequip: weapon, armor, or shield.",
+          enum: ["weapon", "armor", "shield"] as const,
+        },
+      },
+      required: ["slot"],
+      additionalProperties: false,
+    },
+    handler: "handleUnequipItem",
+  },
+
   // ── Matchmaking ─────────────────────────────────────────────────────────
   {
     name: "queue_for_party",

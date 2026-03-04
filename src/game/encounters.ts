@@ -5,6 +5,7 @@
 import { rollInitiative, sortInitiative } from "../engine/combat.ts";
 import type { InitiativeEntry } from "../engine/combat.ts";
 import type { AbilityScores } from "../types.ts";
+import type { LootTableEntry } from "../engine/loot.ts";
 
 export interface MonsterInstance {
   id: string;
@@ -19,6 +20,7 @@ export interface MonsterInstance {
   xpValue: number;
   conditions: string[];
   isAlive: boolean;
+  lootTable?: LootTableEntry[];
 }
 
 export interface EncounterState {
@@ -41,6 +43,7 @@ export function spawnMonsters(
       attacks: { name: string; to_hit: number; damage: string; type: string }[];
       specialAbilities: string[];
       xpValue: number;
+      lootTable?: LootTableEntry[];
     };
   }[]
 ): MonsterInstance[] {
@@ -67,6 +70,7 @@ export function spawnMonsters(
         xpValue: group.template.xpValue,
         conditions: [],
         isAlive: true,
+        lootTable: group.template.lootTable ? [...group.template.lootTable] : undefined,
       });
       counter++;
     }

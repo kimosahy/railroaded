@@ -48,12 +48,12 @@ import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
-import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition } from "../engine/hp.ts";
+import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition, calculateAC } from "../engine/hp.ts";
 import { castSpell, spellSaveDC, spellAttackBonus, type SpellDefinition } from "../engine/spells.ts";
 import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
-import { rollLootTable } from "../engine/loot.ts";
+import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
@@ -99,6 +99,38 @@ const dmQueue: QueueEntry[] = [];
 // Spell definitions loaded from YAML (simplified for in-memory)
 const spellDefs = new Map<string, SpellDefinition>();
 
+// Item definitions loaded from items.yaml
+export interface ItemDef {
+  name: string;
+  category: "weapon" | "armor" | "potion" | "scroll" | "magic_item" | "misc";
+  description: string;
+  damage?: string;
+  damageType?: string;
+  properties?: string[];
+  acBase?: number;
+  acDexCap?: number | null;
+  armorType?: string;
+  healAmount?: string;
+  spellName?: string;
+  baseWeapon?: string;
+  magicBonus?: number;
+  magicType?: string;
+}
+
+const itemDefs = new Map<string, ItemDef>();
+
+export function getItemDef(name: string): ItemDef | undefined {
+  return itemDefs.get(name);
+}
+
+export function getAllItems(): ItemDef[] {
+  return [...itemDefs.values()];
+}
+
+export function getItemsByCategory(category: string): ItemDef[] {
+  return [...itemDefs.values()].filter((i) => i.category === category);
+}
+
 // Monster templates
 const monsterTemplates = new Map<string, {
   hpMax: number;
@@ -107,6 +139,7 @@ const monsterTemplates = new Map<string, {
   attacks: { name: string; to_hit: number; damage: string; type: string }[];
   specialAbilities: string[];
   xpValue: number;
+  lootTable?: LootTableEntry[];
 }>();
 
 let idCounter = 1;
@@ -355,11 +388,25 @@ export function handleGetInventory(userId: string): { success: boolean; data?: R
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 
+  const inventoryDetails = char.inventory.map((itemName) => {
+    const def = itemDefs.get(itemName);
+    if (!def) return { name: itemName };
+    const entry: Record<string, unknown> = { name: def.name, category: def.category, description: def.description };
+    if (def.damage) entry.damage = def.damage;
+    if (def.damageType) entry.damageType = def.damageType;
+    if (def.properties && def.properties.length > 0) entry.properties = def.properties;
+    if (def.healAmount) entry.healAmount = def.healAmount;
+    if (def.spellName) entry.spellName = def.spellName;
+    if (def.acBase !== undefined) entry.acBase = def.acBase;
+    if (def.magicBonus !== undefined) entry.magicBonus = def.magicBonus;
+    return entry;
+  });
+
   return {
     success: true,
     data: {
       equipment: char.equipment,
-      inventory: char.inventory,
+      inventory: inventoryDetails,
     },
   };
 }
@@ -437,6 +484,8 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     });
 
     if (killed) {
+      rollMonsterLoot(party, monster);
+
       // Remove from initiative
       if (party.session) {
         party.session = removeCombatant(party.session, target.id);
@@ -876,9 +925,11 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     return { success: false, error: `Item "${params.item_id}" not found in inventory.` };
   }
 
-  // Handle potions
-  if (params.item_id === "Potion of Healing") {
-    const healRoll = roll("2d4+2");
+  const itemDef = itemDefs.get(params.item_id);
+
+  // Data-driven potion handling
+  if (itemDef?.category === "potion" && itemDef.healAmount) {
+    const healRoll = roll(itemDef.healAmount);
     const target = params.target_id ? characters.get(params.target_id) : char;
     if (target) {
       const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
@@ -888,15 +939,40 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     return { success: true, data: { item: params.item_id, healed: healRoll.total, targetHP: (params.target_id ? characters.get(params.target_id) : char)?.hpCurrent } };
   }
 
-  if (params.item_id === "Potion of Greater Healing") {
-    const healRoll = roll("4d4+4");
-    const target = params.target_id ? characters.get(params.target_id) : char;
-    if (target) {
-      const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
-      target.hpCurrent = hp.current;
+  // Data-driven scroll handling
+  if (itemDef?.category === "scroll" && itemDef.spellName) {
+    const spell = spellDefs.get(itemDef.spellName);
+    if (!spell) return { success: false, error: `Scroll references unknown spell: ${itemDef.spellName}` };
+
+    // Cast the spell without consuming spell slots
+    const result = castSpell({
+      spell,
+      casterAbilityScores: char.abilityScores,
+      casterClass: char.class,
+      spellSlots: char.spellSlots,
+      freecast: true,
+    });
+    if (!result.success) return { success: false, error: result.error };
+
+    // Apply spell effect to target
+    if (spell.isHealing && params.target_id && result.totalEffect) {
+      const target = characters.get(params.target_id);
+      if (target) {
+        const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
+        target.hpCurrent = hp.current;
+      }
+    } else if (!spell.isHealing && params.target_id && result.totalEffect && party) {
+      const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+      if (target) {
+        const { monster } = damageMonster(target, result.totalEffect);
+        const idx = party.monsters.findIndex((m) => m.id === target.id);
+        if (idx !== -1) party.monsters[idx] = monster;
+      }
     }
+
     char.inventory.splice(itemIdx, 1);
-    return { success: true, data: { item: params.item_id, healed: healRoll.total } };
+    logEvent(party, "scroll_used", char.id, { scrollName: params.item_id, spellName: itemDef.spellName, effect: result.totalEffect });
+    return { success: true, data: { item: params.item_id, spell: itemDef.spellName, effect: result.totalEffect } };
   }
 
   return { success: true, data: { item: params.item_id, message: "Item used." } };
@@ -1107,18 +1183,22 @@ export function handleReaction(userId: string, params: { action: string; spell_n
           hit: true, damage: result.totalDamage, killed,
         });
 
-        if (killed && party.session) {
-          party.session = removeCombatant(party.session, target.id);
-          if (shouldCombatEnd(party.session)) {
-            const xp = calculateEncounterXP(party.monsters);
-            const xpEach = Math.floor(xp / party.members.length);
-            for (const mid of party.members) {
-              const m = characters.get(mid);
-              if (m) m.xp += xpEach;
+        if (killed) {
+          rollMonsterLoot(party, monster);
+
+          if (party.session) {
+            party.session = removeCombatant(party.session, target.id);
+            if (shouldCombatEnd(party.session)) {
+              const xp = calculateEncounterXP(party.monsters);
+              const xpEach = Math.floor(xp / party.members.length);
+              for (const mid of party.members) {
+                const m = characters.get(mid);
+                if (m) m.xp += xpEach;
+              }
+              party.session = exitCombat(party.session);
+              logEvent(party, "combat_end", null, { xpAwarded: xp });
+              snapshotCharacters(party);
             }
-            party.session = exitCombat(party.session);
-            logEvent(party, "combat_end", null, { xpAwarded: xp });
-            snapshotCharacters(party);
           }
         }
 
@@ -1720,10 +1800,139 @@ export function handleAwardLoot(userId: string, params: { player_id: string; ite
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
+  // Validate item exists
+  if (!itemDefs.has(params.item_id)) {
+    const categories = ["weapon", "armor", "potion", "scroll", "magic_item", "misc"];
+    const suggestions = categories.map((cat) => {
+      const items = getItemsByCategory(cat);
+      return items.length > 0 ? `${cat}: ${items.map((i) => i.name).join(", ")}` : null;
+    }).filter(Boolean).join("; ");
+    return { success: false, error: `Unknown item: "${params.item_id}". Available items — ${suggestions}` };
+  }
+
   char.inventory.push(params.item_id);
   logEvent(findDMParty(userId), "loot", null, { characterId: params.player_id, characterName: char.name, itemName: params.item_id });
 
   return { success: true, data: { player: char.name, item: params.item_id } };
+}
+
+export function handleEquipItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const itemIdx = char.inventory.indexOf(params.item_name);
+  if (itemIdx === -1) {
+    return { success: false, error: `Item "${params.item_name}" not found in inventory.` };
+  }
+
+  const itemDef = itemDefs.get(params.item_name);
+  if (!itemDef) {
+    return { success: false, error: `Unknown item: "${params.item_name}".` };
+  }
+
+  const dexMod = abilityModifier(char.abilityScores.dex);
+
+  if (itemDef.category === "weapon" || (itemDef.category === "magic_item" && itemDef.baseWeapon)) {
+    // Equip weapon — old weapon goes to inventory
+    if (char.equipment.weapon) {
+      char.inventory.push(char.equipment.weapon);
+    }
+    char.equipment.weapon = params.item_name;
+    char.inventory.splice(itemIdx, 1);
+    return { success: true, data: { equipped: params.item_name, slot: "weapon", equipment: char.equipment } };
+  }
+
+  if (itemDef.category === "armor") {
+    if (itemDef.armorType === "shield") {
+      // Equip shield
+      if (char.equipment.shield) {
+        char.inventory.push(char.equipment.shield);
+      }
+      char.equipment.shield = params.item_name;
+      char.inventory.splice(itemIdx, 1);
+      // Recalculate AC
+      const armorDef = char.equipment.armor ? itemDefs.get(char.equipment.armor) : null;
+      const armorParams = armorDef && armorDef.acBase !== undefined
+        ? { acBase: armorDef.acBase, acDexCap: armorDef.acDexCap ?? null }
+        : null;
+      char.ac = calculateAC(dexMod, armorParams, true);
+      return { success: true, data: { equipped: params.item_name, slot: "shield", ac: char.ac, equipment: char.equipment } };
+    }
+
+    // Equip body armor
+    if (char.equipment.armor) {
+      char.inventory.push(char.equipment.armor);
+    }
+    char.equipment.armor = params.item_name;
+    char.inventory.splice(itemIdx, 1);
+    // Recalculate AC
+    const armorParams = itemDef.acBase !== undefined
+      ? { acBase: itemDef.acBase, acDexCap: itemDef.acDexCap ?? null }
+      : null;
+    char.ac = calculateAC(dexMod, armorParams, !!char.equipment.shield);
+    return { success: true, data: { equipped: params.item_name, slot: "armor", ac: char.ac, equipment: char.equipment } };
+  }
+
+  if (itemDef.category === "magic_item" && itemDef.magicType === "ring") {
+    // Ring of Protection — equip as misc, add AC bonus
+    char.inventory.splice(itemIdx, 1);
+    // For simplicity, just add magic bonus to AC
+    char.ac += itemDef.magicBonus ?? 0;
+    return { success: true, data: { equipped: params.item_name, ac: char.ac } };
+  }
+
+  return { success: false, error: `"${params.item_name}" cannot be equipped (category: ${itemDef.category}).` };
+}
+
+export function handleUnequipItem(userId: string, params: { slot: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  const slot = params.slot as "weapon" | "armor" | "shield";
+  if (!["weapon", "armor", "shield"].includes(slot)) {
+    return { success: false, error: `Invalid slot: "${params.slot}". Use weapon, armor, or shield.` };
+  }
+
+  const currentItem = char.equipment[slot];
+  if (!currentItem) {
+    return { success: false, error: `Nothing equipped in ${slot} slot.` };
+  }
+
+  // Move item to inventory
+  char.inventory.push(currentItem);
+  char.equipment[slot] = null;
+
+  // Recalculate AC if armor or shield changed
+  if (slot === "armor" || slot === "shield") {
+    const dexMod = abilityModifier(char.abilityScores.dex);
+    const armorDef = char.equipment.armor ? itemDefs.get(char.equipment.armor) : null;
+    const armorParams = armorDef && armorDef.acBase !== undefined
+      ? { acBase: armorDef.acBase, acDexCap: armorDef.acDexCap ?? null }
+      : null;
+    char.ac = calculateAC(dexMod, armorParams, !!char.equipment.shield);
+  }
+
+  return { success: true, data: { unequipped: currentItem, slot, ac: char.ac, equipment: char.equipment } };
+}
+
+export function handleListItems(_userId: string, params: { category?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const items = params.category ? getItemsByCategory(params.category) : getAllItems();
+  return {
+    success: true,
+    data: {
+      items: items.map((i) => {
+        const entry: Record<string, unknown> = { name: i.name, category: i.category, description: i.description };
+        if (i.damage) entry.damage = i.damage;
+        if (i.damageType) entry.damageType = i.damageType;
+        if (i.healAmount) entry.healAmount = i.healAmount;
+        if (i.spellName) entry.spellName = i.spellName;
+        if (i.acBase !== undefined) entry.acBase = i.acBase;
+        if (i.magicBonus !== undefined) entry.magicBonus = i.magicBonus;
+        return entry;
+      }),
+      count: items.length,
+    },
+  };
 }
 
 export function handleEndSession(userId: string, params: { summary: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -1757,6 +1966,25 @@ export function handleEndSession(userId: string, params: { summary: string }): {
 }
 
 // --- Internal helpers ---
+
+function rollMonsterLoot(party: GameParty, monster: MonsterInstance): void {
+  if (!monster.lootTable || monster.lootTable.length === 0) return;
+
+  const lootResult = rollLootTable(monster.lootTable);
+  if (lootResult.items.length === 0) return;
+
+  logEvent(party, "loot_drop", null, {
+    monsterName: monster.name,
+    items: lootResult.items,
+  });
+
+  broadcastToParty(party.id, {
+    type: "loot_drop",
+    monsterName: monster.name,
+    items: lootResult.items,
+    message: `${monster.name} dropped: ${lootResult.items.map((i) => `${i.itemName}${i.quantity > 1 ? ` x${i.quantity}` : ""}`).join(", ")}`,
+  });
+}
 
 function findDMParty(dmUserId: string): GameParty | null {
   for (const party of parties.values()) {
@@ -1956,8 +2184,27 @@ function snapshotCharacters(party: GameParty): void {
   }).catch((err) => console.error("[DB] snapshotCharacters failed:", err));
 }
 
-function getWeaponDamage(weaponName: string | null): { damage: string; properties: string[]; damageType: string } {
-  const weapons: Record<string, { damage: string; properties: string[]; damageType: string }> = {
+function getWeaponDamage(weaponName: string | null): { damage: string; properties: string[]; damageType: string; magicBonus?: number } {
+  if (!weaponName) return { damage: "1d4", properties: [], damageType: "bludgeoning" };
+
+  const item = itemDefs.get(weaponName);
+  if (item) {
+    if (item.category === "weapon") {
+      return { damage: item.damage ?? "1d4", properties: item.properties ?? [], damageType: item.damageType ?? "bludgeoning" };
+    }
+    if (item.category === "magic_item" && item.baseWeapon) {
+      const base = itemDefs.get(item.baseWeapon);
+      return {
+        damage: base?.damage ?? "1d4",
+        properties: base?.properties ?? [],
+        damageType: base?.damageType ?? "bludgeoning",
+        magicBonus: item.magicBonus ?? 0,
+      };
+    }
+  }
+
+  // Hardcoded fallback for backwards compat
+  const fallbacks: Record<string, { damage: string; properties: string[]; damageType: string }> = {
     "Longsword": { damage: "1d8", properties: ["versatile"], damageType: "slashing" },
     "Shortsword": { damage: "1d6", properties: ["finesse"], damageType: "piercing" },
     "Greatsword": { damage: "2d6", properties: ["heavy", "two-handed"], damageType: "slashing" },
@@ -1968,7 +2215,7 @@ function getWeaponDamage(weaponName: string | null): { damage: string; propertie
     "Handaxe": { damage: "1d6", properties: ["light", "thrown"], damageType: "slashing" },
     "Warhammer": { damage: "1d8", properties: ["versatile"], damageType: "bludgeoning" },
   };
-  return weapons[weaponName ?? ""] ?? { damage: "1d4", properties: [], damageType: "bludgeoning" };
+  return fallbacks[weaponName] ?? { damage: "1d4", properties: [], damageType: "bludgeoning" };
 }
 
 // --- Load spell definitions ---
@@ -1977,12 +2224,17 @@ export function loadSpellDef(name: string, spell: SpellDefinition): void {
   spellDefs.set(name, spell);
 }
 
+export function loadItemDef(name: string, item: ItemDef): void {
+  itemDefs.set(name, item);
+}
+
 export function loadMonsterTemplate(name: string, template: {
   hpMax: number; ac: number;
   abilityScores: AbilityScores;
   attacks: { name: string; to_hit: number; damage: string; type: string }[];
   specialAbilities: string[];
   xpValue: number;
+  lootTable?: LootTableEntry[];
 }): void {
   monsterTemplates.set(name, template);
 }
@@ -1997,6 +2249,7 @@ interface YAMLMonster {
   attacks: { name: string; to_hit: number; damage: string; type: string }[];
   special_abilities: string[];
   xp_value: number;
+  loot_table?: { item_name: string; weight: number; quantity: number }[];
 }
 
 interface YAMLSpell {
@@ -2040,6 +2293,11 @@ export function initGameData(dataDir?: string): void {
         attacks: m.attacks,
         specialAbilities: m.special_abilities ?? [],
         xpValue: m.xp_value,
+        lootTable: m.loot_table?.map((e) => ({
+          itemName: e.item_name,
+          weight: e.weight,
+          quantity: e.quantity,
+        })),
       });
     }
     console.log(`  Loaded ${monsters.length} monster templates`);
@@ -2071,6 +2329,53 @@ export function initGameData(dataDir?: string): void {
     console.log(`  Loaded ${spells.length} spell definitions`);
   } catch (e) {
     console.warn("  Warning: Could not load spells.yaml:", (e as Error).message);
+  }
+
+  // Load items
+  try {
+    const itemsYAML = readFileSync(join(dir, "items.yaml"), "utf-8");
+    const parsed = parseYAML(itemsYAML) as Record<string, unknown>;
+    let count = 0;
+
+    const weaponList = (parsed.weapons ?? []) as { name: string; damage: string; damage_type: string; properties: string[]; description: string }[];
+    for (const w of weaponList) {
+      itemDefs.set(w.name, { name: w.name, category: "weapon", description: w.description, damage: w.damage, damageType: w.damage_type, properties: w.properties ?? [] });
+      count++;
+    }
+
+    const armorList = (parsed.armor ?? []) as { name: string; ac_base: number; ac_dex_cap: number | null; type: string; description: string }[];
+    for (const a of armorList) {
+      itemDefs.set(a.name, { name: a.name, category: "armor", description: a.description, acBase: a.ac_base, acDexCap: a.ac_dex_cap, armorType: a.type });
+      count++;
+    }
+
+    const potionList = (parsed.potions ?? []) as { name: string; heal_amount: string; description: string }[];
+    for (const p of potionList) {
+      itemDefs.set(p.name, { name: p.name, category: "potion", description: p.description, healAmount: p.heal_amount });
+      count++;
+    }
+
+    const scrollList = (parsed.scrolls ?? []) as { name: string; spell_name: string; description: string }[];
+    for (const s of scrollList) {
+      itemDefs.set(s.name, { name: s.name, category: "scroll", description: s.description, spellName: s.spell_name });
+      count++;
+    }
+
+    const magicList = (parsed.magic_items ?? []) as { name: string; base_weapon?: string; magic_bonus?: number; type?: string; description: string }[];
+    for (const m of magicList) {
+      itemDefs.set(m.name, { name: m.name, category: "magic_item", description: m.description, baseWeapon: m.base_weapon, magicBonus: m.magic_bonus, magicType: m.type });
+      count++;
+    }
+
+    const miscList = (parsed.misc ?? []) as { name: string; description: string }[];
+    for (const x of miscList) {
+      itemDefs.set(x.name, { name: x.name, category: "misc", description: x.description });
+      count++;
+    }
+
+    console.log(`  Loaded ${count} item definitions`);
+  } catch (e) {
+    console.warn("  Warning: Could not load items.yaml:", (e as Error).message);
   }
 }
 

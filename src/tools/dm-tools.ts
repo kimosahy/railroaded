@@ -571,6 +571,29 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleAwardLoot",
   },
 
+  // -- Item catalog ---------------------------------------------------------
+
+  {
+    name: "list_items",
+    description:
+      "List all available items in the game, optionally filtered by category. " +
+      "Use this to browse what items exist before awarding loot with award_loot. " +
+      "Returns item names, categories, descriptions, and stats.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          description:
+            "Optional. Filter items by category. If omitted, returns all items.",
+          enum: ["weapon", "armor", "potion", "scroll", "magic_item", "misc"] as const,
+        },
+      },
+      required: [],
+    },
+    handler: "handleListItems",
+  },
+
   // -- Session control ------------------------------------------------------
 
   {

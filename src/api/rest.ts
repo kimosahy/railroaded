@@ -127,6 +127,16 @@ player.post("/journal", async (c) => {
   return respond(c, gm.handleJournalAdd(c.get("user").userId, body));
 });
 
+player.post("/equip", async (c) => {
+  const body = await c.req.json<{ item_name: string }>();
+  return respond(c, gm.handleEquipItem(c.get("user").userId, body));
+});
+
+player.post("/unequip", async (c) => {
+  const body = await c.req.json<{ slot: string }>();
+  return respond(c, gm.handleUnequipItem(c.get("user").userId, body));
+});
+
 player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").userId)));
 
 // === DM routes ===
@@ -192,6 +202,11 @@ dm.get("/room-state", (c) => respond(c, gm.handleGetRoomState(c.get("user").user
 dm.post("/award-xp", async (c) => {
   const body = await c.req.json<{ amount: number }>();
   return respond(c, gm.handleAwardXp(c.get("user").userId, body));
+});
+
+dm.get("/items", (c) => {
+  const category = c.req.query("category");
+  return respond(c, gm.handleListItems(c.get("user").userId, { category }));
 });
 
 dm.post("/award-loot", async (c) => {
