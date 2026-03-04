@@ -10,9 +10,9 @@ import {
   handleDMQueueForParty,
   handleGetRoomState,
   handleTriggerEncounter,
-  handleSpawnEncounter,
+  handleLootRoom,
   handleMove,
-  getPartyForUser,
+  getCharacterForUser,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -61,6 +61,23 @@ describe("template loading", () => {
     expect(first.toRoomId).toBe("gw-guard-post");
     expect(first.type).toBe("passage");
   });
+
+  test("template loot tables are parsed", () => {
+    const gw = getTemplate("The Goblin Warren")!;
+    expect(gw.lootTables.length).toBeGreaterThan(0);
+    const storageLoot = gw.lootTables.find((lt) => lt.id === "gw-storage-loot");
+    expect(storageLoot).toBeDefined();
+    expect(storageLoot!.entries.length).toBeGreaterThan(0);
+    expect(storageLoot!.entries[0].itemName).toBeDefined();
+    expect(storageLoot!.entries[0].weight).toBeGreaterThan(0);
+  });
+
+  test("rooms reference loot tables by ID", () => {
+    const gw = getTemplate("The Goblin Warren")!;
+    const storage = gw.rooms.find((r) => r.id === "gw-storage");
+    expect(storage).toBeDefined();
+    expect(storage!.lootTable).toBe("gw-storage-loot");
+  });
 });
 
 // --- Pre-placed encounters ---
@@ -84,10 +101,11 @@ describe("trigger_encounter", () => {
     expect(dmResult.data!.matched).toBe(true);
   });
 
-  test("get_room_state includes suggestedEncounter field", () => {
+  test("get_room_state includes suggestedEncounter and lootTable fields", () => {
     const result = handleGetRoomState("tpl-dm-1");
     expect(result.success).toBe(true);
     expect("suggestedEncounter" in result.data!).toBe(true);
+    expect("lootTable" in result.data!).toBe(true);
   });
 
   test("trigger_encounter fails for non-DM", () => {
@@ -97,7 +115,6 @@ describe("trigger_encounter", () => {
   });
 
   test("trigger_encounter on room with no encounter gives helpful error", () => {
-    // Entry rooms in our templates don't have encounters
     const roomState = handleGetRoomState("tpl-dm-1");
     if (roomState.data!.suggestedEncounter === null) {
       const result = handleTriggerEncounter("tpl-dm-1");
@@ -108,18 +125,15 @@ describe("trigger_encounter", () => {
   });
 
   test("navigate to room with encounter and trigger it", () => {
-    // Get room state to see available exits
     const roomState = handleGetRoomState("tpl-dm-1");
     if (!roomState.success || !roomState.data!.exits) return;
 
     const exits = roomState.data!.exits as { name: string; type: string; id: string }[];
     if (exits.length === 0) return;
 
-    // Move to first available exit — might have an encounter
     const firstExit = exits[0];
-    const moveResult = handleMove("tpl-player-1", { direction_or_target: firstExit.id });
+    handleMove("tpl-player-1", { direction_or_target: firstExit.id });
 
-    // Check new room state for encounter
     const newRoomState = handleGetRoomState("tpl-dm-1");
     if (newRoomState.data!.suggestedEncounter) {
       const enc = newRoomState.data!.suggestedEncounter as { id: string; name: string; difficulty: string; monsters: unknown[] };
@@ -127,20 +141,64 @@ describe("trigger_encounter", () => {
       expect(enc.difficulty).toBeDefined();
       expect(enc.monsters).toBeDefined();
 
-      // Trigger the encounter
       const triggerResult = handleTriggerEncounter("tpl-dm-1");
       expect(triggerResult.success).toBe(true);
       expect(triggerResult.data!.monsters).toBeDefined();
       expect(triggerResult.data!.phase).toBe("combat");
 
-      // Verify the encounter no longer shows as suggested
       const afterState = handleGetRoomState("tpl-dm-1");
       expect(afterState.data!.suggestedEncounter).toBeNull();
 
-      // Trigger again — should fail
       const retrigger = handleTriggerEncounter("tpl-dm-1");
       expect(retrigger.success).toBe(false);
       expect(retrigger.error).toContain("already been triggered");
     }
+  });
+});
+
+// --- Pre-placed loot ---
+
+describe("loot_room", () => {
+  const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 10, cha: 10 };
+
+  test("setup: form a party for loot testing", () => {
+    for (let i = 1; i <= 4; i++) {
+      const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
+      handleCreateCharacter(`loot-room-player-${i}`, {
+        name: `LootHero${i}`,
+        race: "dwarf",
+        class: cls,
+        ability_scores: scores,
+      });
+      handleQueueForParty(`loot-room-player-${i}`);
+    }
+    const dmResult = handleDMQueueForParty("loot-room-dm-1");
+    expect(dmResult.success).toBe(true);
+    expect(dmResult.data!.matched).toBe(true);
+  });
+
+  test("loot_room fails for non-DM", () => {
+    const result = handleLootRoom("loot-room-player-1", { player_id: "char-1" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("loot_room on room with no loot table gives helpful error", () => {
+    const roomState = handleGetRoomState("loot-room-dm-1");
+    if (roomState.data!.lootTable === null) {
+      const char = getCharacterForUser("loot-room-player-1");
+      const result = handleLootRoom("loot-room-dm-1", { player_id: char!.id });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No loot table");
+      expect(result.error).toContain("award_loot");
+    }
+  });
+
+  test("loot_room rejects invalid player_id", () => {
+    // If room has no loot table, error comes from that check first.
+    // If room has a loot table, error comes from invalid player.
+    // Either way, it should fail.
+    const result = handleLootRoom("loot-room-dm-1", { player_id: "nonexistent-99" });
+    expect(result.success).toBe(false);
   });
 });

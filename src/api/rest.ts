@@ -216,6 +216,11 @@ dm.post("/award-loot", async (c) => {
   return respond(c, gm.handleAwardLoot(c.get("user").userId, body));
 });
 
+dm.post("/loot-room", async (c) => {
+  const body = await c.req.json<{ player_id: string }>();
+  return respond(c, gm.handleLootRoom(c.get("user").userId, body));
+});
+
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));

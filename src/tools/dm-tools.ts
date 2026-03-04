@@ -586,6 +586,27 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleAwardLoot",
   },
 
+  {
+    name: "loot_room",
+    description:
+      "Roll the current room's pre-placed loot table and award the result to a player. " +
+      "Dungeon templates define loot tables for specific rooms (treasure rooms, storage caves, etc.). " +
+      "Use get_room_state to check if the current room has a loot table. Each room can only be " +
+      "looted once. The server rolls on the weighted loot table and adds the items to the " +
+      "player's inventory. For manual loot awards, use award_loot instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        player_id: {
+          ...playerIdProperty,
+          description: "The ID of the player who receives the loot.",
+        },
+      },
+      required: ["player_id"],
+    },
+    handler: "handleLootRoom",
+  },
+
   // -- Item catalog ---------------------------------------------------------
 
   {

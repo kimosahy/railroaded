@@ -393,6 +393,8 @@ function executeToolCall(
       return gm.handleListItems(userId, { category: args.category as string | undefined });
     case "award_loot":
       return gm.handleAwardLoot(userId, { player_id: args.player_id as string, item_id: args.item_id as string });
+    case "loot_room":
+      return gm.handleLootRoom(userId, { player_id: args.player_id as string });
     case "end_session":
       return gm.handleEndSession(userId, { summary: args.summary as string });
     case "dm_queue_for_party":
