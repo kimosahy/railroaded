@@ -10,6 +10,7 @@
 import {
   createCharacter as buildCharacter,
   validateAbilityScores,
+  classFeatures,
   type CharacterSheet,
 } from "./character-creation.ts";
 import {
@@ -49,10 +50,10 @@ import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
-import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition, calculateAC } from "../engine/hp.ts";
-import { castSpell, spellSaveDC, spellAttackBonus, type SpellDefinition } from "../engine/spells.ts";
+import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
+import { castSpell, spellSaveDC, spellAttackBonus, getMaxSpellSlots, type SpellDefinition } from "../engine/spells.ts";
 import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
-import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from "../engine/rest.ts";
+import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass, hitDieSidesForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
 import { getRandomTemplate, type DungeonTemplate, type TemplateEncounter, type TemplateLootTable } from "./templates.ts";
@@ -116,6 +117,58 @@ const parties = new Map<string, GameParty>();
 const campaignsMap = new Map<string, GameCampaign>();
 const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
+
+// XP thresholds per level (from game-mechanics.md)
+const XP_THRESHOLDS: Record<number, number> = { 1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500 };
+const MAX_LEVEL = 5;
+
+/**
+ * Check if a character qualifies for a level up and apply it.
+ * Handles multi-level jumps (e.g. large XP awards).
+ * Returns level-up details if leveled, null otherwise.
+ */
+function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; newFeatures: string[] } | null {
+  const startLevel = char.level;
+  let totalHpGain = 0;
+  const allNewFeatures: string[] = [];
+
+  while (char.level < MAX_LEVEL) {
+    const nextLevel = char.level + 1;
+    const threshold = XP_THRESHOLDS[nextLevel];
+    if (threshold === undefined || char.xp < threshold) break;
+
+    char.level = nextLevel;
+
+    // HP increase: recalculate from scratch for accuracy
+    const conMod = abilityModifier(char.abilityScores.con);
+    const newMaxHP = calculateMaxHP(hitDieSidesForClass(char.class), conMod, nextLevel);
+    const hpGain = newMaxHP - char.hpMax;
+    totalHpGain += hpGain;
+    char.hpMax = newMaxHP;
+    char.hpCurrent += hpGain;
+
+    // Hit dice: max = level
+    char.hitDice = { ...char.hitDice, max: nextLevel };
+
+    // Spell slots: recalculate for new level
+    const newSlots = getMaxSpellSlots(nextLevel, char.class);
+    const l1Gain = newSlots.level_1.max - char.spellSlots.level_1.max;
+    const l2Gain = newSlots.level_2.max - char.spellSlots.level_2.max;
+    char.spellSlots = {
+      level_1: { current: char.spellSlots.level_1.current + Math.max(0, l1Gain), max: newSlots.level_1.max },
+      level_2: { current: char.spellSlots.level_2.current + Math.max(0, l2Gain), max: newSlots.level_2.max },
+    };
+
+    // Class features at new level
+    const levelFeatures = classFeatures(char.class, nextLevel);
+    const newFeatures = levelFeatures.filter((f) => !char.features.includes(f));
+    char.features.push(...newFeatures);
+    allNewFeatures.push(...newFeatures);
+  }
+
+  if (char.level === startLevel) return null;
+  return { newLevel: char.level, hpGain: totalHpGain, newFeatures: allNewFeatures };
+}
 
 // Spell definitions loaded from YAML (simplified for in-memory)
 const spellDefs = new Map<string, SpellDefinition>();
@@ -522,12 +575,21 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       if (party.session && shouldCombatEnd(party.session)) {
         const xp = calculateEncounterXP(party.monsters);
         const xpEach = Math.floor(xp / party.members.length);
+        const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
         for (const mid of party.members) {
           const m = characters.get(mid);
-          if (m) m.xp += xpEach;
+          if (m) {
+            m.xp += xpEach;
+            const lu = checkLevelUp(m);
+            if (lu) levelUps.push({ name: m.name, ...lu });
+          }
         }
         party.session = exitCombat(party.session);
         logEvent(party, "combat_end", null, { xpAwarded: xp });
+        for (const lu of levelUps) {
+          logEvent(party, "level_up", null, lu);
+          broadcastToParty(party, { type: "level_up", ...lu });
+        }
         snapshotCharacters(party);
       }
     }
@@ -1349,12 +1411,21 @@ export function handleReaction(userId: string, params: { action: string; spell_n
             if (shouldCombatEnd(party.session)) {
               const xp = calculateEncounterXP(party.monsters);
               const xpEach = Math.floor(xp / party.members.length);
+              const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
               for (const mid of party.members) {
                 const m = characters.get(mid);
-                if (m) m.xp += xpEach;
+                if (m) {
+                  m.xp += xpEach;
+                  const lu = checkLevelUp(m);
+                  if (lu) levelUps.push({ name: m.name, ...lu });
+                }
               }
               party.session = exitCombat(party.session);
               logEvent(party, "combat_end", null, { xpAwarded: xp });
+              for (const lu of levelUps) {
+                logEvent(party, "level_up", null, lu);
+                broadcastToParty(party, { type: "level_up", ...lu });
+              }
               snapshotCharacters(party);
             }
           }
@@ -2029,12 +2100,22 @@ export function handleAwardXp(userId: string, params: { amount: number }): { suc
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   const xpEach = Math.floor(params.amount / party.members.length);
+  const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
   for (const mid of party.members) {
     const c = characters.get(mid);
-    if (c) c.xp += xpEach;
+    if (c) {
+      c.xp += xpEach;
+      const lu = checkLevelUp(c);
+      if (lu) levelUps.push({ name: c.name, ...lu });
+    }
   }
 
-  return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length } };
+  for (const lu of levelUps) {
+    logEvent(party, "level_up", null, lu);
+    broadcastToParty(party, { type: "level_up", ...lu });
+  }
+
+  return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length, levelUps: levelUps.length > 0 ? levelUps : undefined } };
 }
 
 export function handleAwardGold(userId: string, params: { player_id?: string; amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
