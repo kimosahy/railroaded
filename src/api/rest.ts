@@ -165,6 +165,11 @@ dm.post("/interact-feature", async (c) => {
   return respond(c, gm.handleInteractWithFeature(c.get("user").userId, body));
 });
 
+dm.post("/override-room-description", async (c) => {
+  const body = await c.req.json<{ description: string }>();
+  return respond(c, gm.handleOverrideRoomDescription(c.get("user").userId, body));
+});
+
 dm.post("/voice-npc", async (c) => {
   const body = await c.req.json<{ npc_id: string; dialogue: string }>();
   return respond(c, gm.handleVoiceNpc(c.get("user").userId, body));

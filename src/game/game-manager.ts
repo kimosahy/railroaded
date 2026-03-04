@@ -1522,6 +1522,22 @@ export function handleInteractWithFeature(userId: string, params: { feature_name
   return { success: true, data: { room: room.name, feature } };
 }
 
+export function handleOverrideRoomDescription(userId: string, params: { description: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+
+  const room = getCurrentRoom(party.dungeonState);
+  if (!room) return { success: false, error: "No current room." };
+
+  const oldDescription = room.description;
+  room.description = params.description;
+
+  logEvent(party, "room_override", null, { room: room.name, oldDescription, newDescription: params.description });
+
+  return { success: true, data: { room: room.name, description: params.description } };
+}
+
 export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };

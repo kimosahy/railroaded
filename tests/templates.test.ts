@@ -12,6 +12,8 @@ import {
   handleTriggerEncounter,
   handleLootRoom,
   handleInteractWithFeature,
+  handleOverrideRoomDescription,
+  handleLook,
   handleMove,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
@@ -233,6 +235,34 @@ describe("interact_with_feature", () => {
 
   test("fails for non-DM", () => {
     const result = handleInteractWithFeature("tpl-player-1", { feature_name: "torch" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+});
+
+// --- DM scene override ---
+
+describe("override_room_description", () => {
+  test("replaces room description and persists in look", () => {
+    const newDesc = "The room is engulfed in flames. Smoke chokes the air.";
+    const result = handleOverrideRoomDescription("tpl-dm-1", { description: newDesc });
+    expect(result.success).toBe(true);
+    expect(result.data!.description).toBe(newDesc);
+
+    // Verify the description is updated in room state
+    const roomState = handleGetRoomState("tpl-dm-1");
+    const room = roomState.data!.room as { description: string };
+    expect(room.description).toBe(newDesc);
+
+    // Verify players see it too via look
+    const lookResult = handleLook("tpl-player-1");
+    if (lookResult.success && lookResult.data!.description) {
+      expect(lookResult.data!.description).toBe(newDesc);
+    }
+  });
+
+  test("fails for non-DM", () => {
+    const result = handleOverrideRoomDescription("tpl-player-1", { description: "test" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("Not a DM");
   });

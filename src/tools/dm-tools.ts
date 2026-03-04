@@ -303,6 +303,26 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleInteractWithFeature",
   },
 
+  {
+    name: "override_room_description",
+    description:
+      "Replace the current room's description text. Use this for dynamic scene changes — " +
+      "'the room is now on fire', 'the ceiling has collapsed', 'moonlight floods through the " +
+      "broken window'. The new description replaces the old one permanently for this session. " +
+      "Players will see the updated description when they use look.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        description: {
+          type: "string",
+          description: "The new room description text. Replaces the existing description entirely.",
+        },
+      },
+      required: ["description"],
+    },
+    handler: "handleOverrideRoomDescription",
+  },
+
   // -- Checks and saves -----------------------------------------------------
 
   {

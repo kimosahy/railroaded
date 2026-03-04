@@ -356,6 +356,8 @@ function executeToolCall(
       return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
     case "interact_with_feature":
       return gm.handleInteractWithFeature(userId, { feature_name: args.feature_name as string });
+    case "override_room_description":
+      return gm.handleOverrideRoomDescription(userId, { description: args.description as string });
     case "request_check":
       return gm.handleRequestCheck(userId, {
         player_id: args.player_id as string, ability: args.ability as string,
