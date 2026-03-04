@@ -433,6 +433,37 @@ function executeToolCall(
         key: args.key as string,
         value: args.value,
       });
+    case "create_npc":
+      return gm.handleCreateNpc(userId, {
+        name: args.name as string,
+        description: args.description as string,
+        personality: args.personality as string | undefined,
+        location: args.location as string | undefined,
+        disposition: args.disposition as number | undefined,
+        tags: args.tags as string[] | undefined,
+      });
+    case "get_npc":
+      return gm.handleGetNpc(userId, { npc_id: args.npc_id as string });
+    case "list_npcs":
+      return gm.handleListNpcs(userId, {
+        tag: args.tag as string | undefined,
+        location: args.location as string | undefined,
+      });
+    case "update_npc":
+      return gm.handleUpdateNpc(userId, {
+        npc_id: args.npc_id as string,
+        description: args.description as string | undefined,
+        personality: args.personality as string | undefined,
+        location: args.location as string | undefined,
+        tags: args.tags as string[] | undefined,
+        is_alive: args.is_alive as boolean | undefined,
+      });
+    case "update_npc_disposition":
+      return gm.handleUpdateNpcDisposition(userId, {
+        npc_id: args.npc_id as string,
+        change: args.change as number,
+        reason: args.reason as string,
+      });
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
 

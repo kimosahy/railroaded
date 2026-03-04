@@ -63,7 +63,7 @@ import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
-import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable } from "../db/schema.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -111,10 +111,33 @@ interface GameCampaign {
   dbCampaignId: string | null;     // UUID from campaigns table
 }
 
+interface NpcMemoryEntry {
+  sessionId: string;
+  event: string;
+  summary: string;
+  dispositionAtTime: number;
+}
+
+interface GameNPC {
+  id: string;
+  campaignId: string;             // in-memory campaign ID
+  name: string;
+  description: string;
+  personality: string;
+  location: string | null;
+  disposition: number;            // -100 to +100
+  dispositionLabel: string;
+  isAlive: boolean;
+  tags: string[];
+  memory: NpcMemoryEntry[];       // last 20 interactions
+  dbNpcId: string | null;         // UUID from npcs table
+}
+
 const characters = new Map<string, GameCharacter>();
 const charactersByUser = new Map<string, string>(); // userId → characterId
 const parties = new Map<string, GameParty>();
 const campaignsMap = new Map<string, GameCampaign>();
+const npcsMap = new Map<string, GameNPC>();           // npcId → GameNPC
 const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
 
@@ -1766,8 +1789,36 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
-  logEvent(party, "npc_dialogue", null, { npcName: params.npc_id, dialogue: params.dialogue });
-  return { success: true, data: { npc: params.npc_id, dialogue: params.dialogue } };
+  // Check if this references a persistent NPC
+  const npc = npcsMap.get(params.npc_id);
+  const npcName = npc ? npc.name : params.npc_id;
+
+  logEvent(party, "npc_dialogue", null, { npcId: npc?.id, npcName, dialogue: params.dialogue });
+
+  // Log interaction for persistent NPCs
+  if (npc?.dbNpcId && party.dbSessionId) {
+    const memEntry: NpcMemoryEntry = {
+      sessionId: party.session?.id ?? "unknown",
+      event: "dialogue",
+      summary: params.dialogue.slice(0, 200),
+      dispositionAtTime: npc.disposition,
+    };
+    npc.memory.push(memEntry);
+    if (npc.memory.length > 20) npc.memory = npc.memory.slice(-20);
+
+    db.insert(npcInteractionsTable).values({
+      npcId: npc.dbNpcId,
+      sessionId: party.dbSessionId,
+      interactionType: "dialogue",
+      description: params.dialogue.slice(0, 500),
+    }).catch((err) => console.error("[DB] Failed to log NPC dialogue interaction:", err));
+
+    db.update(npcsTable).set({ memory: npc.memory, updatedAt: new Date() })
+      .where(eq(npcsTable.id, npc.dbNpcId))
+      .catch((err) => console.error("[DB] Failed to update NPC memory:", err));
+  }
+
+  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue: params.dialogue } };
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -2491,6 +2542,19 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
     return c ? { name: c.name, class: c.class, level: c.level, hp: c.hpCurrent, hpMax: c.hpMax } : null;
   }).filter(Boolean);
 
+  // Gather campaign NPCs
+  const campaignNpcs = [...npcsMap.values()]
+    .filter((n) => n.campaignId === campaign.id)
+    .map((n) => ({
+      npc_id: n.id,
+      name: n.name,
+      location: n.location,
+      disposition: n.disposition,
+      disposition_label: n.dispositionLabel,
+      is_alive: n.isAlive,
+      tags: n.tags,
+    }));
+
   return {
     success: true,
     data: {
@@ -2503,6 +2567,7 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
       story_flags: campaign.storyFlags,
       party_name: party.name,
       party_members: members,
+      npcs: campaignNpcs,
     },
   };
 }
@@ -2613,6 +2678,260 @@ export function handleSetStoryFlag(userId: string, params: {
   return {
     success: true,
     data: { story_flags: campaign.storyFlags },
+  };
+}
+
+// --- NPC Management ---
+
+function dispositionLabel(value: number): string {
+  if (value <= -50) return "hostile";
+  if (value <= -25) return "unfriendly";
+  if (value < 0) return "wary";
+  if (value === 0) return "neutral";
+  if (value <= 25) return "friendly";
+  if (value <= 50) return "allied";
+  return "devoted";
+}
+
+function findCampaignForDM(userId: string): { party: GameParty; campaign: GameCampaign } | null {
+  const party = findDMParty(userId);
+  if (!party || !party.campaignId) return null;
+  const campaign = campaignsMap.get(party.campaignId);
+  if (!campaign) return null;
+  return { party, campaign };
+}
+
+export function handleCreateNpc(userId: string, params: {
+  name: string;
+  description: string;
+  personality?: string;
+  location?: string;
+  disposition?: number;
+  tags?: string[];
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first." };
+
+  if (!params.name || params.name.trim().length === 0) {
+    return { success: false, error: "NPC name is required." };
+  }
+
+  const disp = Math.max(-100, Math.min(100, params.disposition ?? 0));
+  const npcId = nextId("npc");
+  const npc: GameNPC = {
+    id: npcId,
+    campaignId: ctx.campaign.id,
+    name: params.name.trim(),
+    description: params.description?.trim() ?? "",
+    personality: params.personality?.trim() ?? "",
+    location: params.location?.trim() ?? null,
+    disposition: disp,
+    dispositionLabel: dispositionLabel(disp),
+    isAlive: true,
+    tags: params.tags ?? [],
+    memory: [],
+    dbNpcId: null,
+  };
+
+  npcsMap.set(npcId, npc);
+
+  // Persist to DB (fire-and-forget)
+  if (ctx.campaign.dbCampaignId) {
+    db.insert(npcsTable).values({
+      campaignId: ctx.campaign.dbCampaignId,
+      name: npc.name,
+      description: npc.description,
+      personality: npc.personality,
+      location: npc.location,
+      disposition: npc.disposition,
+      dispositionLabel: npc.dispositionLabel,
+      tags: npc.tags,
+    }).returning({ id: npcsTable.id }).then(([row]) => {
+      npc.dbNpcId = row.id;
+    }).catch((err) => console.error("[DB] Failed to persist NPC:", err));
+  }
+
+  logEvent(ctx.party, "npc_created", null, { npcId, name: npc.name, disposition: npc.disposition });
+
+  return {
+    success: true,
+    data: {
+      npc_id: npcId,
+      name: npc.name,
+      description: npc.description,
+      personality: npc.personality,
+      location: npc.location,
+      disposition: npc.disposition,
+      disposition_label: npc.dispositionLabel,
+      tags: npc.tags,
+    },
+  };
+}
+
+export function handleGetNpc(userId: string, params: { npc_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const npc = npcsMap.get(params.npc_id);
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found. Use list_npcs to see available NPCs.` };
+
+  return {
+    success: true,
+    data: {
+      npc_id: npc.id,
+      name: npc.name,
+      description: npc.description,
+      personality: npc.personality,
+      location: npc.location,
+      disposition: npc.disposition,
+      disposition_label: npc.dispositionLabel,
+      is_alive: npc.isAlive,
+      tags: npc.tags,
+      memory: npc.memory.slice(-5), // last 5 memories for quick reference
+    },
+  };
+}
+
+export function handleListNpcs(userId: string, params: { tag?: string; location?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+
+  let npcs = [...npcsMap.values()].filter((n) => n.campaignId === ctx.campaign.id);
+
+  if (params.tag) npcs = npcs.filter((n) => n.tags.includes(params.tag!));
+  if (params.location) npcs = npcs.filter((n) => n.location === params.location);
+
+  return {
+    success: true,
+    data: {
+      npcs: npcs.map((n) => ({
+        npc_id: n.id,
+        name: n.name,
+        location: n.location,
+        disposition: n.disposition,
+        disposition_label: n.dispositionLabel,
+        is_alive: n.isAlive,
+        tags: n.tags,
+      })),
+    },
+  };
+}
+
+export function handleUpdateNpc(userId: string, params: {
+  npc_id: string;
+  description?: string;
+  personality?: string;
+  location?: string;
+  tags?: string[];
+  is_alive?: boolean;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const npc = npcsMap.get(params.npc_id);
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.` };
+
+  if (params.description !== undefined) npc.description = params.description.trim();
+  if (params.personality !== undefined) npc.personality = params.personality.trim();
+  if (params.location !== undefined) npc.location = params.location.trim() || null;
+  if (params.tags !== undefined) npc.tags = params.tags;
+  if (params.is_alive !== undefined) npc.isAlive = params.is_alive;
+
+  // Persist to DB
+  if (npc.dbNpcId) {
+    db.update(npcsTable).set({
+      description: npc.description,
+      personality: npc.personality,
+      location: npc.location,
+      tags: npc.tags,
+      isAlive: npc.isAlive,
+      updatedAt: new Date(),
+    }).where(eq(npcsTable.id, npc.dbNpcId))
+      .catch((err) => console.error("[DB] Failed to update NPC:", err));
+  }
+
+  return {
+    success: true,
+    data: {
+      npc_id: npc.id,
+      name: npc.name,
+      description: npc.description,
+      personality: npc.personality,
+      location: npc.location,
+      disposition: npc.disposition,
+      disposition_label: npc.dispositionLabel,
+      is_alive: npc.isAlive,
+      tags: npc.tags,
+    },
+  };
+}
+
+export function handleUpdateNpcDisposition(userId: string, params: {
+  npc_id: string;
+  change: number;
+  reason: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const ctx = findCampaignForDM(userId);
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+
+  const npc = npcsMap.get(params.npc_id);
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.` };
+
+  const oldDisp = npc.disposition;
+  npc.disposition = Math.max(-100, Math.min(100, npc.disposition + params.change));
+  npc.dispositionLabel = dispositionLabel(npc.disposition);
+
+  // Add to NPC memory (keep last 20)
+  const memoryEntry: NpcMemoryEntry = {
+    sessionId: ctx.party.session?.id ?? "unknown",
+    event: "disposition_change",
+    summary: params.reason,
+    dispositionAtTime: npc.disposition,
+  };
+  npc.memory.push(memoryEntry);
+  if (npc.memory.length > 20) npc.memory = npc.memory.slice(-20);
+
+  // Persist to DB
+  if (npc.dbNpcId) {
+    db.update(npcsTable).set({
+      disposition: npc.disposition,
+      dispositionLabel: npc.dispositionLabel,
+      memory: npc.memory,
+      updatedAt: new Date(),
+    }).where(eq(npcsTable.id, npc.dbNpcId))
+      .catch((err) => console.error("[DB] Failed to update NPC disposition:", err));
+
+    // Log interaction
+    if (ctx.party.dbSessionId) {
+      db.insert(npcInteractionsTable).values({
+        npcId: npc.dbNpcId,
+        sessionId: ctx.party.dbSessionId,
+        interactionType: "disposition_change",
+        description: params.reason,
+        dispositionChange: params.change,
+      }).catch((err) => console.error("[DB] Failed to log NPC interaction:", err));
+    }
+  }
+
+  logEvent(ctx.party, "npc_disposition", null, {
+    npcId: npc.id,
+    npcName: npc.name,
+    oldDisposition: oldDisp,
+    newDisposition: npc.disposition,
+    label: npc.dispositionLabel,
+    reason: params.reason,
+  });
+
+  return {
+    success: true,
+    data: {
+      npc_id: npc.id,
+      name: npc.name,
+      old_disposition: oldDisp,
+      new_disposition: npc.disposition,
+      disposition_label: npc.dispositionLabel,
+      reason: params.reason,
+    },
   };
 }
 
@@ -3391,6 +3710,46 @@ export async function loadCampaigns(): Promise<number> {
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load campaigns:", err);
+    return 0;
+  }
+}
+
+export async function loadNpcs(): Promise<number> {
+  try {
+    const rows = await db.select().from(npcsTable);
+    let loaded = 0;
+    for (const row of rows) {
+      // Find the in-memory campaign linked to this NPC's DB campaign
+      let linkedCampaignId: string | null = null;
+      for (const [cid, c] of campaignsMap) {
+        if (c.dbCampaignId === row.campaignId) {
+          linkedCampaignId = cid;
+          break;
+        }
+      }
+      if (!linkedCampaignId) continue; // skip NPCs from unloaded campaigns
+
+      const npcId = nextId("npc");
+      const npc: GameNPC = {
+        id: npcId,
+        campaignId: linkedCampaignId,
+        name: row.name,
+        description: row.description,
+        personality: row.personality,
+        location: row.location,
+        disposition: row.disposition,
+        dispositionLabel: row.dispositionLabel,
+        isAlive: row.isAlive,
+        tags: (row.tags as string[]) ?? [],
+        memory: (row.memory as NpcMemoryEntry[]) ?? [],
+        dbNpcId: row.id,
+      };
+      npcsMap.set(npcId, npc);
+      loaded++;
+    }
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load NPCs:", err);
     return 0;
   }
 }

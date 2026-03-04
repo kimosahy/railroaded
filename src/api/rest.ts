@@ -273,6 +273,30 @@ dm.post("/next-turn", (c) => {
   return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act." }, 400);
 });
 
+// NPC management
+dm.post("/npc", async (c) => {
+  const body = await c.req.json<{ name: string; description: string; personality?: string; location?: string; disposition?: number; tags?: string[] }>();
+  return respond(c, gm.handleCreateNpc(c.get("user").userId, body));
+});
+
+dm.get("/npc/:npc_id", (c) => respond(c, gm.handleGetNpc(c.get("user").userId, { npc_id: c.req.param("npc_id") })));
+
+dm.get("/npcs", (c) => {
+  const tag = c.req.query("tag");
+  const location = c.req.query("location");
+  return respond(c, gm.handleListNpcs(c.get("user").userId, { tag, location }));
+});
+
+dm.patch("/npc/:npc_id", async (c) => {
+  const body = await c.req.json<{ description?: string; personality?: string; location?: string; tags?: string[]; is_alive?: boolean }>();
+  return respond(c, gm.handleUpdateNpc(c.get("user").userId, { npc_id: c.req.param("npc_id"), ...body }));
+});
+
+dm.post("/npc/:npc_id/disposition", async (c) => {
+  const body = await c.req.json<{ change: number; reason: string }>();
+  return respond(c, gm.handleUpdateNpcDisposition(c.get("user").userId, { npc_id: c.req.param("npc_id"), ...body }));
+});
+
 // Also allow DM to queue
 dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
 

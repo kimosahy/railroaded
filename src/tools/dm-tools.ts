@@ -897,6 +897,152 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleSetStoryFlag",
   },
+
+  // -- NPC Management ---------------------------------------------------------
+
+  {
+    name: "create_npc",
+    description:
+      "Create a persistent NPC for the current campaign. NPCs remember interactions across " +
+      "sessions and have a disposition that shifts based on party actions. Use this for named " +
+      "characters the party will interact with more than once — tavern keepers, quest givers, " +
+      "rivals, faction leaders. For one-off background characters, just use narrate instead.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "The NPC's name (e.g., 'Elara the Merchant', 'Captain Voss').",
+        },
+        description: {
+          type: "string",
+          description: "Physical appearance and role (e.g., 'A weathered dwarf blacksmith with soot-stained hands').",
+        },
+        personality: {
+          type: "string",
+          description: "Speech patterns, mannerisms, motivations (e.g., 'Gruff but fair. Speaks in short sentences. Secretly fears fire.').",
+        },
+        location: {
+          type: "string",
+          description: "Where the NPC is currently found (e.g., 'Ironforge Smithy', 'Room 3').",
+        },
+        disposition: {
+          type: "integer",
+          description: "Starting disposition toward the party. -100 (hostile) to +100 (devoted). Default 0 (neutral).",
+          minimum: -100,
+          maximum: 100,
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Searchable tags (e.g., ['merchant', 'quest_giver', 'faction_ironhand']).",
+        },
+      },
+      required: ["name", "description"],
+    },
+    handler: "handleCreateNpc",
+  },
+  {
+    name: "get_npc",
+    description:
+      "Get full details about a specific NPC including their description, personality, " +
+      "disposition, location, and recent memory of interactions with the party.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        npc_id: {
+          type: "string",
+          description: "The NPC's ID (from create_npc or list_npcs).",
+        },
+      },
+      required: ["npc_id"],
+    },
+    handler: "handleGetNpc",
+  },
+  {
+    name: "list_npcs",
+    description:
+      "List all NPCs in the current campaign. Optionally filter by tag or location.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tag: {
+          type: "string",
+          description: "Filter by tag (e.g., 'merchant', 'quest_giver').",
+        },
+        location: {
+          type: "string",
+          description: "Filter by current location.",
+        },
+      },
+    },
+    handler: "handleListNpcs",
+  },
+  {
+    name: "update_npc",
+    description:
+      "Update an NPC's description, personality, location, tags, or alive status. " +
+      "Use this when NPCs move, change, or die during the story.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        npc_id: {
+          type: "string",
+          description: "The NPC's ID.",
+        },
+        description: {
+          type: "string",
+          description: "Updated description.",
+        },
+        personality: {
+          type: "string",
+          description: "Updated personality notes.",
+        },
+        location: {
+          type: "string",
+          description: "New location (empty string to clear).",
+        },
+        tags: {
+          type: "array",
+          items: { type: "string" },
+          description: "Replacement tags array.",
+        },
+        is_alive: {
+          type: "boolean",
+          description: "Set to false if the NPC dies.",
+        },
+      },
+      required: ["npc_id"],
+    },
+    handler: "handleUpdateNpc",
+  },
+  {
+    name: "update_npc_disposition",
+    description:
+      "Shift an NPC's disposition toward the party. Disposition ranges from -100 (hostile) " +
+      "to +100 (devoted). Labels: hostile (<=-50), unfriendly (-49 to -25), wary (-24 to -1), " +
+      "neutral (0), friendly (1-25), allied (26-50), devoted (>50). " +
+      "Provide a reason — it becomes part of the NPC's memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        npc_id: {
+          type: "string",
+          description: "The NPC's ID.",
+        },
+        change: {
+          type: "integer",
+          description: "Disposition change (positive = more friendly, negative = more hostile). Typical: +5 to +15 for good deeds, -5 to -15 for offenses.",
+        },
+        reason: {
+          type: "string",
+          description: "Why the disposition changed (e.g., 'Party rescued her son', 'Player stole from his shop').",
+        },
+      },
+      required: ["npc_id", "change", "reason"],
+    },
+    handler: "handleUpdateNpcDisposition",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------
