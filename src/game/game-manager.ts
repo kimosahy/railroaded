@@ -1501,6 +1501,27 @@ export function handleTriggerEncounter(userId: string): { success: boolean; data
   return handleSpawnEncounter(userId, { monsters });
 }
 
+export function handleInteractWithFeature(userId: string, params: { feature_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+
+  const room = getCurrentRoom(party.dungeonState);
+  if (!room) return { success: false, error: "No current room." };
+
+  const feature = room.features.find((f) => f.toLowerCase().includes(params.feature_name.toLowerCase()));
+  if (!feature) {
+    return {
+      success: false,
+      error: `Feature "${params.feature_name}" not found in ${room.name}. Available features: ${room.features.join(", ")}`,
+    };
+  }
+
+  logEvent(party, "feature_interaction", null, { room: room.name, feature });
+
+  return { success: true, data: { room: room.name, feature } };
+}
+
 export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };

@@ -354,6 +354,8 @@ function executeToolCall(
       return gm.handleMonsterAttack(userId, { monster_id: args.monster_id as string, target_id: args.target_id as string, attack_name: args.attack_name as string | undefined });
     case "voice_npc":
       return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
+    case "interact_with_feature":
+      return gm.handleInteractWithFeature(userId, { feature_name: args.feature_name as string });
     case "request_check":
       return gm.handleRequestCheck(userId, {
         player_id: args.player_id as string, ability: args.ability as string,

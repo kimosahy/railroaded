@@ -281,6 +281,28 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleVoiceNpc",
   },
 
+  {
+    name: "interact_with_feature",
+    description:
+      "Interact with a room feature (e.g., a chest, trap, weapon rack, lever). Validates the " +
+      "feature exists in the current room and logs the interaction. Returns the feature description " +
+      "so you can narrate what happens. You decide the outcome — use existing tools (deal_environment_damage " +
+      "for traps, award_loot for chests, narrate for flavor) to resolve the interaction.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        feature_name: {
+          type: "string",
+          description:
+            "Name of the feature to interact with. Does not need to be an exact match — " +
+            "partial matches work (e.g., 'chest' matches 'Locked chest (DC 14 Thieves\\' Tools to open)').",
+        },
+      },
+      required: ["feature_name"],
+    },
+    handler: "handleInteractWithFeature",
+  },
+
   // -- Checks and saves -----------------------------------------------------
 
   {

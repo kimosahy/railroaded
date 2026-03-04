@@ -11,6 +11,7 @@ import {
   handleGetRoomState,
   handleTriggerEncounter,
   handleLootRoom,
+  handleInteractWithFeature,
   handleMove,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
@@ -200,5 +201,39 @@ describe("loot_room", () => {
     // Either way, it should fail.
     const result = handleLootRoom("loot-room-dm-1", { player_id: "nonexistent-99" });
     expect(result.success).toBe(false);
+  });
+});
+
+// --- Feature interaction ---
+
+describe("interact_with_feature", () => {
+  // Uses the party from "tpl-dm-1" formed earlier
+
+  test("returns feature description on match", () => {
+    const roomState = handleGetRoomState("tpl-dm-1");
+    if (!roomState.success || !roomState.data!.room) return;
+    const room = roomState.data!.room as { features: string[] };
+    if (room.features.length === 0) return;
+
+    // Use a partial match from the first feature
+    const firstFeature = room.features[0];
+    const keyword = firstFeature.split(" ")[0]; // first word
+    const result = handleInteractWithFeature("tpl-dm-1", { feature_name: keyword });
+    expect(result.success).toBe(true);
+    expect(result.data!.feature).toBe(firstFeature);
+    expect(result.data!.room).toBeDefined();
+  });
+
+  test("fails for non-existent feature", () => {
+    const result = handleInteractWithFeature("tpl-dm-1", { feature_name: "Invisible Unicorn" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+    expect(result.error).toContain("Available features");
+  });
+
+  test("fails for non-DM", () => {
+    const result = handleInteractWithFeature("tpl-player-1", { feature_name: "torch" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
   });
 });

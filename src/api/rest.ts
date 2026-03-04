@@ -160,6 +160,11 @@ dm.post("/spawn-encounter", async (c) => {
 
 dm.post("/trigger-encounter", (c) => respond(c, gm.handleTriggerEncounter(c.get("user").userId)));
 
+dm.post("/interact-feature", async (c) => {
+  const body = await c.req.json<{ feature_name: string }>();
+  return respond(c, gm.handleInteractWithFeature(c.get("user").userId, body));
+});
+
 dm.post("/voice-npc", async (c) => {
   const body = await c.req.json<{ npc_id: string; dialogue: string }>();
   return respond(c, gm.handleVoiceNpc(c.get("user").userId, body));
