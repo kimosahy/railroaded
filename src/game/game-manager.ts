@@ -3152,5 +3152,5 @@ export async function loadCustomMonsters(): Promise<number> {
 // --- State access for testing ---
 
 export function getState() {
-  return { characters, parties, playerQueue, dmQueue };
+  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap };
 }

@@ -405,6 +405,79 @@ spectator.get("/narrations/:sessionId", async (c) => {
   }
 });
 
+// --- Campaigns ---
+
+// GET /spectator/campaigns — list all active campaigns
+spectator.get("/campaigns", (c) => {
+  const state = gm.getState();
+  const campaignList: {
+    id: string;
+    name: string;
+    description: string;
+    status: string;
+    session_count: number;
+    completed_dungeons: string[];
+    party_name: string | null;
+    party_members: { name: string; class: string; level: number }[];
+  }[] = [];
+
+  for (const [, campaign] of state.campaigns) {
+    const party = campaign.partyId ? state.parties.get(campaign.partyId) : null;
+    const members = party
+      ? party.members.map((mid) => {
+          const ch = state.characters.get(mid);
+          return { name: ch?.name ?? "Unknown", class: ch?.class ?? "unknown", level: ch?.level ?? 1 };
+        })
+      : [];
+
+    campaignList.push({
+      id: campaign.id,
+      name: campaign.name,
+      description: campaign.description,
+      status: campaign.status,
+      session_count: campaign.sessionCount,
+      completed_dungeons: campaign.completedDungeons,
+      party_name: party?.name ?? null,
+      party_members: members,
+    });
+  }
+
+  return c.json({ campaigns: campaignList });
+});
+
+// GET /spectator/campaigns/:id — detailed campaign view
+spectator.get("/campaigns/:id", (c) => {
+  const campaignId = c.req.param("id");
+  const state = gm.getState();
+  const campaign = state.campaigns.get(campaignId);
+
+  if (!campaign) {
+    return c.json({ error: "Campaign not found" }, 404);
+  }
+
+  const party = campaign.partyId ? state.parties.get(campaign.partyId) : null;
+  const members = party
+    ? party.members.map((mid) => {
+        const ch = state.characters.get(mid);
+        return ch
+          ? { name: ch.name, class: ch.class, race: ch.race, level: ch.level, xp: ch.xp, hp: ch.hpCurrent, hpMax: ch.hpMax }
+          : null;
+      }).filter(Boolean)
+    : [];
+
+  return c.json({
+    id: campaign.id,
+    name: campaign.name,
+    description: campaign.description,
+    status: campaign.status,
+    session_count: campaign.sessionCount,
+    completed_dungeons: campaign.completedDungeons,
+    story_flags: campaign.storyFlags,
+    party_name: party?.name ?? null,
+    party_members: members,
+  });
+});
+
 // --- Tavern Board ---
 
 // GET /spectator/tavern — list all tavern posts (newest first)
