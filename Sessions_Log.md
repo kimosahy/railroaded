@@ -280,3 +280,48 @@ Complete Sprint B: custom dungeon templates + custom monsters
 - **Template-driven dungeons:** YAML templates define complete adventures (rooms, connections, encounters, loot, NPCs). Server loads and uses them at runtime instead of hardcoded rooms
 - **Recharge mechanics:** 5e pattern — ability fires once, then needs d6 >= recharge value each turn to restore. Data model supports it even before monster AI is smart enough to use it
 - **Runtime vs persistent templates:** Custom monsters exist in-memory for the session AND persist to DB for reuse. Dual-layer pattern
+
+## Session 8 — Mar 4, 2026 (Sprint C — Persistence & World, All 4 Phases)
+
+### Goal
+Complete Sprint C: multi-session campaigns with persistent characters, NPCs, quests, and world state
+
+### What Was Done
+
+**Phase 1 — Campaign Shell (5 commits):**
+1. `campaigns` table + Drizzle migration (0004). campaign_id FK on parties and game_sessions
+2. `create_campaign`, `get_campaign`, `set_story_flag` DM tools
+3. `end_session` updated to track session count + completed dungeons per campaign
+4. Spectator endpoints: `GET /spectator/campaigns`, `GET /spectator/campaigns/:id`
+5. `loadCampaigns()` restores from DB on startup, re-links to in-memory parties
+
+**Phase 2 — Character Persistence (4 commits):**
+6. Fixed character snapshot (deathSaves + death handling)
+7. Gold currency: starting gold by class, `award_gold` DM tool (per-player or party split), persists via snapshot
+8. XP-based level-up: auto-level on XP award, HP/spell slots/hit dice/features all scale, cap at level 5
+9. Campaign reconvening: `start_campaign_session` tool loads all character state (level, gold, XP, inventory, equipment) from previous session
+
+**Phase 3 — NPC System (2 commits):**
+10. `npcs` + `npc_interactions` tables (migration 0006)
+11. 5 DM tools: `create_npc`, `get_npc`, `list_npcs`, `update_npc`, `update_npc_disposition`
+12. Disposition system: -100 (hostile) → +100 (devoted), 7 labels, auto-computed from interactions
+13. NPC memory: last 20 interactions with reasons, `voice_npc` logs persistent interactions
+14. Campaign briefing returns full NPC roster
+
+**Phase 4 — Between-Session Phase (1 commit):**
+15. Quest tracking: `add_quest`, `update_quest`, `list_quests` with active/completed/failed status
+16. Session history: `end_session` records summaries + completed dungeons across sessions
+17. Enriched campaign briefing: full character details, NPC personality/memory, quests, session history
+18. `start_campaign_session` returns full briefing — everything a new DM needs to continue
+
+### Current State
+- 322 tests passing across 15 files (282 → 322, +40 new)
+- Sprint C complete (all 4 phases). All planned sprints shipped (A + B + C)
+- 6 Drizzle migrations total (0001–0006)
+- 12 commits across Sprint C
+
+### Concepts Learned
+- **Campaign as container:** Everything hangs off campaign_id — sessions, characters, parties, NPCs, quests. Simple FK pattern scales well
+- **Reconvening pattern:** Snapshot character state on session end → reload on next session start. Handles death, gold, XP, equipment across sessions
+- **Disposition as derived state:** Store raw interaction scores, compute human-readable label (hostile/wary/neutral/friendly/devoted) at read time. More flexible than storing the label
+- **Briefing as onboarding:** The campaign briefing endpoint is designed so a brand-new DM agent can pick up a campaign mid-stream with zero context loss
