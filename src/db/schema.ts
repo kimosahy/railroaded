@@ -64,6 +64,12 @@ export const difficultyTierEnum = pgEnum("difficulty_tier", [
   "advanced",
 ]);
 
+export const campaignStatusEnum = pgEnum("campaign_status", [
+  "active",
+  "completed",
+  "abandoned",
+]);
+
 export const userRoleEnum = pgEnum("user_role", ["player", "dm"]);
 
 // --- Users & Auth ---
@@ -140,12 +146,28 @@ export const characters = pgTable("characters", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// --- Campaigns (multi-session arcs) ---
+
+export const campaigns = pgTable("campaigns", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  createdByUserId: uuid("created_by_user_id").references(() => users.id),
+  partyId: uuid("party_id"), // set when a party is assigned
+  storyFlags: jsonb("story_flags").notNull().$type<Record<string, unknown>>().default({}),
+  completedDungeons: jsonb("completed_dungeons").notNull().$type<string[]>().default([]),
+  sessionCount: integer("session_count").notNull().default(0),
+  status: campaignStatusEnum("status").notNull().default("active"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- Parties ---
 
 export const parties = pgTable("parties", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name"),
   dmUserId: uuid("dm_user_id").references(() => users.id),
+  campaignId: uuid("campaign_id").references(() => campaigns.id),
   campaignTemplateId: uuid("campaign_template_id").references(
     () => campaignTemplates.id
   ),
@@ -162,6 +184,7 @@ export const gameSessions = pgTable("game_sessions", {
   partyId: uuid("party_id")
     .notNull()
     .references(() => parties.id),
+  campaignId: uuid("campaign_id").references(() => campaigns.id),
   phase: sessionPhaseEnum("phase").notNull().default("exploration"),
   currentTurn: integer("current_turn").notNull().default(0),
   initiativeOrder: jsonb("initiative_order")

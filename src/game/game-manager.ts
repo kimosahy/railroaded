@@ -62,7 +62,7 @@ import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
-import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable } from "../db/schema.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -91,14 +91,29 @@ interface GameParty {
   triggeredEncounters: Set<string>;                   // roomIds already triggered
   templateLootTables: Map<string, TemplateLootTable>; // roomId → loot table
   lootedRooms: Set<string>;                           // roomIds already looted
+  campaignId: string | null;    // in-memory campaign ID
   dbPartyId: string | null;     // UUID from parties table
   dbSessionId: string | null;   // UUID from game_sessions table
   dbReady: Promise<void> | null; // resolves when DB session row exists
 }
 
+interface GameCampaign {
+  id: string;
+  name: string;
+  description: string;
+  createdByUserId: string | null;
+  partyId: string | null;          // in-memory party ID once assigned
+  storyFlags: Record<string, unknown>;
+  completedDungeons: string[];
+  sessionCount: number;
+  status: "active" | "completed" | "abandoned";
+  dbCampaignId: string | null;     // UUID from campaigns table
+}
+
 const characters = new Map<string, GameCharacter>();
 const charactersByUser = new Map<string, string>(); // userId → characterId
 const parties = new Map<string, GameParty>();
+const campaignsMap = new Map<string, GameCampaign>();
 const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
 
@@ -2234,6 +2249,145 @@ export function handleEndSession(userId: string, params: { summary: string }): {
   };
 }
 
+// --- Campaign Management ---
+
+export function handleCreateCampaign(userId: string, params: {
+  name: string;
+  description?: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!params.name || params.name.trim().length === 0) {
+    return { success: false, error: "Campaign name is required." };
+  }
+
+  if (party.campaignId) {
+    return { success: false, error: "This party already has an active campaign. End it before creating a new one." };
+  }
+
+  const campaignId = nextId("campaign");
+  const campaign: GameCampaign = {
+    id: campaignId,
+    name: params.name.trim(),
+    description: params.description?.trim() ?? "",
+    createdByUserId: userId,
+    partyId: party.id,
+    storyFlags: {},
+    completedDungeons: [],
+    sessionCount: party.session ? 1 : 0,
+    status: "active",
+    dbCampaignId: null,
+  };
+
+  campaignsMap.set(campaignId, campaign);
+  party.campaignId = campaignId;
+
+  // Persist to DB (fire-and-forget)
+  const dbUserId = getDbUserId(userId);
+  db.insert(campaignsTable).values({
+    name: campaign.name,
+    description: campaign.description,
+    createdByUserId: dbUserId ?? undefined,
+    partyId: party.dbPartyId ?? undefined,
+  }).returning({ id: campaignsTable.id }).then(([row]) => {
+    campaign.dbCampaignId = row.id;
+    // Also update party's campaign FK
+    if (party.dbPartyId) {
+      db.update(partiesTable)
+        .set({ campaignId: row.id })
+        .where(eq(partiesTable.id, party.dbPartyId))
+        .catch((err) => console.error("[DB] Failed to update party campaignId:", err));
+    }
+  }).catch((err) => console.error("[DB] Failed to persist campaign:", err));
+
+  logEvent(party, "campaign_created", null, {
+    campaignId, name: campaign.name, description: campaign.description,
+  });
+
+  return {
+    success: true,
+    data: {
+      campaign_id: campaignId,
+      name: campaign.name,
+      description: campaign.description,
+      status: campaign.status,
+      session_count: campaign.sessionCount,
+    },
+  };
+}
+
+export function handleGetCampaign(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!party.campaignId) {
+    return { success: false, error: "No active campaign for this party." };
+  }
+
+  const campaign = campaignsMap.get(party.campaignId);
+  if (!campaign) {
+    return { success: false, error: "Campaign not found." };
+  }
+
+  // Gather party member info
+  const members = party.members.map((mid) => {
+    const c = characters.get(mid);
+    return c ? { name: c.name, class: c.class, level: c.level, hp: c.hpCurrent, hpMax: c.hpMax } : null;
+  }).filter(Boolean);
+
+  return {
+    success: true,
+    data: {
+      campaign_id: campaign.id,
+      name: campaign.name,
+      description: campaign.description,
+      status: campaign.status,
+      session_count: campaign.sessionCount,
+      completed_dungeons: campaign.completedDungeons,
+      story_flags: campaign.storyFlags,
+      party_name: party.name,
+      party_members: members,
+    },
+  };
+}
+
+export function handleSetStoryFlag(userId: string, params: {
+  key: string;
+  value: unknown;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!party.campaignId) {
+    return { success: false, error: "No active campaign for this party." };
+  }
+
+  const campaign = campaignsMap.get(party.campaignId);
+  if (!campaign) return { success: false, error: "Campaign not found." };
+
+  if (!params.key || params.key.trim().length === 0) {
+    return { success: false, error: "Story flag key is required." };
+  }
+
+  campaign.storyFlags[params.key.trim()] = params.value;
+
+  // Persist to DB
+  if (campaign.dbCampaignId) {
+    db.update(campaignsTable)
+      .set({ storyFlags: campaign.storyFlags })
+      .where(eq(campaignsTable.id, campaign.dbCampaignId))
+      .catch((err) => console.error("[DB] Failed to update story flags:", err));
+  }
+
+  logEvent(party, "story_flag_set", null, { key: params.key, value: params.value });
+
+  return {
+    success: true,
+    data: { story_flags: campaign.storyFlags },
+  };
+}
+
 export function handleCreateCustomMonster(userId: string, params: {
   name: string;
   hp_max: number;
@@ -2477,6 +2631,7 @@ function formParty(match: MatchResult): void {
     triggeredEncounters: new Set(),
     templateLootTables: new Map(),
     lootedRooms: new Set(),
+    campaignId: null,
     dbPartyId: null,
     dbSessionId: null,
     dbReady: null,
@@ -2923,6 +3078,7 @@ export async function loadPersistedState(): Promise<number> {
         triggeredEncounters: new Set(),
         templateLootTables: restoreTemplate ? lootTablesFromTemplate(restoreTemplate) : new Map(),
         lootedRooms: new Set(),
+        campaignId: null, // TODO: restore from DB when campaigns are loaded
         dbPartyId: partyRow.id,
         dbSessionId: sessionRow.id,
         dbReady: Promise.resolve(),

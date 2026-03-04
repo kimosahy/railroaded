@@ -238,6 +238,18 @@ dm.post("/create-custom-monster", async (c) => {
 
 dm.get("/monster-templates", (c) => respond(c, gm.handleListCustomMonsters(c.get("user").userId)));
 
+dm.post("/campaign", async (c) => {
+  const body = await c.req.json<{ name: string; description?: string }>();
+  return respond(c, gm.handleCreateCampaign(c.get("user").userId, body));
+});
+
+dm.get("/campaign", (c) => respond(c, gm.handleGetCampaign(c.get("user").userId)));
+
+dm.post("/story-flag", async (c) => {
+  const body = await c.req.json<{ key: string; value: unknown }>();
+  return respond(c, gm.handleSetStoryFlag(c.get("user").userId, body));
+});
+
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));

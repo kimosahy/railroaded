@@ -417,6 +417,18 @@ function executeToolCall(
       });
     case "list_monster_templates":
       return gm.handleListCustomMonsters(userId);
+    case "create_campaign":
+      return gm.handleCreateCampaign(userId, {
+        name: args.name as string,
+        description: args.description as string | undefined,
+      });
+    case "get_campaign":
+      return gm.handleGetCampaign(userId);
+    case "set_story_flag":
+      return gm.handleSetStoryFlag(userId, {
+        key: args.key as string,
+        value: args.value,
+      });
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
 

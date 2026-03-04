@@ -812,6 +812,48 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleListCustomMonsters",
   },
+  {
+    name: "create_campaign",
+    description:
+      "Create a multi-session campaign for the current party. Tracks story flags, completed dungeons, " +
+      "and session count across sessions. A party can only have one active campaign at a time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Campaign name (e.g., 'The Curse of Ashenmoor')." },
+        description: { type: "string", description: "Brief description of the campaign's premise and goals." },
+      },
+      required: ["name"],
+    },
+    handler: "handleCreateCampaign",
+  },
+  {
+    name: "get_campaign",
+    description:
+      "Get the current campaign briefing — name, description, session count, completed dungeons, story flags, " +
+      "and party composition. Use at the start of a session to understand campaign context.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+    },
+    handler: "handleGetCampaign",
+  },
+  {
+    name: "set_story_flag",
+    description:
+      "Set a story flag on the current campaign. Story flags track narrative state across sessions — " +
+      "e.g., 'rescued_merchant: true', 'goblin_chief_dead: true', 'faction_reputation: 3'. " +
+      "Use any key/value pair. Persists across sessions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        key: { type: "string", description: "Flag name (e.g., 'rescued_merchant', 'dragon_egg_found')." },
+        value: { type: "string", description: "Flag value (string, number, or boolean as string)." },
+      },
+      required: ["key", "value"],
+    },
+    handler: "handleSetStoryFlag",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------
