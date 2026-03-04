@@ -29,6 +29,7 @@ import {
   isEncounterOver,
   getAliveMonsters,
   type MonsterInstance,
+  type MonsterAttack,
 } from "./encounters.ts";
 import {
   createSession,
@@ -141,7 +142,7 @@ const monsterTemplates = new Map<string, {
   hpMax: number;
   ac: number;
   abilityScores: AbilityScores;
-  attacks: { name: string; to_hit: number; damage: string; type: string }[];
+  attacks: MonsterAttack[];
   specialAbilities: string[];
   xpValue: number;
   lootTable?: LootTableEntry[];
@@ -552,9 +553,16 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
   if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
 
-  // Find target character
-  const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
-  if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+  // Recharge check at start of monster's turn — roll d6 for each spent ability
+  const rechargeResults: { name: string; rolled: number; recharged: boolean }[] = [];
+  for (const atk of monster.attacks) {
+    if (atk.recharge && monster.rechargeTracker[atk.name] === false) {
+      const rechargeRoll = roll("1d6");
+      const recharged = rechargeRoll.total >= atk.recharge;
+      if (recharged) monster.rechargeTracker[atk.name] = true;
+      rechargeResults.push({ name: atk.name, rolled: rechargeRoll.total, recharged });
+    }
+  }
 
   // Pick attack (first matching or first available)
   const attack = params.attack_name
@@ -562,15 +570,132 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     : monster.attacks[0];
   if (!attack) return { success: false, error: "No valid attack found for this monster." };
 
-  // Resolve using the rules engine
+  // Check recharge availability
+  if (attack.recharge && monster.rechargeTracker[attack.name] === false) {
+    return { success: false, error: `${attack.name} has not recharged yet. Use a different attack.`, data: { rechargeResults } as Record<string, unknown> };
+  }
+
+  // Mark rechargeable attack as spent
+  if (attack.recharge) {
+    monster.rechargeTracker[attack.name] = false;
+  }
+
+  // --- AoE / save-based attack path ---
+  if (attack.aoe && attack.save_dc && attack.save_ability) {
+    const targets = party.members
+      .map((mid) => characters.get(mid))
+      .filter((c): c is GameCharacter => !!c && c.hpCurrent > 0);
+
+    const damageRoll = roll(attack.damage);
+    const ability = attack.save_ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+    const results: { name: string; saved: boolean; saveRoll: number; damage: number; droppedToZero: boolean }[] = [];
+
+    for (const t of targets) {
+      const save = savingThrow({
+        abilityScores: t.abilityScores,
+        ability,
+        dc: attack.save_dc,
+        profBonus: 0,
+      });
+      const dmg = save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total;
+      const { hp, droppedToZero } = applyDamage({ current: t.hpCurrent, max: t.hpMax, temp: 0 }, dmg);
+      t.hpCurrent = hp.current;
+
+      if (droppedToZero) {
+        t.conditions = handleDropToZero(t.conditions);
+        t.deathSaves = resetDeathSaves();
+        broadcastToParty(party.id, {
+          type: "character_down",
+          characterId: t.id, characterName: t.name,
+          attackerName: monster.name,
+          message: `${t.name} has fallen unconscious!`,
+        });
+      }
+      results.push({ name: t.name, saved: save.success, saveRoll: save.roll.total, damage: dmg, droppedToZero });
+    }
+
+    logEvent(party, "monster_attack", monster.id, {
+      monsterName: monster.name, attackName: attack.name, aoe: true,
+      saveDC: attack.save_dc, saveAbility: attack.save_ability,
+      totalDamage: damageRoll.total, results,
+    });
+
+    party.session = nextTurn(party.session);
+    notifyTurnChange(party);
+
+    return {
+      success: true,
+      data: {
+        aoe: true, attackName: attack.name, monsterName: monster.name,
+        saveDC: attack.save_dc, saveAbility: attack.save_ability,
+        damageRoll: damageRoll.total, results, rechargeResults,
+        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+      },
+    };
+  }
+
+  // --- Save-based single-target attack (not AoE) ---
+  if (attack.save_dc && attack.save_ability) {
+    const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
+    if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+
+    const ability = attack.save_ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+    const save = savingThrow({
+      abilityScores: target.abilityScores,
+      ability,
+      dc: attack.save_dc,
+      profBonus: 0,
+    });
+    const damageRoll = roll(attack.damage);
+    const dmg = save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total;
+    const { hp, droppedToZero } = applyDamage({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, dmg);
+    target.hpCurrent = hp.current;
+
+    if (droppedToZero) {
+      target.conditions = handleDropToZero(target.conditions);
+      target.deathSaves = resetDeathSaves();
+      broadcastToParty(party.id, {
+        type: "character_down",
+        characterId: target.id, characterName: target.name,
+        attackerName: monster.name,
+        message: `${target.name} has fallen unconscious!`,
+      });
+    }
+
+    logEvent(party, "monster_attack", monster.id, {
+      monsterName: monster.name, targetName: target.name, attackName: attack.name,
+      saveBased: true, saveDC: attack.save_dc, saveAbility: attack.save_ability,
+      saved: save.success, damage: dmg, droppedToZero,
+    });
+
+    party.session = nextTurn(party.session);
+    notifyTurnChange(party);
+
+    return {
+      success: true,
+      data: {
+        saveBased: true, saved: save.success, saveRoll: save.roll.total,
+        saveDC: attack.save_dc, saveAbility: attack.save_ability,
+        damage: dmg, damageType: attack.type, targetHP: target.hpCurrent,
+        droppedToZero, attackName: attack.name, monsterName: monster.name,
+        targetName: target.name, rechargeResults,
+        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+      },
+    };
+  }
+
+  // --- Standard attack roll path ---
+  const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
+  if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+
   const result = resolveAttack({
-    attackerAbilityMod: attack.to_hit - proficiencyBonus(1), // to_hit already includes proficiency in stat blocks
-    proficiencyBonus: 0, // already baked into to_hit
+    attackerAbilityMod: attack.to_hit - proficiencyBonus(1),
+    proficiencyBonus: 0,
     targetAC: target.ac,
-    damageDice: attack.damage.replace(/[+-]\d+$/, ""), // strip modifier from notation like "1d6+1"
+    damageDice: attack.damage.replace(/[+-]\d+$/, ""),
     damageType: attack.type,
     damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
-    bonusToHit: attack.to_hit, // use the full to_hit from the stat block
+    bonusToHit: attack.to_hit,
   });
 
   if (result.hit) {
@@ -584,7 +709,6 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
 
-      // Broadcast character down to entire party
       broadcastToParty(party.id, {
         type: "character_down",
         characterId: target.id,
@@ -593,7 +717,6 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         message: `${target.name} has fallen unconscious!`,
       });
 
-      // Notify DM explicitly
       if (party.dmUserId) {
         sendToUser(party.dmUserId, {
           type: "character_down",
@@ -612,7 +735,6 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       critical: result.critical, droppedToZero,
     });
 
-    // Advance to next turn
     party.session = nextTurn(party.session);
     notifyTurnChange(party);
 
@@ -623,6 +745,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         damageType: result.damageType, targetHP: target.hpCurrent,
         droppedToZero, naturalRoll: result.naturalRoll,
         attackName: attack.name, monsterName: monster.name, targetName: target.name,
+        rechargeResults,
         nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
       },
     };
@@ -633,7 +756,6 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     hit: false, fumble: result.fumble,
   });
 
-  // Advance to next turn even on miss
   party.session = nextTurn(party.session);
   notifyTurnChange(party);
 
@@ -642,6 +764,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     data: {
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
       attackName: attack.name, monsterName: monster.name, targetName: target.name,
+      rechargeResults,
       nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
     },
   };
@@ -2115,7 +2238,7 @@ export function handleCreateCustomMonster(userId: string, params: {
   name: string;
   hp_max: number;
   ac: number;
-  attacks: { name: string; damage: string; to_hit: number }[];
+  attacks: { name: string; damage: string; to_hit: number; type?: string; recharge?: number; aoe?: boolean; save_dc?: number; save_ability?: string }[];
   ability_scores?: AbilityScores;
   vulnerabilities?: string[];
   immunities?: string[];
@@ -2144,7 +2267,10 @@ export function handleCreateCustomMonster(userId: string, params: {
       name: a.name,
       to_hit: a.to_hit,
       damage: a.damage,
-      type: "slashing", // default damage type
+      type: a.type ?? "slashing",
+      ...(a.recharge ? { recharge: a.recharge } : {}),
+      ...(a.aoe ? { aoe: true } : {}),
+      ...(a.save_dc ? { save_dc: a.save_dc, save_ability: a.save_ability ?? "dex" } : {}),
     })),
     specialAbilities: (params.special_abilities ?? []).map((sa) => `${sa.name}: ${sa.description}`),
     xpValue: params.xp_value ?? Math.floor(params.hp_max * params.ac / 4),

@@ -406,7 +406,7 @@ function executeToolCall(
         name: args.name as string,
         hp_max: args.hp_max as number,
         ac: args.ac as number,
-        attacks: args.attacks as { name: string; damage: string; to_hit: number }[],
+        attacks: args.attacks as { name: string; damage: string; to_hit: number; type?: string; recharge?: number; aoe?: boolean; save_dc?: number; save_ability?: string }[],
         ability_scores: args.ability_scores as { str: number; dex: number; con: number; int: number; wis: number; cha: number } | undefined,
         vulnerabilities: args.vulnerabilities as string[] | undefined,
         immunities: args.immunities as string[] | undefined,

@@ -7,6 +7,17 @@ import type { InitiativeEntry } from "../engine/combat.ts";
 import type { AbilityScores } from "../types.ts";
 import type { LootTableEntry } from "../engine/loot.ts";
 
+export interface MonsterAttack {
+  name: string;
+  to_hit: number;
+  damage: string;
+  type: string;
+  recharge?: number;  // recharges on d6 >= this value (e.g. 5 = recharge 5-6)
+  aoe?: boolean;      // hits all players (each makes a save)
+  save_dc?: number;   // DC for save-based attacks
+  save_ability?: string; // ability for save (e.g. "dex", "con")
+}
+
 export interface MonsterInstance {
   id: string;
   templateName: string;
@@ -15,12 +26,13 @@ export interface MonsterInstance {
   hpMax: number;
   ac: number;
   abilityScores: AbilityScores;
-  attacks: { name: string; to_hit: number; damage: string; type: string }[];
+  attacks: MonsterAttack[];
   specialAbilities: string[];
   xpValue: number;
   conditions: string[];
   isAlive: boolean;
   lootTable?: LootTableEntry[];
+  rechargeTracker: Record<string, boolean>; // attack name → available (true = ready to use)
 }
 
 export interface EncounterState {
@@ -40,7 +52,7 @@ export function spawnMonsters(
       hpMax: number;
       ac: number;
       abilityScores: AbilityScores;
-      attacks: { name: string; to_hit: number; damage: string; type: string }[];
+      attacks: MonsterAttack[];
       specialAbilities: string[];
       xpValue: number;
       lootTable?: LootTableEntry[];
@@ -57,6 +69,12 @@ export function spawnMonsters(
           ? `${group.templateName} ${String.fromCharCode(64 + counter)}` // Goblin A, Goblin B...
           : group.templateName;
 
+      // Initialize recharge tracker — all rechargeable attacks start available
+      const rechargeTracker: Record<string, boolean> = {};
+      for (const atk of group.template.attacks) {
+        if (atk.recharge) rechargeTracker[atk.name] = true;
+      }
+
       instances.push({
         id: `monster-${counter}`,
         templateName: group.templateName,
@@ -65,12 +83,13 @@ export function spawnMonsters(
         hpMax: group.template.hpMax,
         ac: group.template.ac,
         abilityScores: { ...group.template.abilityScores },
-        attacks: [...group.template.attacks],
+        attacks: group.template.attacks.map((a) => ({ ...a })),
         specialAbilities: [...group.template.specialAbilities],
         xpValue: group.template.xpValue,
         conditions: [],
         isAlive: true,
         lootTable: group.template.lootTable ? [...group.template.lootTable] : undefined,
+        rechargeTracker,
       });
       counter++;
     }
