@@ -54,6 +54,7 @@ import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } 
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
+import { getRandomTemplate, type DungeonTemplate } from "./templates.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
@@ -2034,6 +2035,37 @@ function generatePartyName(memberIds: string[]): string {
   return `The ${adj} ${noun}`;
 }
 
+function dungeonStateFromTemplate(template: DungeonTemplate): DungeonState {
+  const rooms = template.rooms.map((r) => ({
+    id: r.id,
+    name: r.name,
+    description: r.description,
+    type: r.type,
+    features: r.features,
+  }));
+  const connections = template.connections.map((c) => ({
+    fromRoomId: c.fromRoomId,
+    toRoomId: c.toRoomId,
+    type: c.type,
+  }));
+  return createDungeonState(rooms, connections, template.entryRoomId);
+}
+
+function fallbackRooms() {
+  return [
+    { id: "room-1", name: "Entrance Hall", description: "A dark stone entrance with torches flickering on the walls.", type: "entry" as const, features: ["Torches", "Stone archway"] },
+    { id: "room-2", name: "Guard Room", description: "A room with overturned furniture. Signs of a struggle.", type: "chamber" as const, features: ["Overturned table", "Weapon rack"] },
+    { id: "room-3", name: "Boss Chamber", description: "A large chamber with a throne at the far end.", type: "boss" as const, features: ["Throne", "Treasure chest"] },
+  ];
+}
+
+function fallbackConnections() {
+  return [
+    { fromRoomId: "room-1", toRoomId: "room-2", type: "passage" as const },
+    { fromRoomId: "room-2", toRoomId: "room-3", type: "door" as const },
+  ];
+}
+
 function formParty(match: MatchResult): void {
   const partyId = nextId("party");
 
@@ -2068,18 +2100,11 @@ function formParty(match: MatchResult): void {
   const dmIdx = dmQueue.findIndex((q) => q.userId === match.dm.userId);
   if (dmIdx !== -1) dmQueue.splice(dmIdx, 1);
 
-  // Create a simple dungeon for testing
-  const testRooms = [
-    { id: "room-1", name: "Entrance Hall", description: "A dark stone entrance with torches flickering on the walls.", type: "entry" as const, features: ["Torches", "Stone archway"] },
-    { id: "room-2", name: "Guard Room", description: "A room with overturned furniture. Signs of a struggle.", type: "chamber" as const, features: ["Overturned table", "Weapon rack"] },
-    { id: "room-3", name: "Boss Chamber", description: "A large chamber with a throne at the far end.", type: "boss" as const, features: ["Throne", "Treasure chest"] },
-  ];
-  const testConnections = [
-    { fromRoomId: "room-1", toRoomId: "room-2", type: "passage" as const },
-    { fromRoomId: "room-2", toRoomId: "room-3", type: "door" as const },
-  ];
-
-  party.dungeonState = createDungeonState(testRooms, testConnections, "room-1");
+  // Load dungeon from a template (pick random), with hardcoded fallback
+  const template = getRandomTemplate();
+  party.dungeonState = template
+    ? dungeonStateFromTemplate(template)
+    : createDungeonState(fallbackRooms(), fallbackConnections(), "room-1");
   party.session = {
     id: nextId("session"),
     ...createSession({ partyId }),
@@ -2464,16 +2489,8 @@ export async function loadPersistedState(): Promise<number> {
         timestamp: e.createdAt,
       }));
 
-      // Recreate test dungeon (can't restore original dungeon state)
-      const testRooms = [
-        { id: "room-1", name: "Entrance Hall", description: "A dark stone entrance with torches flickering on the walls.", type: "entry" as const, features: ["Torches", "Stone archway"] },
-        { id: "room-2", name: "Guard Room", description: "A room with overturned furniture. Signs of a struggle.", type: "chamber" as const, features: ["Overturned table", "Weapon rack"] },
-        { id: "room-3", name: "Boss Chamber", description: "A large chamber with a throne at the far end.", type: "boss" as const, features: ["Throne", "Treasure chest"] },
-      ];
-      const testConnections = [
-        { fromRoomId: "room-1", toRoomId: "room-2", type: "passage" as const },
-        { fromRoomId: "room-2", toRoomId: "room-3", type: "door" as const },
-      ];
+      // Recreate dungeon from template (pick random), with fallback
+      const restoreTemplate = getRandomTemplate();
 
       // Find DM userId — look for a user that is a DM for this session
       // The DM isn't stored on the party row, so we check event actors or fall back to null
@@ -2488,7 +2505,9 @@ export async function loadPersistedState(): Promise<number> {
         name: partyRow.name ?? "Unnamed Party",
         members: memberIds,
         dmUserId,
-        dungeonState: createDungeonState(testRooms, testConnections, "room-1"),
+        dungeonState: restoreTemplate
+          ? dungeonStateFromTemplate(restoreTemplate)
+          : createDungeonState(fallbackRooms(), fallbackConnections(), "room-1"),
         session: {
           id: nextId("session"),
           partyId,
