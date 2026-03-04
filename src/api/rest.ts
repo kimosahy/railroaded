@@ -231,6 +231,11 @@ dm.post("/loot-room", async (c) => {
   return respond(c, gm.handleLootRoom(c.get("user").userId, body));
 });
 
+dm.post("/create-custom-monster", async (c) => {
+  const body = await c.req.json();
+  return respond(c, gm.handleCreateCustomMonster(c.get("user").userId, body as Parameters<typeof gm.handleCreateCustomMonster>[1]));
+});
+
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));

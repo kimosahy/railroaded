@@ -145,6 +145,9 @@ const monsterTemplates = new Map<string, {
   specialAbilities: string[];
   xpValue: number;
   lootTable?: LootTableEntry[];
+  vulnerabilities?: string[];
+  immunities?: string[];
+  resistances?: string[];
 }>();
 
 let idCounter = 1;
@@ -2105,6 +2108,70 @@ export function handleEndSession(userId: string, params: { summary: string }): {
   return {
     success: true,
     data: { ended: true, summary: params.summary, eventLog: eventSummary },
+  };
+}
+
+export function handleCreateCustomMonster(userId: string, params: {
+  name: string;
+  hp_max: number;
+  ac: number;
+  attacks: { name: string; damage: string; to_hit: number }[];
+  ability_scores?: AbilityScores;
+  vulnerabilities?: string[];
+  immunities?: string[];
+  resistances?: string[];
+  special_abilities?: { name: string; description: string }[];
+  xp_value?: number;
+  loot_table?: { item_name: string; weight: number; quantity: number }[];
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!params.name || params.name.trim().length === 0) {
+    return { success: false, error: "Monster name is required." };
+  }
+  if (params.hp_max < 1) return { success: false, error: "hp_max must be at least 1." };
+  if (params.ac < 1) return { success: false, error: "ac must be at least 1." };
+  if (!params.attacks || params.attacks.length === 0) {
+    return { success: false, error: "At least one attack is required." };
+  }
+
+  const template = {
+    hpMax: params.hp_max,
+    ac: params.ac,
+    abilityScores: params.ability_scores ?? { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+    attacks: params.attacks.map((a) => ({
+      name: a.name,
+      to_hit: a.to_hit,
+      damage: a.damage,
+      type: "slashing", // default damage type
+    })),
+    specialAbilities: (params.special_abilities ?? []).map((sa) => `${sa.name}: ${sa.description}`),
+    xpValue: params.xp_value ?? Math.floor(params.hp_max * params.ac / 4),
+    lootTable: params.loot_table?.map((e) => ({ itemName: e.item_name, weight: e.weight, quantity: e.quantity })),
+    vulnerabilities: params.vulnerabilities ?? [],
+    immunities: params.immunities ?? [],
+    resistances: params.resistances ?? [],
+  };
+
+  monsterTemplates.set(params.name, template);
+
+  logEvent(party, "custom_monster_created", null, {
+    name: params.name,
+    hpMax: template.hpMax,
+    ac: template.ac,
+    attacks: template.attacks.map((a) => a.name),
+  });
+
+  return {
+    success: true,
+    data: {
+      name: params.name,
+      hp_max: template.hpMax,
+      ac: template.ac,
+      attacks: template.attacks,
+      xp_value: template.xpValue,
+    },
   };
 }
 

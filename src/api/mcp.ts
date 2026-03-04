@@ -401,6 +401,20 @@ function executeToolCall(
       return gm.handleLootRoom(userId, { player_id: args.player_id as string });
     case "end_session":
       return gm.handleEndSession(userId, { summary: args.summary as string });
+    case "create_custom_monster":
+      return gm.handleCreateCustomMonster(userId, {
+        name: args.name as string,
+        hp_max: args.hp_max as number,
+        ac: args.ac as number,
+        attacks: args.attacks as { name: string; damage: string; to_hit: number }[],
+        ability_scores: args.ability_scores as { str: number; dex: number; con: number; int: number; wis: number; cha: number } | undefined,
+        vulnerabilities: args.vulnerabilities as string[] | undefined,
+        immunities: args.immunities as string[] | undefined,
+        resistances: args.resistances as string[] | undefined,
+        special_abilities: args.special_abilities as { name: string; description: string }[] | undefined,
+        xp_value: args.xp_value as number | undefined,
+        loot_table: args.loot_table as { item_name: string; weight: number; quantity: number }[] | undefined,
+      });
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
 

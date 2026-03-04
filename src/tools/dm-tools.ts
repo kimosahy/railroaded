@@ -698,6 +698,104 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleEndSession",
   },
+
+  // -- Custom monster creation -----------------------------------------------
+
+  {
+    name: "create_custom_monster",
+    description:
+      "Create a custom monster template at runtime. The monster becomes available for " +
+      "spawn_encounter by name. Use this for unique bosses, story-specific creatures, or " +
+      "monsters not in the standard data files. The template persists for this server session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Unique name for the monster template (e.g., 'Corrupted Treant', 'Goblin Shaman').",
+        },
+        hp_max: {
+          type: "integer",
+          description: "Maximum hit points.",
+          minimum: 1,
+        },
+        ac: {
+          type: "integer",
+          description: "Armor class.",
+          minimum: 1,
+        },
+        attacks: {
+          type: "array",
+          description: "List of attacks the monster can make.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string", description: "Attack name (e.g., 'Claw', 'Fire Breath')." },
+              damage: { type: "string", description: "Damage notation (e.g., '2d6+3')." },
+              to_hit: { type: "integer", description: "Attack bonus to hit." },
+            },
+            required: ["name", "damage", "to_hit"],
+          },
+          minItems: 1,
+        },
+        ability_scores: {
+          type: "object",
+          description: "Optional ability scores. Defaults to all 10s.",
+          properties: {
+            str: { type: "integer" }, dex: { type: "integer" }, con: { type: "integer" },
+            int: { type: "integer" }, wis: { type: "integer" }, cha: { type: "integer" },
+          },
+        },
+        vulnerabilities: {
+          type: "array",
+          description: "Damage types the monster is vulnerable to (double damage).",
+          items: { type: "string" },
+        },
+        immunities: {
+          type: "array",
+          description: "Damage types the monster is immune to (no damage).",
+          items: { type: "string" },
+        },
+        resistances: {
+          type: "array",
+          description: "Damage types the monster resists (half damage).",
+          items: { type: "string" },
+        },
+        special_abilities: {
+          type: "array",
+          description: "Named special abilities with descriptions.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              description: { type: "string" },
+            },
+            required: ["name", "description"],
+          },
+        },
+        xp_value: {
+          type: "integer",
+          description: "XP awarded on kill. Defaults to an estimate based on HP and AC.",
+          minimum: 0,
+        },
+        loot_table: {
+          type: "array",
+          description: "Weighted loot table for drops on kill.",
+          items: {
+            type: "object",
+            properties: {
+              item_name: { type: "string" },
+              weight: { type: "integer", minimum: 1 },
+              quantity: { type: "integer", minimum: 1 },
+            },
+            required: ["item_name", "weight", "quantity"],
+          },
+        },
+      },
+      required: ["name", "hp_max", "ac", "attacks"],
+    },
+    handler: "handleCreateCustomMonster",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------
