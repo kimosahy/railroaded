@@ -237,3 +237,46 @@ Complete P2 combat depth (WebSocket turn notifications, bonus actions + reaction
 ### Concepts Learned
 - **Turn resources:** Per-turn tracking (actionUsed, bonusUsed, reactionUsed) resets each turn. Players must explicitly end_turn — attacks no longer auto-advance
 - **Death save broadcasts:** WebSocket push to entire party + DM on every save result. Creates tension even for spectators
+
+## Session 6 — Mar 4, 2026 (P3 Sprint A — Gameplay Depth)
+
+### Goal
+Complete Sprint A: skill checks with context + loot flow end-to-end
+
+### What Was Done
+1. Fixed group check skill proficiency bug + added margin field to all check results (6 new tests)
+2. Wired advantage/disadvantage through all check handlers + new contested check tool (10 new tests)
+3. Loot flow end-to-end: item catalog from items.yaml, data-driven items, equip/unequip with stat recalc, loot drops on monster death (23 new tests)
+
+### Current State
+- 193 tests passing
+- Items 9 + 10 shipped. Sprint A complete
+
+### Concepts Learned
+- **Margin of success:** Returning `margin` (roll - DC) on every check lets the DM calibrate narrative response
+- **Contested checks:** Both sides roll, higher wins — used for grapple, stealth vs perception, etc.
+
+## Session 7 — Mar 4, 2026 (P3 Sprint B — Content Creation)
+
+### Goal
+Complete Sprint B: custom dungeon templates + custom monsters
+
+### What Was Done
+1. Template loader: `src/game/templates.ts` reads YAML from `data/templates/`, exposes `getTemplate()`, `listTemplates()`, `getRandomTemplate()`. Parties now get real 8-room dungeons with branching paths
+2. Pre-placed encounters: `trigger_encounter` DM tool spawns the room's template encounter automatically. Tracked so it can't fire twice
+3. Pre-placed loot: `loot_room` DM tool rolls from the room's template loot table and awards items
+4. Feature interaction: `interact_with_feature` DM tool validates features exist in current room, logs event
+5. Scene override: `override_room_description` DM tool for dynamic description changes mid-session
+6. Custom monster creation: `create_custom_monster` DM tool builds runtime monster templates with full stat blocks
+7. Monster ability model expanded: recharge abilities, AoE attacks with saves, save-or-suck attacks
+8. Custom monster persistence: `custom_monster_templates` DB table, `list_monster_templates` tool, loaded on startup
+
+### Current State
+- 238 tests passing (45 new across Sprint B)
+- Items 11 + 12 shipped. Sprint B complete
+- CLAUDE.md updated with full Sprint C spec (from Poormetheus) — 5 phases, campaign shell through world codex
+
+### Concepts Learned
+- **Template-driven dungeons:** YAML templates define complete adventures (rooms, connections, encounters, loot, NPCs). Server loads and uses them at runtime instead of hardcoded rooms
+- **Recharge mechanics:** 5e pattern — ability fires once, then needs d6 >= recharge value each turn to restore. Data model supports it even before monster AI is smart enough to use it
+- **Runtime vs persistent templates:** Custom monsters exist in-memory for the session AND persist to DB for reuse. Dual-layer pattern
