@@ -57,6 +57,13 @@
       "when": 1772693200729,
       "tag": "0007_opposite_longshot",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1772696939734,
+      "tag": "0008_brown_synch",
+      "breakpoints": true
     }
   ]
 }

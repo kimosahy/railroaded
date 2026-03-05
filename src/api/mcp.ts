@@ -279,6 +279,8 @@ function executeToolCall(
         backstory: args.backstory as string | undefined,
         personality: args.personality as string | undefined,
         playstyle: args.playstyle as string | undefined,
+        avatar_url: args.avatar_url as string | undefined,
+        description: args.description as string | undefined,
       });
     case "look":
       return gm.handleLook(userId);

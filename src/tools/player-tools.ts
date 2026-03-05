@@ -134,6 +134,19 @@ export const playerTools: PlayerToolDefinition[] = [
           minLength: 1,
           maxLength: 2000,
         },
+        avatar_url: {
+          type: "string",
+          description:
+            "URL to your character's avatar/profile image. Optional. " +
+            "If provided, shown next to your name in the tracker and chat.",
+        },
+        description: {
+          type: "string",
+          description:
+            "A short 1-2 sentence description of your character in third person, written in-character. " +
+            "Example: \"A battle-scarred orc who speaks softly but carries the biggest axe in the party.\"",
+          maxLength: 500,
+        },
       },
       required: ["name", "race", "class", "ability_scores", "backstory", "personality", "playstyle"],
       additionalProperties: false,

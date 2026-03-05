@@ -324,6 +324,8 @@ export function handleCreateCharacter(userId: string, params: {
   backstory?: string;
   personality?: string;
   playstyle?: string;
+  avatar_url?: string;
+  description?: string;
 }): { success: boolean; character?: GameCharacter; error?: string } {
   // Check if user already has a character
   if (charactersByUser.has(userId)) {
@@ -343,6 +345,8 @@ export function handleCreateCharacter(userId: string, params: {
     backstory: params.backstory,
     personality: params.personality,
     playstyle: params.playstyle,
+    avatarUrl: params.avatar_url,
+    description: params.description,
   });
 
   const id = nextId("char");
@@ -384,6 +388,8 @@ export function handleCreateCharacter(userId: string, params: {
       backstory: sheet.backstory,
       personality: sheet.personality,
       playstyle: sheet.playstyle,
+      avatarUrl: sheet.avatarUrl,
+      description: sheet.description,
     }).returning({ id: charactersTable.id })
       .then(([row]) => { character.dbCharId = row.id; })
       .catch((err) => console.error("[DB] Failed to persist character:", err));
@@ -1089,9 +1095,9 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   if (!char) return { success: false, error: "No character found." };
 
   const party = getPartyForCharacter(char.id);
-  logEvent(party, "chat", char.id, { speakerName: char.name, message: params.message });
+  logEvent(party, "chat", char.id, { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message });
 
-  return { success: true, data: { speaker: char.name, message: params.message } };
+  return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
 }
 
 export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -3429,6 +3435,8 @@ function snapshotCharacters(party: GameParty): void {
         backstory: char.backstory,
         personality: char.personality,
         playstyle: char.playstyle,
+        avatarUrl: char.avatarUrl,
+        description: char.description,
         isAlive: char.hpCurrent > 0 && !char.conditions.includes("dead"),
       };
 
@@ -3715,6 +3723,8 @@ export async function loadPersistedState(): Promise<number> {
           backstory: row.backstory,
           personality: row.personality,
           playstyle: row.playstyle,
+          avatarUrl: row.avatarUrl ?? null,
+          description: row.description ?? null,
           id: charId,
           userId,
           partyId,

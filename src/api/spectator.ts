@@ -59,7 +59,7 @@ spectator.get("/parties", async (c) => {
   const partyList: {
     id: string;
     name: string;
-    members: { id: string; name: string; class: string; level: number }[];
+    members: { id: string; name: string; class: string; level: number; avatarUrl: string | null; description: string | null }[];
     phase: string | null;
     currentRoom: string | null;
     dmUserId: string | null;
@@ -79,6 +79,8 @@ spectator.get("/parties", async (c) => {
         name: char?.name ?? "Unknown",
         class: char?.class ?? "unknown",
         level: char?.level ?? 1,
+        avatarUrl: char?.avatarUrl ?? null,
+        description: char?.description ?? null,
       };
     });
 
@@ -115,6 +117,8 @@ spectator.get("/parties", async (c) => {
       class: charactersTable.class,
       level: charactersTable.level,
       partyId: charactersTable.partyId,
+      avatarUrl: charactersTable.avatarUrl,
+      description: charactersTable.description,
     }).from(charactersTable).where(isNotNull(charactersTable.partyId));
 
     const charsByParty = new Map<string, typeof dbChars>();
@@ -132,6 +136,8 @@ spectator.get("/parties", async (c) => {
         name: m.name,
         class: m.class,
         level: m.level,
+        avatarUrl: m.avatarUrl ?? null,
+        description: m.description ?? null,
       }));
 
       partyList.push({
@@ -169,9 +175,9 @@ spectator.get("/parties/:id", async (c) => {
     const members = party.members.map((charId) => {
       const char = state.characters.get(charId);
       if (!char) {
-        return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[] };
+        return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
       }
-      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions };
+      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description };
     });
 
     let currentRoom: string | null = null;
@@ -231,6 +237,7 @@ spectator.get("/parties/:id", async (c) => {
       race: charactersTable.race, level: charactersTable.level, xp: charactersTable.xp,
       hpCurrent: charactersTable.hpCurrent, hpMax: charactersTable.hpMax,
       ac: charactersTable.ac, conditions: charactersTable.conditions,
+      avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
     }).from(charactersTable).where(eq(charactersTable.partyId, partyId));
 
     // Get latest session for this party
@@ -263,6 +270,7 @@ spectator.get("/parties/:id", async (c) => {
         id: m.id, name: m.name, class: m.class, race: m.race,
         level: m.level, xp: m.xp, hpCurrent: m.hpCurrent, hpMax: m.hpMax,
         ac: m.ac, conditions: m.conditions,
+        avatarUrl: m.avatarUrl ?? null, description: m.description ?? null,
       })),
       dmUserId: dbParty.dmUserId ?? null,
       phase: latestSession?.isActive ? latestSession.phase : dbParty.status,
@@ -463,6 +471,8 @@ spectator.get("/leaderboard", async (c) => {
     race: string;
     level: number;
     xp: number;
+    avatarUrl: string | null;
+    description: string | null;
   }
 
   // Merge in-memory + DB characters (dedup by DB id)
@@ -471,6 +481,7 @@ spectator.get("/leaderboard", async (c) => {
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id, name: char.name,
       class: char.class, race: char.race, level: char.level, xp: char.xp,
+      avatarUrl: char.avatarUrl, description: char.description,
     });
   }
 
@@ -482,6 +493,7 @@ spectator.get("/leaderboard", async (c) => {
       id: charactersTable.id, name: charactersTable.name,
       class: charactersTable.class, race: charactersTable.race,
       level: charactersTable.level, xp: charactersTable.xp,
+      avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
     }).from(charactersTable);
 
     for (const ch of dbChars) {

@@ -35,6 +35,8 @@ export interface CharacterSheet {
   backstory: string;
   personality: string;
   playstyle: string;
+  avatarUrl: string | null;
+  description: string | null;
 }
 
 /**
@@ -227,6 +229,8 @@ export function createCharacter(params: {
   backstory?: string;
   personality?: string;
   playstyle?: string;
+  avatarUrl?: string;
+  description?: string;
 }): CharacterSheet {
   const level = 1;
 
@@ -282,6 +286,8 @@ export function createCharacter(params: {
     backstory: params.backstory ?? "",
     personality: params.personality ?? "",
     playstyle: params.playstyle ?? "",
+    avatarUrl: params.avatarUrl ?? null,
+    description: params.description ?? null,
   };
 }
 

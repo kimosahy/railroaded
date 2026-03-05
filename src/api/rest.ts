@@ -53,6 +53,7 @@ player.post("/character", async (c) => {
     name: string; race: Race; class: CharacterClass;
     ability_scores: AbilityScores;
     backstory?: string; personality?: string; playstyle?: string;
+    avatar_url?: string; description?: string;
   }>();
   const result = gm.handleCreateCharacter(c.get("user").userId, body);
   if (!result.success) return c.json({ error: result.error }, 400);

@@ -142,6 +142,8 @@ export const characters = pgTable("characters", {
   backstory: text("backstory").notNull().default(""),
   personality: text("personality").notNull().default(""),
   playstyle: text("playstyle").notNull().default(""),
+  avatarUrl: text("avatar_url"),
+  description: text("description"),
   partyId: uuid("party_id").references(() => parties.id),
   isAlive: boolean("is_alive").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
