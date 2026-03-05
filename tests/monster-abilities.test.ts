@@ -38,6 +38,7 @@ describe("monster abilities — recharge, AoE, saves", () => {
         race: "human",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(playerIds[i]);
     }

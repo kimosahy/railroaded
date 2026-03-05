@@ -27,6 +27,7 @@ describe("campaigns", () => {
         race: "human",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`camp-player-${i}`);
     }
@@ -139,6 +140,7 @@ describe("campaigns", () => {
         race: "elf",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`camp-nocamp-${i}`);
     }
@@ -171,6 +173,7 @@ describe("campaign + end_session integration", () => {
         race: "dwarf",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`ces-player-${i}`);
     }
@@ -211,6 +214,7 @@ describe("campaign + end_session integration", () => {
         race: "halfling",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`ces2-player-${i}`);
     }
@@ -240,6 +244,7 @@ describe("campaign + end_session integration", () => {
         race: "human",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`ces3-player-${i}`);
     }
@@ -277,6 +282,7 @@ describe("gold", () => {
         race: "human",
         class: classes[i - 1],
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`gold-player-${i}`);
     }
@@ -340,6 +346,7 @@ describe("campaign reconvening", () => {
         race: "human",
         class: classes[i - 1],
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`recon-player-${i}`);
     }

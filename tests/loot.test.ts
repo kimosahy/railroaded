@@ -115,6 +115,7 @@ describe("handleAwardLoot validation", () => {
       race: "human",
       class: "fighter",
       ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
     });
     expect(createResult.success).toBe(true);
 
@@ -148,6 +149,7 @@ describe("handleUseItem data-driven", () => {
       race: "human",
       class: "fighter",
       ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
     });
     expect(createResult.success).toBe(true);
     const char = createResult.character!;
@@ -193,6 +195,7 @@ describe("equipment swapping", () => {
       race: "human",
       class: "fighter",
       ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
     });
     expect(createResult.success).toBe(true);
     const char = getCharacterForUser("equip-user-1")!;

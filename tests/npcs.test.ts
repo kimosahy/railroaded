@@ -25,6 +25,7 @@ describe("NPC system", () => {
         race: "human",
         class: classes[i - 1],
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`npc-player-${i}`);
     }
@@ -69,6 +70,7 @@ describe("NPC system", () => {
         race: "elf",
         class: "fighter",
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`npc-nocamp-${i}`);
     }

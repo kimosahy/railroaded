@@ -167,6 +167,9 @@ const MAX_LEVEL = 5;
  * Returns level-up details if leveled, null otherwise.
  */
 function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; newFeatures: string[] } | null {
+  // Guard against NaN XP — if XP is somehow corrupted, don't level up
+  if (!Number.isFinite(char.xp)) return null;
+
   const startLevel = char.level;
   let totalHpGain = 0;
   const allNewFeatures: string[] = [];
@@ -314,6 +317,17 @@ function resetTurnResources(party: GameParty, entityId: string): void {
   }
 }
 
+// --- Unconscious / Incapacitated Guard ---
+
+const UNCONSCIOUS_ERROR = "You are unconscious and cannot take that action.";
+
+function requireConscious(char: GameCharacter): string | null {
+  if (char.conditions.includes("unconscious") || char.conditions.includes("dead")) {
+    return UNCONSCIOUS_ERROR;
+  }
+  return null;
+}
+
 // --- Avatar URL Validation ---
 
 export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; error?: string }> {
@@ -362,12 +376,15 @@ export async function handleCreateCharacter(userId: string, params: {
     return { success: false, error: "You already have a character. One character per account." };
   }
 
-  // Validate avatar URL if provided
-  if (params.avatar_url) {
-    const avatarCheck = await validateAvatarUrl(params.avatar_url);
-    if (!avatarCheck.valid) {
-      return { success: false, error: avatarCheck.error };
-    }
+  // Avatar is required
+  if (!params.avatar_url) {
+    return { success: false, error: "Avatar is required to create a character. Provide an avatar_url pointing to a direct image link (PNG/JPG/WebP)." };
+  }
+
+  // Validate avatar URL
+  const avatarCheck = await validateAvatarUrl(params.avatar_url);
+  if (!avatarCheck.valid) {
+    return { success: false, error: avatarCheck.error };
   }
 
   const validation = validateAbilityScores(params.ability_scores);
@@ -650,6 +667,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
 export function handleAttack(userId: string, params: { target_id: string; weapon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
@@ -990,6 +1008,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const spell = spellDefs.get(params.spell_name);
   if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
@@ -1112,6 +1131,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
@@ -1124,6 +1144,7 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
 export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
@@ -1136,6 +1157,7 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
 export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
@@ -1148,6 +1170,7 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
 export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
@@ -1160,6 +1183,7 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
 export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
@@ -1181,6 +1205,7 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
 export function handleMove(userId: string, params: { direction_or_target: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.dungeonState) {
@@ -1237,10 +1262,7 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
 export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
-
-  if (char.conditions.includes("dead")) {
-    return { success: false, error: "Dead characters cannot rest." };
-  }
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const conMod = abilityModifier(char.abilityScores.con);
   const result = doShortRest({
@@ -1272,10 +1294,7 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
 export function handleLongRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
-
-  if (char.conditions.includes("dead")) {
-    return { success: false, error: "Dead characters cannot rest." };
-  }
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const result = doLongRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
@@ -1305,6 +1324,7 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
 export function handleUseItem(userId: string, params: { item_id: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -1386,6 +1406,7 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
 export function handleEndTurn(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
@@ -1415,6 +1436,7 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
 export function handleBonusAction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
@@ -1517,6 +1539,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
 export function handleReaction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
@@ -2315,6 +2338,7 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
 export function handleAwardXp(userId: string, params: { amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!Number.isFinite(params.amount) || params.amount < 0) return { success: false, error: "XP amount must be a non-negative number." };
 
   const xpEach = Math.floor(params.amount / party.members.length);
   const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];

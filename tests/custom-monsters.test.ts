@@ -21,6 +21,7 @@ describe("create_custom_monster", () => {
         race: "human",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`cm-player-${i}`);
     }

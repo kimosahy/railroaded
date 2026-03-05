@@ -149,7 +149,7 @@ export function damageMonster(
  * Get total XP value of all monsters in an encounter.
  */
 export function calculateEncounterXP(monsters: MonsterInstance[]): number {
-  return monsters.reduce((sum, m) => sum + m.xpValue, 0);
+  return monsters.reduce((sum, m) => sum + (m.xpValue ?? 0), 0);
 }
 
 /**

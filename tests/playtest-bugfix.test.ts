@@ -125,6 +125,7 @@ describe("handleCast removes killed monster from initiative (BUG 1)", () => {
         race: "elf",
         class: "wizard",
         ability_scores: { str: 10, dex: 14, con: 12, int: 18, wis: 14, cha: 10 },
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(players[i]);
     }
@@ -187,6 +188,7 @@ describe("handleMonsterAttack resets next combatant turn resources (BUG 9)", () 
         race: "human",
         class: "fighter",
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(players[i]);
     }

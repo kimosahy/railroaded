@@ -31,19 +31,18 @@ describe("avatar_url and description fields", () => {
     expect(result.character!.description).toBe("A grizzled veteran with a scar across his left eye.");
   });
 
-  test("avatar_url and description are optional (default to null)", async () => {
+  test("character creation without avatar fails", async () => {
     const result = await handleCreateCharacter("avatar-user-2", {
       name: "NoAvatarHero",
       race: "elf",
       class: "wizard",
       ability_scores: scores,
     });
-    expect(result.success).toBe(true);
-    expect(result.character!.avatarUrl).toBeNull();
-    expect(result.character!.description).toBeNull();
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Avatar is required");
   });
 
-  test("avatar_url can be omitted while description is provided", async () => {
+  test("character creation with description but no avatar fails", async () => {
     const result = await handleCreateCharacter("avatar-user-3", {
       name: "DescOnlyHero",
       race: "dwarf",
@@ -51,9 +50,8 @@ describe("avatar_url and description fields", () => {
       ability_scores: scores,
       description: "A stout dwarf who hums hymns while swinging a warhammer.",
     });
-    expect(result.success).toBe(true);
-    expect(result.character!.avatarUrl).toBeNull();
-    expect(result.character!.description).toBe("A stout dwarf who hums hymns while swinging a warhammer.");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Avatar is required");
   });
 
   test("fields persist on the in-memory character", () => {
@@ -66,9 +64,9 @@ describe("avatar_url and description fields", () => {
   test("chat event includes avatarUrl", async () => {
     // Form a party so chat works
     await handleCreateCharacter("avatar-user-4", { name: "ChatAvatar1", race: "human", class: "rogue", ability_scores: scores, avatar_url: "https://example.com/rogue.png" });
-    await handleCreateCharacter("avatar-user-5", { name: "ChatAvatar2", race: "halfling", class: "fighter", ability_scores: scores });
-    await handleCreateCharacter("avatar-user-6", { name: "ChatAvatar3", race: "elf", class: "cleric", ability_scores: scores });
-    await handleCreateCharacter("avatar-user-7", { name: "ChatAvatar4", race: "dwarf", class: "wizard", ability_scores: scores });
+    await handleCreateCharacter("avatar-user-5", { name: "ChatAvatar2", race: "halfling", class: "fighter", ability_scores: scores, avatar_url: "https://example.com/test-avatar.png" });
+    await handleCreateCharacter("avatar-user-6", { name: "ChatAvatar3", race: "elf", class: "cleric", ability_scores: scores, avatar_url: "https://example.com/test-avatar.png" });
+    await handleCreateCharacter("avatar-user-7", { name: "ChatAvatar4", race: "dwarf", class: "wizard", ability_scores: scores, avatar_url: "https://example.com/test-avatar.png" });
     handleQueueForParty("avatar-user-4");
     handleQueueForParty("avatar-user-5");
     handleQueueForParty("avatar-user-6");
@@ -81,10 +79,10 @@ describe("avatar_url and description fields", () => {
     expect(result.data!.avatarUrl).toBe("https://example.com/rogue.png");
   });
 
-  test("chat event avatarUrl is null when not set", () => {
-    const result = handlePartyChat("avatar-user-5", { message: "I have no avatar." });
+  test("chat event avatarUrl is present when set", () => {
+    const result = handlePartyChat("avatar-user-5", { message: "I have an avatar now." });
     expect(result.success).toBe(true);
-    expect(result.data!.avatarUrl).toBeNull();
+    expect(result.data!.avatarUrl).toBe("https://example.com/test-avatar.png");
   });
 });
 
@@ -114,6 +112,7 @@ describe("handleUpdateCharacter", () => {
       race: "elf",
       class: "wizard",
       ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
       description: "Stays the same.",
     });
     const result = await handleUpdateCharacter("upd-user-2", {

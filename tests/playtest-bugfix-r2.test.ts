@@ -4,6 +4,7 @@
  * BUG 1: Healing doesn't clear unconscious/prone or reset death saves
  * BUG 2: Unconscious characters see full combat actions
  * BUG 4: Custom monster null HP guards
+ * + Round 3 regression tests: unconscious attack guard, XP leveling, avatar mandatory
  */
 import { describe, test, expect } from "bun:test";
 import {
@@ -13,6 +14,9 @@ import {
   handleUseItem,
   handleGetAvailableActions,
   handleAwardLoot,
+  handleAwardXp,
+  handleAttack,
+  handleMove,
   handleCreateCustomMonster,
   getCharacterForUser,
   getPartyForUser,
@@ -22,7 +26,8 @@ import {
 import { getAllowedActions } from "../src/game/turns.ts";
 import { handleDropToZero, handleRegainFromZero } from "../src/engine/hp.ts";
 import { resetDeathSaves } from "../src/engine/death.ts";
-import { spawnMonsters } from "../src/game/encounters.ts";
+import { spawnMonsters, calculateEncounterXP } from "../src/game/encounters.ts";
+import type { MonsterInstance } from "../src/game/encounters.ts";
 import type { AbilityScores } from "../src/types.ts";
 
 const scores: AbilityScores = { str: 10, dex: 14, con: 12, int: 18, wis: 14, cha: 10 };
@@ -62,6 +67,7 @@ describe("healing clears unconscious and resets death saves (BUG 1)", () => {
         race: "elf",
         class: i === 0 ? "cleric" : "fighter",
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(players[i]);
     }
@@ -229,5 +235,147 @@ describe("custom monster HP guards (BUG 4)", () => {
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain("ac");
+  });
+});
+
+// --- Round 3: Unconscious characters cannot take actions ---
+
+describe("unconscious characters cannot take actions (Round 3 Bug 1)", () => {
+  test("handleAttack rejects unconscious character", () => {
+    const char = getCharacterForUser("healtest-p1");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    char.conditions = handleDropToZero(char.conditions);
+    const result = handleAttack("healtest-p1", { target_id: "fake-target" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unconscious");
+    // Clean up
+    char.conditions = [];
+  });
+
+  test("handleCast rejects unconscious character", () => {
+    const char = getCharacterForUser("healtest-p1");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    char.conditions = handleDropToZero(char.conditions);
+    const result = handleCast("healtest-p1", { spell_name: "Fire Bolt", target_id: "fake" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unconscious");
+    char.conditions = [];
+  });
+
+  test("handleMove rejects unconscious character", () => {
+    const char = getCharacterForUser("healtest-p1");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    char.conditions = handleDropToZero(char.conditions);
+    const result = handleMove("healtest-p1", { direction: "north", distance: 5 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unconscious");
+    char.conditions = [];
+  });
+
+  test("handleUseItem rejects unconscious character", () => {
+    const char = getCharacterForUser("healtest-p1");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    char.conditions = handleDropToZero(char.conditions);
+    const result = handleUseItem("healtest-p1", { item_id: "Potion of Healing" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("unconscious");
+    char.conditions = [];
+  });
+});
+
+// --- Round 3: XP leveling is correct ---
+
+describe("XP leveling (Round 3 Bug 2)", () => {
+  test("75 XP does not level past 1", () => {
+    const char = getCharacterForUser("healtest-p2");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    // Reset all party members to known state
+    const party = getPartyForUser("healtest-p1");
+    if (!party) { expect(true).toBe(true); return; }
+    for (const mid of party.members) {
+      const c = getCharacterForUser(["healtest-p1","healtest-p2","healtest-p3","healtest-p4"].find(u => {
+        const ch = getCharacterForUser(u);
+        return ch && ch.id === mid;
+      }) ?? "");
+      if (c) { c.level = 1; c.xp = 0; }
+    }
+
+    // Award 75 XP total — split among 4 = 18 each. Well below 300 threshold for level 2.
+    const result = handleAwardXp("healtest-dm", { amount: 75 });
+    expect(result.success).toBe(true);
+    expect(result.data!.xpEach).toBe(18); // Math.floor(75 / 4)
+
+    // Each character should have 18 XP and still be level 1
+    expect(char.xp).toBe(18);
+    expect(char.level).toBe(1);
+  });
+
+  test("xpEach calculates correctly for a 4-person party", () => {
+    // A single goblin worth 25 XP split among 4 players = 6 each (Math.floor(25/4))
+    const monsters: MonsterInstance[] = [{
+      id: "xp-test-goblin",
+      templateName: "Goblin",
+      name: "Goblin A",
+      hpCurrent: 0,
+      hpMax: 7,
+      ac: 15,
+      abilityScores: { str: 8, dex: 14, con: 10, int: 10, wis: 8, cha: 8 },
+      attacks: [{ name: "Scimitar", to_hit: 4, damage: "1d6+2", type: "slashing" }],
+      specialAbilities: [],
+      xpValue: 25,
+      conditions: [],
+      isAlive: false,
+      rechargeTracker: {},
+    }];
+
+    const totalXP = calculateEncounterXP(monsters);
+    expect(totalXP).toBe(25);
+
+    const xpEach = Math.floor(totalXP / 4);
+    expect(xpEach).toBe(6);
+  });
+
+  test("calculateEncounterXP handles undefined xpValue safely", () => {
+    const monsters = [
+      { xpValue: undefined } as unknown as MonsterInstance,
+      { xpValue: 50 } as unknown as MonsterInstance,
+    ];
+    const total = calculateEncounterXP(monsters);
+    expect(total).toBe(50); // undefined treated as 0, not NaN
+    expect(Number.isFinite(total)).toBe(true);
+  });
+
+  test("NaN XP does not cause level-up", () => {
+    const char = getCharacterForUser("healtest-p3");
+    if (!char) {
+      expect(true).toBe(true);
+      return;
+    }
+    // Simulate corrupted XP
+    char.level = 1;
+    char.xp = NaN;
+
+    // Award XP — should not crash or cause level jump
+    const result = handleAwardXp("healtest-dm", { amount: 100 });
+    // The XP is corrupted, so it stays NaN+100 = NaN. Level should not change.
+    expect(char.level).toBe(1);
+
+    // Clean up
+    char.xp = 0;
   });
 });

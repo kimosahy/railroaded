@@ -96,6 +96,7 @@ describe("trigger_encounter", () => {
         race: "human",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`tpl-player-${i}`);
     }
@@ -172,6 +173,7 @@ describe("loot_room", () => {
         race: "dwarf",
         class: cls,
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`loot-room-player-${i}`);
     }

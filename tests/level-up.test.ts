@@ -19,6 +19,7 @@ describe("level-up", () => {
         race: "human",
         class: classes[i - 1],
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`lvl-player-${i}`);
     }

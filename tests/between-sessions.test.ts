@@ -28,6 +28,7 @@ describe("enriched campaign briefing", () => {
         race: "human",
         class: classes[i - 1],
         ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
       });
       handleQueueForParty(`bsess-player-${i}`);
     }
