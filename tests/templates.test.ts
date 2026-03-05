@@ -88,10 +88,10 @@ describe("template loading", () => {
 describe("trigger_encounter", () => {
   const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 10, cha: 10 };
 
-  test("setup: form a party", () => {
+  test("setup: form a party", async () => {
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`tpl-player-${i}`, {
+      await handleCreateCharacter(`tpl-player-${i}`, {
         name: `TplHero${i}`,
         race: "human",
         class: cls,
@@ -164,10 +164,10 @@ describe("trigger_encounter", () => {
 describe("loot_room", () => {
   const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 10, cha: 10 };
 
-  test("setup: form a party for loot testing", () => {
+  test("setup: form a party for loot testing", async () => {
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`loot-room-player-${i}`, {
+      await handleCreateCharacter(`loot-room-player-${i}`, {
         name: `LootHero${i}`,
         race: "dwarf",
         class: cls,

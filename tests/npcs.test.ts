@@ -17,10 +17,10 @@ import type { AbilityScores } from "../src/types.ts";
 const scores: AbilityScores = { str: 14, dex: 14, con: 14, int: 10, wis: 10, cha: 10 };
 
 describe("NPC system", () => {
-  test("setup: form party + create campaign", () => {
+  test("setup: form party + create campaign", async () => {
     const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`npc-player-${i}`, {
+      await handleCreateCharacter(`npc-player-${i}`, {
         name: `NpcTestHero${i}`,
         race: "human",
         class: classes[i - 1],
@@ -61,10 +61,10 @@ describe("NPC system", () => {
     expect(result.data!.disposition_label).toBe("neutral");
   });
 
-  test("create_npc fails without campaign", () => {
+  test("create_npc fails without campaign", async () => {
     // Use a DM without campaign (form a throwaway party)
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`npc-nocamp-${i}`, {
+      await handleCreateCharacter(`npc-nocamp-${i}`, {
         name: `Camper${i}`,
         race: "elf",
         class: "fighter",

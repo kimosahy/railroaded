@@ -30,10 +30,10 @@ describe("monster abilities — recharge, AoE, saves", () => {
   const playerIds = ["ma-player-1", "ma-player-2", "ma-player-3", "ma-player-4"];
   const dmId = "ma-dm-1";
 
-  test("setup: form a party", () => {
+  test("setup: form a party", async () => {
     for (let i = 0; i < 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i];
-      handleCreateCharacter(playerIds[i], {
+      await handleCreateCharacter(playerIds[i], {
         name: `AbilityTester${i + 1}`,
         race: "human",
         class: cls,

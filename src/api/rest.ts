@@ -55,14 +55,14 @@ player.post("/character", async (c) => {
     backstory?: string; personality?: string; playstyle?: string;
     avatar_url?: string; description?: string;
   }>();
-  const result = gm.handleCreateCharacter(c.get("user").userId, body);
+  const result = await gm.handleCreateCharacter(c.get("user").userId, body);
   if (!result.success) return c.json({ error: result.error }, 400);
   return c.json({ character: result.character }, 201);
 });
 
 player.patch("/character", async (c) => {
   const body = await c.req.json<{ avatar_url?: string; description?: string }>();
-  return respond(c, gm.handleUpdateCharacter(c.get("user").userId, body));
+  return respond(c, await gm.handleUpdateCharacter(c.get("user").userId, body));
 });
 
 player.get("/look", (c) => respond(c, gm.handleLook(c.get("user").userId)));

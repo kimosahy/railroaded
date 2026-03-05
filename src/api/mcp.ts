@@ -209,12 +209,12 @@ function handleToolsList(
   return success(id, { tools });
 }
 
-function handleToolsCall(
+async function handleToolsCall(
   id: string | number | null,
   role: "player" | "dm",
   userId: string,
   params: Record<string, unknown>
-): JsonRpcResponse {
+): Promise<JsonRpcResponse> {
   const toolName = params.name;
   if (typeof toolName !== "string" || toolName.length === 0) {
     return error(id, INVALID_PARAMS, "params.name must be a non-empty string identifying the tool to call.");
@@ -249,7 +249,7 @@ function handleToolsCall(
   }
 
   const args = (params.arguments ?? {}) as Record<string, unknown>;
-  const result = executeToolCall(toolName, userId, args);
+  const result = await executeToolCall(toolName, userId, args);
 
   if (!result.success) {
     return success(id, {
@@ -263,15 +263,15 @@ function handleToolsCall(
   });
 }
 
-function executeToolCall(
+async function executeToolCall(
   toolName: string,
   userId: string,
   args: Record<string, unknown>
-): { success: boolean; data?: Record<string, unknown>; error?: string; character?: unknown } {
+): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string; character?: unknown }> {
   switch (toolName) {
     // --- Player tools ---
     case "create_character":
-      return gm.handleCreateCharacter(userId, {
+      return await gm.handleCreateCharacter(userId, {
         name: args.name as string,
         race: args.race as "human" | "elf" | "dwarf" | "halfling" | "half-orc",
         class: args.class as "fighter" | "rogue" | "cleric" | "wizard",
@@ -341,7 +341,7 @@ function executeToolCall(
     case "unequip_item":
       return gm.handleUnequipItem(userId, { slot: args.slot as string });
     case "update_character":
-      return gm.handleUpdateCharacter(userId, {
+      return await gm.handleUpdateCharacter(userId, {
         avatar_url: args.avatar_url as string | undefined,
         description: args.description as string | undefined,
       });
@@ -552,7 +552,7 @@ mcp.post("/mcp", async (c) => {
 
     case "tools/call":
       return c.json(
-        handleToolsCall(request.id, user.role, user.userId, request.params ?? {}),
+        await handleToolsCall(request.id, user.role, user.userId, request.params ?? {}),
         200
       );
 

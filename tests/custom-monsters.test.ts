@@ -13,10 +13,10 @@ import type { AbilityScores } from "../src/types.ts";
 const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 10, cha: 10 };
 
 describe("create_custom_monster", () => {
-  test("setup: form a party", () => {
+  test("setup: form a party", async () => {
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`cm-player-${i}`, {
+      await handleCreateCharacter(`cm-player-${i}`, {
         name: `MonsterTester${i}`,
         race: "human",
         class: cls,

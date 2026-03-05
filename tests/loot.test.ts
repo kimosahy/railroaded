@@ -108,9 +108,9 @@ describe("handleListItems", () => {
 describe("handleAwardLoot validation", () => {
   const scores: AbilityScores = { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 };
 
-  test("rejects unknown items", () => {
+  test("rejects unknown items", async () => {
     // Create a character for this test
-    const createResult = handleCreateCharacter("loot-test-user-1", {
+    const createResult = await handleCreateCharacter("loot-test-user-1", {
       name: "LootTester",
       race: "human",
       class: "fighter",
@@ -142,8 +142,8 @@ describe("handleAwardLoot validation", () => {
 describe("handleUseItem data-driven", () => {
   const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 8, cha: 10 };
 
-  test("Potion of Healing heals via data lookup", () => {
-    const createResult = handleCreateCharacter("use-item-user-1", {
+  test("Potion of Healing heals via data lookup", async () => {
+    const createResult = await handleCreateCharacter("use-item-user-1", {
       name: "PotionUser",
       race: "human",
       class: "fighter",
@@ -187,8 +187,8 @@ describe("handleUseItem data-driven", () => {
 describe("equipment swapping", () => {
   const scores: AbilityScores = { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 10 };
 
-  test("equip weapon: moves old weapon to inventory, updates equipment", () => {
-    const createResult = handleCreateCharacter("equip-user-1", {
+  test("equip weapon: moves old weapon to inventory, updates equipment", async () => {
+    const createResult = await handleCreateCharacter("equip-user-1", {
       name: "Equipper",
       race: "human",
       class: "fighter",

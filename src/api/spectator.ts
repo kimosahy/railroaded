@@ -131,6 +131,10 @@ spectator.get("/parties", async (c) => {
     for (const dbParty of dbParties) {
       if (knownDbIds.has(dbParty.id)) continue;
 
+      // Skip stale/ended parties — only in-memory parties are truly "live"
+      // DB parties are historical context only, not active sessions
+      if (dbParty.status === "ended" || dbParty.status === "completed" || dbParty.status === "disbanded") continue;
+
       const members = (charsByParty.get(dbParty.id) ?? []).map((m) => ({
         id: m.id,
         name: m.name,
@@ -144,7 +148,7 @@ spectator.get("/parties", async (c) => {
         id: dbParty.id,
         name: dbParty.name ?? "Unknown Party",
         members,
-        phase: dbParty.status,
+        phase: null, // DB parties have no active session phase
         currentRoom: null,
         dmUserId: dbParty.dmUserId ?? null,
         monsterCount: 0,

@@ -314,9 +314,39 @@ function resetTurnResources(party: GameParty, entityId: string): void {
   }
 }
 
+// --- Avatar URL Validation ---
+
+export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; error?: string }> {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { valid: false, error: "Avatar URL must use http or https protocol." };
+    }
+  } catch {
+    return { valid: false, error: "Avatar URL is not a valid URL." };
+  }
+
+  // Skip network validation in test/dev (no DATABASE_URL = in-memory mode)
+  if (!process.env.DATABASE_URL) return { valid: true };
+
+  try {
+    const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) {
+      return { valid: false, error: `Avatar URL returned HTTP ${resp.status}. Provide a direct link to an image.` };
+    }
+    const contentType = resp.headers.get("content-type") ?? "";
+    if (!contentType.startsWith("image/")) {
+      return { valid: false, error: `Avatar URL content-type is "${contentType}", expected an image. Provide a direct link to a PNG/JPG/WebP image.` };
+    }
+    return { valid: true };
+  } catch (err) {
+    return { valid: false, error: `Avatar URL is not reachable: ${err instanceof Error ? err.message : "unknown error"}. Provide a direct link to an image.` };
+  }
+}
+
 // --- Character Management ---
 
-export function handleCreateCharacter(userId: string, params: {
+export async function handleCreateCharacter(userId: string, params: {
   name: string;
   race: Race;
   class: CharacterClass;
@@ -326,10 +356,18 @@ export function handleCreateCharacter(userId: string, params: {
   playstyle?: string;
   avatar_url?: string;
   description?: string;
-}): { success: boolean; character?: GameCharacter; error?: string } {
+}): Promise<{ success: boolean; character?: GameCharacter; error?: string }> {
   // Check if user already has a character
   if (charactersByUser.has(userId)) {
     return { success: false, error: "You already have a character. One character per account." };
+  }
+
+  // Validate avatar URL if provided
+  if (params.avatar_url) {
+    const avatarCheck = await validateAvatarUrl(params.avatar_url);
+    if (!avatarCheck.valid) {
+      return { success: false, error: avatarCheck.error };
+    }
   }
 
   const validation = validateAbilityScores(params.ability_scores);
@@ -400,12 +438,20 @@ export function handleCreateCharacter(userId: string, params: {
 
 // --- Character Update ---
 
-export function handleUpdateCharacter(userId: string, params: {
+export async function handleUpdateCharacter(userId: string, params: {
   avatar_url?: string;
   description?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found. Create one first." };
+
+  // Validate avatar URL if provided
+  if (params.avatar_url) {
+    const avatarCheck = await validateAvatarUrl(params.avatar_url);
+    if (!avatarCheck.valid) {
+      return { success: false, error: avatarCheck.error };
+    }
+  }
 
   if (params.avatar_url !== undefined) char.avatarUrl = params.avatar_url;
   if (params.description !== undefined) char.description = params.description;
@@ -671,7 +717,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         logEvent(party, "combat_end", null, { xpAwarded: xp });
         for (const lu of levelUps) {
           logEvent(party, "level_up", null, lu);
-          broadcastToParty(party, { type: "level_up", ...lu });
+          broadcastToParty(party.id, { type: "level_up", ...lu });
         }
         snapshotCharacters(party);
       }
@@ -784,6 +830,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     });
 
     party.session = nextTurn(party.session);
+    const nextAoeCombatant = getCurrentCombatant(party.session);
+    resetTurnResources(party, nextAoeCombatant?.entityId ?? "");
     notifyTurnChange(party);
 
     return {
@@ -792,7 +840,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         aoe: true, attackName: attack.name, monsterName: monster.name,
         saveDC: attack.save_dc, saveAbility: attack.save_ability,
         damageRoll: damageRoll.total, results, rechargeResults,
-        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+        nextTurn: nextAoeCombatant?.entityId ?? null,
       },
     };
   }
@@ -832,6 +880,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     });
 
     party.session = nextTurn(party.session);
+    const nextSaveCombatant = getCurrentCombatant(party.session);
+    resetTurnResources(party, nextSaveCombatant?.entityId ?? "");
     notifyTurnChange(party);
 
     return {
@@ -842,7 +892,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         damage: dmg, damageType: attack.type, targetHP: target.hpCurrent,
         droppedToZero, attackName: attack.name, monsterName: monster.name,
         targetName: target.name, rechargeResults,
-        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+        nextTurn: nextSaveCombatant?.entityId ?? null,
       },
     };
   }
@@ -899,6 +949,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     });
 
     party.session = nextTurn(party.session);
+    const nextHitCombatant = getCurrentCombatant(party.session);
+    resetTurnResources(party, nextHitCombatant?.entityId ?? "");
     notifyTurnChange(party);
 
     return {
@@ -909,7 +961,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         droppedToZero, naturalRoll: result.naturalRoll,
         attackName: attack.name, monsterName: monster.name, targetName: target.name,
         rechargeResults,
-        nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+        nextTurn: nextHitCombatant?.entityId ?? null,
       },
     };
   }
@@ -920,6 +972,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   });
 
   party.session = nextTurn(party.session);
+  const nextMissCombatant = getCurrentCombatant(party.session);
+  resetTurnResources(party, nextMissCombatant?.entityId ?? "");
   notifyTurnChange(party);
 
   return {
@@ -928,7 +982,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
       attackName: attack.name, monsterName: monster.name, targetName: target.name,
       rechargeResults,
-      nextTurn: getCurrentCombatant(party.session)?.entityId ?? null,
+      nextTurn: nextMissCombatant?.entityId ?? null,
     },
   };
 }
@@ -997,9 +1051,40 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     if (party) {
       const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
       if (target) {
-        const { monster } = damageMonster(target, result.totalEffect);
+        const { monster, killed } = damageMonster(target, result.totalEffect);
         const idx = party.monsters.findIndex((m) => m.id === target.id);
         if (idx !== -1) party.monsters[idx] = monster;
+
+        if (killed) {
+          rollMonsterLoot(party, monster);
+
+          // Remove from initiative
+          if (party.session) {
+            party.session = removeCombatant(party.session, target.id);
+          }
+
+          // Check if combat should end
+          if (party.session && shouldCombatEnd(party.session)) {
+            const xp = calculateEncounterXP(party.monsters);
+            const xpEach = Math.floor(xp / party.members.length);
+            const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
+            for (const mid of party.members) {
+              const m = characters.get(mid);
+              if (m) {
+                m.xp += xpEach;
+                const lu = checkLevelUp(m);
+                if (lu) levelUps.push({ name: m.name, ...lu });
+              }
+            }
+            party.session = exitCombat(party.session);
+            logEvent(party, "combat_end", null, { xpAwarded: xp });
+            for (const lu of levelUps) {
+              logEvent(party, "level_up", null, lu);
+              broadcastToParty(party.id, { type: "level_up", ...lu });
+            }
+            snapshotCharacters(party);
+          }
+        }
       }
     }
   }
@@ -1507,7 +1592,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
               logEvent(party, "combat_end", null, { xpAwarded: xp });
               for (const lu of levelUps) {
                 logEvent(party, "level_up", null, lu);
-                broadcastToParty(party, { type: "level_up", ...lu });
+                broadcastToParty(party.id, { type: "level_up", ...lu });
               }
               snapshotCharacters(party);
             }
@@ -1817,11 +1902,12 @@ export function handleInteractWithFeature(userId: string, params: { feature_name
   const room = getCurrentRoom(party.dungeonState);
   if (!room) return { success: false, error: "No current room." };
 
-  const feature = room.features.find((f) => f.toLowerCase().includes(params.feature_name.toLowerCase()));
+  const features = room.features ?? [];
+  const feature = features.find((f) => f.toLowerCase().includes(params.feature_name.toLowerCase()));
   if (!feature) {
     return {
       success: false,
-      error: `Feature "${params.feature_name}" not found in ${room.name}. Available features: ${room.features.join(", ")}`,
+      error: `Feature "${params.feature_name}" not found in ${room.name}. Available features: ${features.join(", ") || "none"}`,
     };
   }
 
@@ -1847,6 +1933,9 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
 }
 
 export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  if (!params.npc_id) return { success: false, error: "npc_id is required." };
+  if (!params.dialogue) return { success: false, error: "dialogue is required." };
+
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
@@ -2132,7 +2221,8 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
       logEvent(party, "room_enter", null, { roomName: room?.name });
       return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase } };
     }
-    return { success: false, error: `Cannot move to room ${params.next_room_id} — not connected or not found.` };
+    const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
+    return { success: false, error: `Cannot move to room ${params.next_room_id} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
   }
 
   // No room specified — just advance the scene (exit combat, return available exits)
@@ -2224,7 +2314,7 @@ export function handleAwardXp(userId: string, params: { amount: number }): { suc
 
   for (const lu of levelUps) {
     logEvent(party, "level_up", null, lu);
-    broadcastToParty(party, { type: "level_up", ...lu });
+    broadcastToParty(party.id, { type: "level_up", ...lu });
   }
 
   return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length, levelUps: levelUps.length > 0 ? levelUps : undefined } };

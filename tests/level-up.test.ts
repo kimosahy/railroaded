@@ -11,10 +11,10 @@ import type { AbilityScores } from "../src/types.ts";
 const scores: AbilityScores = { str: 14, dex: 14, con: 14, int: 10, wis: 10, cha: 10 };
 
 describe("level-up", () => {
-  test("setup: form a party", () => {
+  test("setup: form a party", async () => {
     const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`lvl-player-${i}`, {
+      await handleCreateCharacter(`lvl-player-${i}`, {
         name: `LevelHero${i}`,
         race: "human",
         class: classes[i - 1],

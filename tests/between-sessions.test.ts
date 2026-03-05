@@ -20,10 +20,10 @@ import type { AbilityScores } from "../src/types.ts";
 const scores: AbilityScores = { str: 14, dex: 14, con: 14, int: 10, wis: 10, cha: 10 };
 
 describe("enriched campaign briefing", () => {
-  test("setup: party + campaign + NPCs + gold + XP", () => {
+  test("setup: party + campaign + NPCs + gold + XP", async () => {
     const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`bsess-player-${i}`, {
+      await handleCreateCharacter(`bsess-player-${i}`, {
         name: `BSessionHero${i}`,
         race: "human",
         class: classes[i - 1],

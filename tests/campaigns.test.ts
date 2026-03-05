@@ -19,10 +19,10 @@ import type { AbilityScores } from "../src/types.ts";
 const scores: AbilityScores = { str: 14, dex: 14, con: 12, int: 10, wis: 10, cha: 10 };
 
 describe("campaigns", () => {
-  test("setup: form a party", () => {
+  test("setup: form a party", async () => {
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`camp-player-${i}`, {
+      await handleCreateCharacter(`camp-player-${i}`, {
         name: `CampaignHero${i}`,
         race: "human",
         class: cls,
@@ -130,11 +130,11 @@ describe("campaigns", () => {
     expect(result.error).toContain("key");
   });
 
-  test("set_story_flag fails without campaign", () => {
+  test("set_story_flag fails without campaign", async () => {
     // Form a fresh party without a campaign
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`camp-nocamp-${i}`, {
+      await handleCreateCharacter(`camp-nocamp-${i}`, {
         name: `NoCamper${i}`,
         race: "elf",
         class: cls,
@@ -163,10 +163,10 @@ describe("campaigns", () => {
 });
 
 describe("campaign + end_session integration", () => {
-  test("setup: form a party with campaign", () => {
+  test("setup: form a party with campaign", async () => {
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`ces-player-${i}`, {
+      await handleCreateCharacter(`ces-player-${i}`, {
         name: `SessionEnder${i}`,
         race: "dwarf",
         class: cls,
@@ -196,7 +196,7 @@ describe("campaign + end_session integration", () => {
     expect(result.data!.campaign_session_count).toBe(2);
   });
 
-  test("end_session records completed dungeon", () => {
+  test("end_session records completed dungeon", async () => {
     // Start a new session for this party — need to re-form since session ended
     // Actually, end_session doesn't destroy the party, it just ends the session state.
     // We can check completed_dungeons on the campaign directly.
@@ -206,7 +206,7 @@ describe("campaign + end_session integration", () => {
     // Now create a new party+session to test completed_dungeon param
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`ces2-player-${i}`, {
+      await handleCreateCharacter(`ces2-player-${i}`, {
         name: `DungeonCrawler${i}`,
         race: "halfling",
         class: cls,
@@ -231,11 +231,11 @@ describe("campaign + end_session integration", () => {
     expect(end.data!.campaign_session_count).toBe(2);
   });
 
-  test("completed_dungeon is not duplicated", () => {
+  test("completed_dungeon is not duplicated", async () => {
     // Form yet another party to test dedup
     for (let i = 1; i <= 4; i++) {
       const cls = (["fighter", "rogue", "cleric", "wizard"] as const)[i - 1];
-      handleCreateCharacter(`ces3-player-${i}`, {
+      await handleCreateCharacter(`ces3-player-${i}`, {
         name: `DedupTester${i}`,
         race: "human",
         class: cls,
@@ -269,10 +269,10 @@ describe("campaign + end_session integration", () => {
 });
 
 describe("gold", () => {
-  test("setup: form a party for gold tests", () => {
+  test("setup: form a party for gold tests", async () => {
     const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`gold-player-${i}`, {
+      await handleCreateCharacter(`gold-player-${i}`, {
         name: `GoldHero${i}`,
         race: "human",
         class: classes[i - 1],
@@ -332,10 +332,10 @@ describe("gold", () => {
 });
 
 describe("campaign reconvening", () => {
-  test("setup: form party + campaign + award gold/xp", () => {
+  test("setup: form party + campaign + award gold/xp", async () => {
     const classes = ["fighter", "rogue", "cleric", "wizard"] as const;
     for (let i = 1; i <= 4; i++) {
-      handleCreateCharacter(`recon-player-${i}`, {
+      await handleCreateCharacter(`recon-player-${i}`, {
         name: `ReconHero${i}`,
         race: "human",
         class: classes[i - 1],
