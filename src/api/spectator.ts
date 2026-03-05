@@ -72,6 +72,9 @@ spectator.get("/parties", async (c) => {
   for (const [id, party] of state.parties) {
     if (party.dbPartyId) knownDbIds.add(party.dbPartyId);
 
+    // Skip parties with no active session — they're historical, not live
+    if (!party.session) continue;
+
     const members = party.members.map((charId) => {
       const char = state.characters.get(charId);
       return {

@@ -94,8 +94,20 @@ function getTickMs(phase: SessionPhase): number {
  */
 export function getAllowedActions(
   phase: SessionPhase,
-  isCurrentTurn: boolean
+  isCurrentTurn: boolean,
+  conditions: string[] = []
 ): string[] {
+  // Dead characters can only check status
+  if (conditions.includes("dead")) {
+    return ["get_status", "get_available_actions"];
+  }
+  // Unconscious characters can only make death saves (on their turn) or check status
+  if (conditions.includes("unconscious")) {
+    return isCurrentTurn
+      ? ["death_save", "get_status", "get_available_actions"]
+      : ["get_status", "get_available_actions"];
+  }
+
   switch (phase) {
     case "exploration":
       return [

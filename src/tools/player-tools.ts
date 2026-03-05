@@ -305,7 +305,10 @@ export const playerTools: PlayerToolDefinition[] = [
       properties: {
         item_id: {
           type: "string",
-          description: "The ID of the item to use from your inventory.",
+          description:
+            "The item name exactly as it appears in your inventory " +
+            "(e.g., 'Potion of Healing', 'Scroll of Fireball'). " +
+            "Use get_inventory to see exact names.",
         },
         target_id: {
           type: "string",

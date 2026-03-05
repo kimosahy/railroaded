@@ -50,7 +50,7 @@ import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
-import { applyDamage, applyHealing, handleDropToZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
+import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
 import { castSpell, spellSaveDC, spellAttackBonus, getMaxSpellSlots, type SpellDefinition } from "../engine/spells.ts";
 import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass, hitDieSidesForClass } from "../engine/rest.ts";
@@ -632,7 +632,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
       ? getCurrentCombatant(party.session)?.entityId === char.id
       : false;
 
-  const actions = getAllowedActions(phase, isCurrentTurn);
+  const actions = getAllowedActions(phase, isCurrentTurn, char.conditions);
 
   const turnResourceState = party?.session && phase === "combat"
     ? getTurnResources(party, char.id)
@@ -1036,11 +1036,16 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     // Find target character
     const target = characters.get(params.target_id);
     if (target) {
+      const wasDying = target.hpCurrent === 0;
       const hp = applyHealing(
         { current: target.hpCurrent, max: target.hpMax, temp: 0 },
         result.totalEffect
       );
       target.hpCurrent = hp.current;
+      if (wasDying && target.hpCurrent > 0) {
+        target.conditions = handleRegainFromZero(target.conditions, true);
+        target.deathSaves = resetDeathSaves();
+      }
 
       logEvent(party, "heal", char.id, {
         healerName: char.name, targetName: target.name, amount: result.totalEffect,
@@ -1320,8 +1325,13 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     const healRoll = roll(itemDef.healAmount);
     const target = params.target_id ? characters.get(params.target_id) : char;
     if (target) {
+      const wasDying = target.hpCurrent === 0;
       const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
       target.hpCurrent = hp.current;
+      if (wasDying && target.hpCurrent > 0) {
+        target.conditions = handleRegainFromZero(target.conditions, true);
+        target.deathSaves = resetDeathSaves();
+      }
     }
     char.inventory.splice(itemIdx, 1);
     return { success: true, data: { item: params.item_id, healed: healRoll.total, targetHP: (params.target_id ? characters.get(params.target_id) : char)?.hpCurrent } };
@@ -1346,8 +1356,13 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     if (spell.isHealing && params.target_id && result.totalEffect) {
       const target = characters.get(params.target_id);
       if (target) {
+        const wasDying = target.hpCurrent === 0;
         const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
         target.hpCurrent = hp.current;
+        if (wasDying && target.hpCurrent > 0) {
+          target.conditions = handleRegainFromZero(target.conditions, true);
+          target.deathSaves = resetDeathSaves();
+        }
       }
     } else if (!spell.isHealing && params.target_id && result.totalEffect && party) {
       const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
@@ -3234,8 +3249,8 @@ export function handleCreateCustomMonster(userId: string, params: {
   if (!params.name || params.name.trim().length === 0) {
     return { success: false, error: "Monster name is required." };
   }
-  if (params.hp_max < 1) return { success: false, error: "hp_max must be at least 1." };
-  if (params.ac < 1) return { success: false, error: "ac must be at least 1." };
+  if (!params.hp_max || params.hp_max < 1) return { success: false, error: "hp_max must be at least 1." };
+  if (!params.ac || params.ac < 1) return { success: false, error: "ac must be at least 1." };
   if (!params.attacks || params.attacks.length === 0) {
     return { success: false, error: "At least one attack is required." };
   }
@@ -3938,8 +3953,12 @@ export async function loadCustomMonsters(): Promise<number> {
     const rows = await db.select().from(customMonsterTemplatesTable);
     let loaded = 0;
     for (const row of rows) {
-      const stat = row.statBlock;
+      const stat = row.statBlock as Record<string, unknown> | null;
       if (!stat || monsterTemplates.has(row.name)) continue; // don't overwrite YAML templates
+      if (!stat.hpMax) {
+        console.warn(`[DB] Custom monster "${row.name}" has no hpMax — skipping`);
+        continue;
+      }
       monsterTemplates.set(row.name, stat);
       loaded++;
     }
