@@ -28,4 +28,4 @@ WHERE name = 'Sylith Moonshadow' AND avatar_url IS NULL;--> statement-breakpoint
 DELETE FROM characters
 WHERE name IN ('Brog Ironwall', 'Wren Thistlewick', 'Dolgrim Coppervein', 'Sylith Moonshadow')
   AND party_id IS NULL
-  AND id NOT IN (SELECT DISTINCT actor_id FROM session_events WHERE actor_id IS NOT NULL);
+  AND id::text NOT IN (SELECT DISTINCT actor_id FROM session_events WHERE actor_id IS NOT NULL);
