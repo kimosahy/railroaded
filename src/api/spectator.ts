@@ -20,6 +20,7 @@ import {
   campaigns as campaignsTable,
   journalEntries as journalEntriesTable,
   tavernPosts as tavernPostsTable,
+  tavernReplies as tavernRepliesTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull } from "drizzle-orm";
 
@@ -941,15 +942,18 @@ spectator.get("/tavern", async (c) => {
     });
   }
 
-  // DB posts not already in memory
+  // DB posts not already in memory (with reply counts)
   try {
     const dbPosts = await db.select({
       id: tavernPostsTable.id, title: tavernPostsTable.title,
       content: tavernPostsTable.content, createdAt: tavernPostsTable.createdAt,
       characterName: charactersTable.name,
+      replyCount: count(tavernRepliesTable.id),
     })
       .from(tavernPostsTable)
       .innerJoin(charactersTable, eq(tavernPostsTable.characterId, charactersTable.id))
+      .leftJoin(tavernRepliesTable, eq(tavernPostsTable.id, tavernRepliesTable.postId))
+      .groupBy(tavernPostsTable.id, charactersTable.name)
       .orderBy(desc(tavernPostsTable.createdAt));
 
     for (const row of dbPosts) {
@@ -957,7 +961,7 @@ spectator.get("/tavern", async (c) => {
       allPosts.push({
         id: row.id, characterName: row.characterName,
         title: row.title, content: row.content,
-        createdAt: row.createdAt.toISOString(), replyCount: 0,
+        createdAt: row.createdAt.toISOString(), replyCount: Number(row.replyCount),
       });
     }
   } catch (err) {
@@ -1028,9 +1032,32 @@ spectator.post("/tavern", async (c) => {
 spectator.get("/tavern/:id", async (c) => {
   const postId = c.req.param("id");
 
-  // Try in-memory first
+  // Try in-memory first (has DB-backed replies merged in)
   const memPost = tavernPosts.get(postId);
-  if (memPost) return c.json({ post: memPost });
+  if (memPost) {
+    // Supplement in-memory replies with any DB replies not yet loaded
+    try {
+      const dbReplies = await db.select({
+        id: tavernRepliesTable.id, content: tavernRepliesTable.content,
+        createdAt: tavernRepliesTable.createdAt, characterName: charactersTable.name,
+      }).from(tavernRepliesTable)
+        .innerJoin(charactersTable, eq(tavernRepliesTable.characterId, charactersTable.id))
+        .where(eq(tavernRepliesTable.postId, postId))
+        .orderBy(asc(tavernRepliesTable.createdAt));
+
+      const memReplyIds = new Set(memPost.replies.map((r) => r.id));
+      for (const r of dbReplies) {
+        if (memReplyIds.has(r.id)) continue;
+        memPost.replies.push({
+          id: r.id, characterName: r.characterName,
+          content: r.content, createdAt: r.createdAt.toISOString(),
+        });
+      }
+    } catch (err) {
+      console.error("[DB] Failed to fetch replies for in-memory post:", err);
+    }
+    return c.json({ post: memPost });
+  }
 
   // DB fallback
   try {
@@ -1045,11 +1072,24 @@ spectator.get("/tavern/:id", async (c) => {
 
     if (!dbPost) return c.json({ error: "Tavern post not found" }, 404);
 
+    // Load replies from DB
+    const dbReplies = await db.select({
+      id: tavernRepliesTable.id, content: tavernRepliesTable.content,
+      createdAt: tavernRepliesTable.createdAt, characterName: charactersTable.name,
+    }).from(tavernRepliesTable)
+      .innerJoin(charactersTable, eq(tavernRepliesTable.characterId, charactersTable.id))
+      .where(eq(tavernRepliesTable.postId, postId))
+      .orderBy(asc(tavernRepliesTable.createdAt));
+
     return c.json({
       post: {
         id: dbPost.id, characterName: dbPost.characterName,
         title: dbPost.title, content: dbPost.content,
-        createdAt: dbPost.createdAt.toISOString(), replies: [],
+        createdAt: dbPost.createdAt.toISOString(),
+        replies: dbReplies.map((r) => ({
+          id: r.id, characterName: r.characterName,
+          content: r.content, createdAt: r.createdAt.toISOString(),
+        })),
       },
     });
   } catch (err) {
@@ -1059,13 +1099,19 @@ spectator.get("/tavern/:id", async (c) => {
 });
 
 // POST /spectator/tavern/:id/reply — reply to a tavern post
-// Replies are in-memory only (no tavern_replies table yet)
 spectator.post("/tavern/:id/reply", async (c) => {
   const postId = c.req.param("id");
-  const post = tavernPosts.get(postId);
 
+  // Check in-memory first, then DB
+  const post = tavernPosts.get(postId);
   if (!post) {
-    return c.json({ error: "Tavern post not found" }, 404);
+    try {
+      const [dbPost] = await db.select({ id: tavernPostsTable.id })
+        .from(tavernPostsTable).where(eq(tavernPostsTable.id, postId));
+      if (!dbPost) return c.json({ error: "Tavern post not found" }, 404);
+    } catch {
+      return c.json({ error: "Tavern post not found" }, 404);
+    }
   }
 
   const body = await c.req.json() as Record<string, unknown>;
@@ -1080,14 +1126,35 @@ spectator.post("/tavern/:id/reply", async (c) => {
     return c.json({ error: "content is required and must be a non-empty string" }, 400);
   }
 
+  // Try to persist to DB
+  let dbReplyId: string | null = null;
+  try {
+    const [charRow] = await db.select({ id: charactersTable.id })
+      .from(charactersTable)
+      .where(eq(charactersTable.name, characterName.trim()))
+      .limit(1);
+
+    if (charRow) {
+      const [inserted] = await db.insert(tavernRepliesTable).values({
+        postId,
+        characterId: charRow.id,
+        content: content.trim(),
+      }).returning({ id: tavernRepliesTable.id });
+      dbReplyId = inserted.id;
+    }
+  } catch (err) {
+    console.error("[DB] Failed to persist tavern reply:", err);
+  }
+
   const reply: TavernReply = {
-    id: nextTavernId(),
+    id: dbReplyId ?? nextTavernId(),
     characterName: characterName.trim(),
     content: content.trim(),
     createdAt: new Date().toISOString(),
   };
 
-  post.replies.push(reply);
+  // Add to in-memory post if it exists
+  if (post) post.replies.push(reply);
 
   return c.json({ reply }, 201);
 });

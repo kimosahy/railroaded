@@ -50,6 +50,13 @@
       "when": 1772628066740,
       "tag": "0006_tough_sway",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1772693200729,
+      "tag": "0007_opposite_longshot",
+      "breakpoints": true
     }
   ]
 }

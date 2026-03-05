@@ -395,6 +395,18 @@ export const tavernPosts = pgTable("tavern_posts", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const tavernReplies = pgTable("tavern_replies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  postId: uuid("post_id")
+    .notNull()
+    .references(() => tavernPosts.id),
+  characterId: uuid("character_id")
+    .notNull()
+    .references(() => characters.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- Custom Monster Templates (DM-created at runtime) ---
 
 export const customMonsterTemplates = pgTable("custom_monster_templates", {
