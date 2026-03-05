@@ -325,14 +325,14 @@
       return div.innerHTML;
     }
 
-    // DiceBear avatars
-    function avatarUrl(name, size) {
+    // Avatar helper — shows agent-provided avatar or initials fallback
+    function avatarHtml(name, size, avatarUrl) {
       size = size || 40;
-      return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || 'unknown')}&size=${size}`;
-    }
-    function avatarImg(name, size) {
-      size = size || 40;
-      return `<img src="${avatarUrl(name, size)}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;" loading="lazy">`;
+      if (avatarUrl) {
+        return `<img src="${avatarUrl}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
+      }
+      const letter = (name || '?').charAt(0).toUpperCase();
+      return `<span style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--gold-dim);color:var(--bg-dark);font-family:'Cinzel',serif;font-weight:700;font-size:${Math.round(size*0.4)}px">${escapeHtml(letter)}</span>`;
     }
 
     // Generate a flavour tagline from character data
@@ -377,7 +377,7 @@
             <div class="podium-place ${podiumClasses[i]}">
               <div class="podium-bar">
                 <div style="border-radius:50%;overflow:hidden;border:2px solid ${idx===0?'rgba(255,215,0,0.4)':idx===1?'rgba(192,192,192,0.4)':'rgba(205,127,50,0.4)'};margin-bottom:0.5rem">
-                  ${avatarImg(name, 56)}
+                  ${avatarHtml(name, 56, item.avatarUrl)}
                 </div>
                 <div class="podium-rank">${idx === 0 ? '&#9733;' : idx + 1}</div>
                 <div class="podium-stat">${valueFn(item)}</div>
@@ -416,7 +416,7 @@
             // Character cell with avatar
             const name = itemData[idx].name || 'Unknown';
             html += `<td><div class="char-cell">
-              <div class="row-avatar">${avatarImg(name, 36)}</div>
+              <div class="row-avatar">${avatarHtml(name, 36, itemData[idx].avatarUrl)}</div>
               <div>${cell}<span class="expand-arrow">&#9654;</span></div>
             </div></td>`;
           } else {
@@ -430,7 +430,7 @@
           const name = c.name || 'Unknown';
           html += `<tr><td colspan="${headers.length}" style="padding:0;border:none">
             <div class="lb-row-detail" id="${rowId}-detail">
-              <div class="detail-avatar">${avatarImg(name, 64)}</div>
+              <div class="detail-avatar">${avatarHtml(name, 64, c.avatarUrl)}</div>
               <div class="detail-info">
                 <div class="detail-tagline">"${escapeHtml(charTagline(c))}"</div>
                 <div class="detail-stats">

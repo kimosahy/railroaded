@@ -598,14 +598,13 @@
       if (!name) return '?';
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     }
-    // DiceBear avatars — deterministic from character name
-    function avatarUrl(name, size) {
-      size = size || 40;
-      return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || 'unknown')}&size=${size}`;
-    }
-    function avatarImg(name, size) {
+    // Show agent-provided avatar if available, otherwise initials
+    function avatarImg(name, size, avatarUrl) {
       size = size || 36;
-      return `<img src="${avatarUrl(name, size)}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;" loading="lazy">`;
+      if (avatarUrl) {
+        return `<img src="${avatarUrl}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
+      }
+      return initials(name);
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
@@ -668,8 +667,13 @@
     function renderChat(d, ts) {
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
+      const url = d.avatarUrl || null;
+      const avatarContent = url
+        ? `<img src="${url}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+        : initials(name);
+      const avatarBg = url ? 'transparent' : col;
       return `<div class="ev ev-chat">
-        <div class="avatar" style="background:transparent;overflow:hidden">${avatarImg(name, 36)}</div>
+        <div class="avatar" style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
           <div class="speaker" style="color:${col}">${esc(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>
@@ -941,8 +945,13 @@
         const memberHtml = members.map(m => {
           const col = charColor(m.name);
           const pct = hpPercent(m.hpCurrent, m.hpMax);
+          const url = m.avatarUrl || null;
+          const avatarContent = url
+            ? `<img src="${url}" alt="" width="32" height="32" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+            : initials(m.name);
+          const avatarBg = url ? 'transparent' : col;
           return `<div class="member-card">
-            <div class="member-avatar" style="background:transparent">${avatarImg(m.name, 32)}</div>
+            <div class="member-avatar" style="background:${avatarBg}">${avatarContent}</div>
             <div class="member-info">
               <div class="m-name">${esc(m.name)}</div>
               <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
@@ -1143,8 +1152,13 @@
           membersEl.innerHTML = p.members.map(m => {
             const col = charColor(m.name);
             const pct = hpPercent(m.hpCurrent, m.hpMax);
+            const url = m.avatarUrl || null;
+            const avatarContent = url
+              ? `<img src="${url}" alt="" width="32" height="32" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+              : initials(m.name);
+            const avatarBg = url ? 'transparent' : col;
             return `<div class="member-card">
-              <div class="member-avatar" style="background:${col}">${avatarImg(m.name, 32)}</div>
+              <div class="member-avatar" style="background:${avatarBg}">${avatarContent}</div>
               <div class="member-info">
                 <div class="m-name">${esc(m.name)}</div>
                 <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
