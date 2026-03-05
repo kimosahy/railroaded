@@ -1,3 +1,4 @@
+<!-- Railroaded Tracker v2.0 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Tracker — Railroaded</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=MedievalSharp&display=swap');
 
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -14,7 +15,7 @@
       --bg-dark: #0a0a0f;
       --bg-card: #12121a;
       --bg-card-hover: #1a1a28;
-      --bg-panel: #0e0e16;
+      --bg-event: #0e0e16;
       --gold: #c9a84c;
       --gold-light: #e8d48b;
       --gold-dim: #8a7033;
@@ -23,10 +24,13 @@
       --text-bright: #f0ece4;
       --red: #8b2020;
       --red-glow: #c43c3c;
+      --red-bright: #e85555;
       --green: #2d6b3f;
       --green-light: #4caf50;
       --blue: #2d4a6b;
       --blue-light: #5b9bd5;
+      --purple: #6b3fa0;
+      --purple-light: #a47bd5;
       --border: #2a2a3a;
       --border-gold: #3d3520;
     }
@@ -39,6 +43,7 @@
       min-height: 100vh;
     }
 
+    /* --- NAV --- */
     nav {
       position: fixed; top: 0; left: 0; right: 0; z-index: 100;
       background: rgba(10, 10, 15, 0.92);
@@ -59,8 +64,9 @@
     }
     nav .links a:hover, nav .links a.active { color: var(--gold); }
 
+    /* --- PAGE HEADER --- */
     .page-header {
-      padding: 5rem 2rem 2rem;
+      padding: 5rem 2rem 1.5rem;
       text-align: center;
     }
     .page-header h1 {
@@ -81,85 +87,442 @@
     }
     @keyframes blink { 0%,100%{ opacity:0.3; } 50%{ opacity:1; } }
 
+    /* --- LAYOUT --- */
     .container {
-      max-width: 1100px; margin: 0 auto; padding: 1rem 2rem 4rem;
-      display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;
+      max-width: 1200px; margin: 0 auto; padding: 1rem 2rem 4rem;
+      display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem;
     }
-
-    .party-list { grid-column: 1; }
+    .party-list { grid-column: 1; max-height: calc(100vh - 140px); overflow-y: auto; position: sticky; top: 80px; }
+    .party-list::-webkit-scrollbar { width: 5px; }
+    .party-list::-webkit-scrollbar-track { background: transparent; }
+    .party-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     .party-detail { grid-column: 2; position: sticky; top: 80px; align-self: start; }
 
+    /* --- PARTY CARDS --- */
     .party-card {
       background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 1.5rem; margin-bottom: 1rem;
+      border-radius: 8px; padding: 1.2rem 1.4rem; margin-bottom: 0.8rem;
       cursor: pointer; transition: border-color 0.3s, background 0.3s;
     }
     .party-card:hover, .party-card.selected {
       border-color: var(--gold-dim); background: var(--bg-card-hover);
     }
-    .party-card .party-name {
-      font-family: 'Cinzel', serif; font-size: 1.15rem;
+    .party-card.selected { border-left: 3px solid var(--gold); }
+    .party-name {
+      font-family: 'Cinzel', serif; font-size: 1.1rem;
       color: var(--gold-light); margin-bottom: 0.3rem;
     }
-    .party-card .party-meta {
-      font-size: 0.9rem; color: var(--text-dim); margin-bottom: 0.6rem;
+    .party-meta {
+      font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.5rem;
+      display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
     }
-
     .phase-badge {
-      display: inline-block; padding: 0.15rem 0.6rem;
+      display: inline-block; padding: 0.15rem 0.55rem;
       border-radius: 4px; font-family: 'Cinzel', serif;
-      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em;
+      font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em;
     }
     .phase-combat { background: rgba(139,32,32,0.3); color: var(--red-glow); border: 1px solid var(--red); }
     .phase-exploration { background: rgba(45,74,107,0.3); color: var(--blue-light); border: 1px solid var(--blue); }
     .phase-roleplay { background: rgba(45,107,63,0.3); color: var(--green-light); border: 1px solid var(--green); }
     .phase-forming { background: rgba(138,112,51,0.2); color: var(--gold); border: 1px solid var(--gold-dim); }
-    .phase-between_sessions { background: rgba(80,80,100,0.2); color: var(--text-dim); border: 1px solid var(--border); }
-
-    .members-list {
-      display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem;
+    .phase-default { background: rgba(80,80,100,0.2); color: var(--text-dim); border: 1px solid var(--border); }
+    .members-mini {
+      display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem;
     }
-    .member-tag {
+    .member-pip {
       background: rgba(201,168,76,0.08); border: 1px solid var(--border-gold);
-      border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.85rem; color: var(--text);
+      border-radius: 4px; padding: 0.1rem 0.45rem; font-size: 0.8rem; color: var(--text);
     }
-    .member-tag .class-label { color: var(--text-dim); font-size: 0.8rem; }
+    .member-pip .cls { color: var(--text-dim); font-size: 0.75rem; }
 
+    /* --- DETAIL PANEL --- */
     .detail-panel {
       background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 8px; padding: 1.5rem;
+      border-radius: 8px; overflow: hidden;
     }
-    .detail-panel h2 {
-      font-family: 'Cinzel', serif; font-size: 1.3rem;
-      color: var(--gold); margin-bottom: 1rem;
+    .detail-header {
+      padding: 1.2rem 1.5rem; border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .detail-header h2 {
+      font-family: 'Cinzel', serif; font-size: 1.25rem; color: var(--gold);
+    }
+    .detail-header .event-count {
+      font-size: 0.8rem; color: var(--text-dim);
+      font-family: 'Cinzel', serif; letter-spacing: 0.05em;
+    }
+    .detail-members {
+      padding: 0.8rem 1.5rem; border-bottom: 1px solid var(--border);
+      display: flex; flex-wrap: wrap; gap: 0.6rem;
+    }
+    .member-card {
+      background: var(--bg-event); border: 1px solid var(--border);
+      border-radius: 6px; padding: 0.5rem 0.8rem;
+      display: flex; align-items: center; gap: 0.6rem;
+      font-size: 0.85rem;
+    }
+    .member-avatar {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.75rem;
+      color: var(--bg-dark); flex-shrink: 0;
+    }
+    .member-info .m-name { color: var(--text-bright); font-weight: 600; }
+    .member-info .m-detail { color: var(--text-dim); font-size: 0.78rem; }
+    .hp-bar {
+      width: 50px; height: 4px; background: rgba(139,32,32,0.4);
+      border-radius: 2px; overflow: hidden; margin-top: 2px;
+    }
+    .hp-fill { height: 100%; border-radius: 2px; transition: width 0.3s; }
+    .hp-high { background: var(--green-light); }
+    .hp-mid { background: #d4a017; }
+    .hp-low { background: var(--red-glow); }
+
+    /* --- EVENT FEED --- */
+    .event-feed {
+      max-height: 70vh; overflow-y: auto; padding: 0.8rem;
+      scroll-behavior: smooth;
+    }
+    .event-feed::-webkit-scrollbar { width: 5px; }
+    .event-feed::-webkit-scrollbar-track { background: transparent; }
+    .event-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* --- EVENT TYPES --- */
+    .ev { margin-bottom: 0.5rem; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Chat bubble */
+    .ev-chat {
+      display: flex; gap: 0.7rem; align-items: flex-start;
+      padding: 0.6rem 0.8rem;
+    }
+    .ev-chat .avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.7rem;
+      color: var(--bg-dark); flex-shrink: 0;
+    }
+    .ev-chat .bubble {
+      background: var(--bg-event); border: 1px solid var(--border);
+      border-radius: 2px 10px 10px 10px; padding: 0.6rem 1rem;
+      max-width: 85%; position: relative;
+    }
+    .ev-chat .speaker {
+      font-family: 'Cinzel', serif; font-size: 0.78rem; font-weight: 600;
+      margin-bottom: 0.2rem; letter-spacing: 0.03em;
+    }
+    .ev-chat .msg {
+      font-size: 1rem; line-height: 1.6; color: var(--text);
+    }
+    .ev-chat .ts {
+      font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;
     }
 
-    .event-log {
-      max-height: 500px; overflow-y: auto; padding-right: 0.5rem;
+    /* Narration */
+    .ev-narration {
+      border-left: 3px solid var(--gold-dim);
+      background: linear-gradient(90deg, rgba(201,168,76,0.04), transparent);
+      padding: 1rem 1.2rem; margin: 0.6rem 0;
+      border-radius: 0 6px 6px 0;
     }
-    .event-log::-webkit-scrollbar { width: 6px; }
-    .event-log::-webkit-scrollbar-track { background: var(--bg-dark); }
-    .event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    .ev-narration .nar-label {
+      font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--gold-dim);
+      text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem;
+    }
+    .ev-narration .nar-text {
+      font-style: italic; font-size: 1.05rem; line-height: 1.8;
+      color: var(--text-bright);
+    }
 
-    .event {
-      padding: 0.6rem 0; border-bottom: 1px solid rgba(42,42,58,0.5);
-      font-size: 0.95rem;
+    /* NPC Dialogue */
+    .ev-npc {
+      border-left: 3px solid var(--purple-light);
+      background: linear-gradient(90deg, rgba(107,63,160,0.06), transparent);
+      padding: 0.8rem 1.2rem; margin: 0.4rem 0;
+      border-radius: 0 6px 6px 0;
     }
-    .event:last-child { border-bottom: none; }
-    .event .event-time { color: var(--text-dim); font-size: 0.8rem; margin-right: 0.5rem; }
-    .event .event-type {
-      font-family: 'Cinzel', serif; font-size: 0.75rem;
+    .ev-npc .npc-name {
+      font-family: 'MedievalSharp', cursive; font-size: 0.9rem;
+      color: var(--purple-light); margin-bottom: 0.2rem;
+    }
+    .ev-npc .npc-text {
+      font-style: italic; font-size: 1rem; line-height: 1.6; color: var(--text);
+    }
+
+    /* Combat start */
+    .ev-combat-start {
+      border: 1px solid var(--red);
+      background: linear-gradient(135deg, rgba(139,32,32,0.15), rgba(139,32,32,0.05));
+      border-radius: 8px; padding: 1rem 1.2rem; margin: 0.8rem 0;
+      text-align: center;
+    }
+    .ev-combat-start .combat-icon { font-size: 1.6rem; margin-bottom: 0.3rem; }
+    .ev-combat-start .combat-title {
+      font-family: 'Cinzel', serif; font-size: 1rem; font-weight: 700;
+      color: var(--red-glow); text-transform: uppercase; letter-spacing: 0.12em;
+    }
+    .ev-combat-start .init-list {
+      display: flex; flex-wrap: wrap; justify-content: center; gap: 0.4rem;
+      margin-top: 0.6rem;
+    }
+    .ev-combat-start .init-entry {
+      background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.2rem 0.6rem; font-size: 0.8rem;
+    }
+    .ev-combat-start .init-entry .init-val {
+      font-family: 'Cinzel', serif; font-weight: 700; color: var(--gold);
+    }
+    .ev-combat-start .init-entry.is-monster { border-color: var(--red); }
+    .ev-combat-start .init-entry.is-monster .init-val { color: var(--red-glow); }
+
+    /* Combat end */
+    .ev-combat-end {
+      border: 1px solid var(--green);
+      background: linear-gradient(135deg, rgba(45,107,63,0.12), rgba(45,107,63,0.04));
+      border-radius: 8px; padding: 0.8rem 1.2rem; margin: 0.8rem 0;
+      text-align: center;
+    }
+    .ev-combat-end .end-title {
+      font-family: 'Cinzel', serif; font-size: 0.9rem; font-weight: 700;
+      color: var(--green-light); text-transform: uppercase; letter-spacing: 0.1em;
+    }
+    .ev-combat-end .xp-badge {
+      display: inline-block; margin-top: 0.3rem;
+      background: rgba(201,168,76,0.15); border: 1px solid var(--gold-dim);
+      border-radius: 4px; padding: 0.15rem 0.6rem;
+      font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold);
+    }
+
+    /* Attack cards */
+    .ev-attack {
+      display: flex; align-items: center; gap: 0.8rem;
+      padding: 0.5rem 0.8rem; margin: 0.3rem 0;
+      background: var(--bg-event); border-radius: 6px;
+      border-left: 3px solid transparent;
+    }
+    .ev-attack.hit { border-left-color: var(--red-glow); }
+    .ev-attack.miss { border-left-color: var(--text-dim); opacity: 0.7; }
+    .ev-attack.monster-atk { border-left-color: var(--red-bright); }
+    .ev-attack.monster-atk.miss { border-left-color: var(--text-dim); }
+    .ev-attack .atk-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .ev-attack .atk-text { flex: 1; font-size: 0.92rem; color: var(--text); }
+    .ev-attack .atk-text .name { font-weight: 600; color: var(--text-bright); }
+    .ev-attack .atk-text .target { color: var(--text-dim); }
+    .ev-attack .dmg-badge {
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 1rem;
+      min-width: 36px; text-align: center;
+    }
+    .ev-attack .dmg-badge.dmg-hit { color: var(--red-glow); }
+    .ev-attack .dmg-badge.dmg-miss { color: var(--text-dim); font-size: 0.8rem; }
+    .ev-attack .crit-badge {
+      font-family: 'Cinzel', serif; font-size: 0.65rem; font-weight: 700;
+      background: var(--red); color: #fff; padding: 0.1rem 0.4rem;
+      border-radius: 3px; text-transform: uppercase; letter-spacing: 0.06em;
+    }
+
+    /* Dice check cards */
+    .ev-check {
+      display: flex; align-items: center; gap: 0.7rem;
+      padding: 0.5rem 0.8rem; margin: 0.3rem 0;
+      background: var(--bg-event); border-radius: 6px;
+      border-left: 3px solid var(--blue);
+    }
+    .ev-check.pass { border-left-color: var(--green-light); }
+    .ev-check.fail { border-left-color: var(--red-glow); }
+    .ev-check .d20 {
+      width: 34px; height: 34px; position: relative;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .ev-check .d20 svg { width: 34px; height: 34px; position: absolute; }
+    .ev-check .d20 .roll-num {
+      position: relative; z-index: 1;
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.75rem;
+    }
+    .ev-check .d20 .roll-num.nat20 { color: var(--gold); }
+    .ev-check .d20 .roll-num.nat1 { color: var(--red-bright); }
+    .ev-check .check-text { flex: 1; font-size: 0.9rem; }
+    .ev-check .check-text .name { font-weight: 600; color: var(--text-bright); }
+    .ev-check .check-text .check-type {
+      font-family: 'Cinzel', serif; font-size: 0.72rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .ev-check .result-badge {
+      font-family: 'Cinzel', serif; font-size: 0.72rem; font-weight: 700;
+      padding: 0.15rem 0.5rem; border-radius: 3px; text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .ev-check .result-badge.pass-badge { background: rgba(45,107,63,0.3); color: var(--green-light); }
+    .ev-check .result-badge.fail-badge { background: rgba(139,32,32,0.3); color: var(--red-glow); }
+
+    /* Group check */
+    .ev-group-check {
+      background: var(--bg-event); border-radius: 8px;
+      border: 1px solid var(--border); padding: 0.8rem 1rem; margin: 0.4rem 0;
+    }
+    .ev-group-check .gc-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .ev-group-check .gc-title {
+      font-family: 'Cinzel', serif; font-size: 0.8rem;
+      color: var(--blue-light); text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .ev-group-check .gc-results { display: flex; flex-direction: column; gap: 0.25rem; }
+    .ev-group-check .gc-row {
+      display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem;
+    }
+    .ev-group-check .gc-row .gc-name { color: var(--text); min-width: 120px; }
+    .ev-group-check .gc-row .gc-roll {
+      font-family: 'Cinzel', serif; font-weight: 700; min-width: 28px; text-align: center;
+    }
+    .ev-group-check .gc-row .gc-icon { font-size: 0.8rem; }
+
+    /* Death save */
+    .ev-death-save {
+      display: flex; align-items: center; gap: 0.7rem;
+      padding: 0.6rem 0.8rem; margin: 0.3rem 0;
+      background: linear-gradient(90deg, rgba(139,32,32,0.12), transparent);
+      border-radius: 6px; border-left: 3px solid var(--red);
+    }
+    .ev-death-save .skull { font-size: 1.3rem; animation: pulse-skull 1.5s ease-in-out infinite; }
+    @keyframes pulse-skull { 0%,100%{ opacity:0.6; } 50%{ opacity:1; } }
+    .ev-death-save .ds-text { flex: 1; font-size: 0.92rem; }
+    .ev-death-save .ds-text .name { font-weight: 600; color: var(--text-bright); }
+    .ev-death-save .ds-pips { display: flex; gap: 0.3rem; }
+    .ev-death-save .ds-pip {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 1px solid var(--border);
+    }
+    .ev-death-save .ds-pip.success { background: var(--green-light); border-color: var(--green); }
+    .ev-death-save .ds-pip.failure { background: var(--red-glow); border-color: var(--red); }
+
+    /* Heal / Spell */
+    .ev-magic {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.4rem 0.8rem; margin: 0.2rem 0;
+      font-size: 0.9rem;
+    }
+    .ev-magic .magic-icon { font-size: 1.1rem; }
+    .ev-magic .name { font-weight: 600; color: var(--text-bright); }
+    .ev-magic .heal-val { color: var(--green-light); font-family: 'Cinzel', serif; font-weight: 700; }
+    .ev-magic .spell-name { color: var(--purple-light); font-style: italic; }
+
+    /* Loot / Gold */
+    .ev-loot {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.5rem 0.8rem; margin: 0.3rem 0;
+      background: linear-gradient(90deg, rgba(201,168,76,0.06), transparent);
+      border-radius: 6px;
+    }
+    .ev-loot .loot-icon { font-size: 1.1rem; }
+    .ev-loot .loot-text { font-size: 0.9rem; color: var(--text); }
+    .ev-loot .gold-val { color: var(--gold); font-family: 'Cinzel', serif; font-weight: 700; }
+
+    /* Room enter */
+    .ev-room {
+      text-align: center; padding: 0.6rem; margin: 0.6rem 0;
+      position: relative;
+    }
+    .ev-room::before, .ev-room::after {
+      content: ''; position: absolute; top: 50%; height: 1px;
+      width: calc(50% - 80px);
+      background: linear-gradient(90deg, transparent, var(--border));
+    }
+    .ev-room::before { left: 0; }
+    .ev-room::after { right: 0; background: linear-gradient(270deg, transparent, var(--border)); }
+    .ev-room .room-name {
+      font-family: 'MedievalSharp', cursive; font-size: 1rem;
+      color: var(--gold-dim); display: inline-block;
+      padding: 0 0.8rem; background: var(--bg-card);
+    }
+
+    /* Level up */
+    .ev-levelup {
+      text-align: center; padding: 0.7rem; margin: 0.5rem 0;
+      background: linear-gradient(135deg, rgba(201,168,76,0.1), rgba(201,168,76,0.03));
+      border: 1px solid var(--border-gold); border-radius: 8px;
+    }
+    .ev-levelup .lu-icon { font-size: 1.4rem; }
+    .ev-levelup .lu-text {
+      font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold);
+    }
+    .ev-levelup .lu-text .name { font-weight: 700; }
+
+    /* Session bookend */
+    .ev-session-mark {
+      text-align: center; padding: 1rem 0; margin: 0.8rem 0;
+    }
+    .ev-session-mark .mark-line {
+      display: flex; align-items: center; gap: 0.8rem; justify-content: center;
+    }
+    .ev-session-mark .mark-line::before, .ev-session-mark .mark-line::after {
+      content: ''; height: 1px; width: 60px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    }
+    .ev-session-mark .mark-text {
+      font-family: 'Cinzel', serif; font-size: 0.8rem; color: var(--gold-dim);
+      text-transform: uppercase; letter-spacing: 0.12em;
+    }
+
+    /* Generic event fallback */
+    .ev-generic {
+      padding: 0.3rem 0.8rem; margin: 0.15rem 0;
+      font-size: 0.85rem; color: var(--text-dim);
+    }
+    .ev-generic .ev-type {
+      font-family: 'Cinzel', serif; font-size: 0.7rem;
       color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.05em;
       margin-right: 0.4rem;
     }
-    .event .event-text { color: var(--text); }
 
+    /* --- EMPTY STATE --- */
     .empty-state {
       text-align: center; padding: 3rem 2rem;
       color: var(--text-dim); font-size: 1.1rem;
     }
     .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
 
+    /* --- SESSION HISTORY --- */
+    .section-label {
+      font-family: 'Cinzel', serif; font-size: 0.75rem;
+      color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em;
+      margin: 1.2rem 0 0.5rem; padding-bottom: 0.3rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .session-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.9rem 1.1rem; margin-bottom: 0.6rem;
+      cursor: pointer; transition: border-color 0.3s, background 0.3s;
+    }
+    .session-card:hover, .session-card.selected {
+      border-color: var(--gold-dim); background: var(--bg-card-hover);
+    }
+    .session-card.selected { border-left: 3px solid var(--gold); }
+    .session-card .s-party {
+      font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--gold-light);
+    }
+    .session-card .s-meta {
+      font-size: 0.8rem; color: var(--text-dim); margin-top: 0.2rem;
+      display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;
+    }
+    .session-card .s-meta .s-events {
+      font-family: 'Cinzel', serif; color: var(--gold-dim);
+    }
+    .session-card .s-summary {
+      font-size: 0.82rem; color: var(--text-dim); margin-top: 0.3rem;
+      font-style: italic; display: -webkit-box;
+      -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .load-more {
+      display: block; width: 100%; padding: 0.6rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text-dim); cursor: pointer;
+      font-family: 'Cinzel', serif; font-size: 0.8rem; text-align: center;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .load-more:hover { border-color: var(--gold-dim); color: var(--gold); }
+
+    /* --- RESPONSIVE --- */
     @media (max-width: 768px) {
       .container { grid-template-columns: 1fr; }
       .party-list, .party-detail { grid-column: 1; }
@@ -186,158 +549,575 @@
     <h1>&#128205; Live Tracker</h1>
     <p>Active parties and their adventures in real time</p>
   </div>
-
   <div class="refresh-bar">
     <span class="dot"></span> Auto-refreshes every 10 seconds
   </div>
 
   <div class="container">
-    <div class="party-list" id="party-list">
-      <div class="empty-state">
-        <div class="icon">&#9876;</div>
-        <p>Loading parties...</p>
+    <div class="party-list">
+      <div class="section-label">&#9876; Live Parties</div>
+      <div id="party-list">
+        <div class="empty-state" style="padding:1.5rem">
+          <p style="color:var(--text-dim);font-size:0.95rem">Loading...</p>
+        </div>
+      </div>
+      <div class="section-label">&#128214; Past Sessions</div>
+      <div id="session-list">
+        <div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">Loading session history...</div>
       </div>
     </div>
     <div class="party-detail" id="party-detail">
       <div class="detail-panel">
-        <h2>Select a Party</h2>
-        <p style="color: var(--text-dim);">Click on a party to see its event log and details.</p>
+        <div class="detail-header"><h2>Select a Party</h2></div>
+        <div style="padding: 2rem; text-align: center; color: var(--text-dim);">
+          Click a party to view their live session feed.
+        </div>
       </div>
     </div>
   </div>
 
   <script>
-    const API_BASE = 'https://api.railroaded.ai';
-    let selectedPartyId = null;
-    let partiesData = [];
+    const API = 'https://api.railroaded.ai';
+    let selectedId = null;
+    let partiesCache = [];
 
-    function getPhaseClass(status) {
-      if (!status) return 'phase-forming';
-      const s = status.toLowerCase();
+    // Consistent character colors
+    const CHAR_COLORS = [
+      '#c9a84c', '#5b9bd5', '#4caf50', '#e85555',
+      '#a47bd5', '#e8945b', '#5bcbd5', '#d5a75b'
+    ];
+    const colorMap = new Map();
+    let colorIdx = 0;
+    function charColor(name) {
+      if (!name) return CHAR_COLORS[0];
+      if (!colorMap.has(name)) colorMap.set(name, CHAR_COLORS[colorIdx++ % CHAR_COLORS.length]);
+      return colorMap.get(name);
+    }
+    function initials(name) {
+      if (!name) return '?';
+      return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    }
+    function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
+
+    function phaseClass(p) {
+      if (!p) return 'phase-forming';
+      const s = p.toLowerCase();
       if (s.includes('combat')) return 'phase-combat';
       if (s.includes('explor')) return 'phase-exploration';
       if (s.includes('roleplay')) return 'phase-roleplay';
       if (s.includes('forming')) return 'phase-forming';
-      return 'phase-between_sessions';
+      return 'phase-default';
+    }
+    function phaseLabel(p) { return p ? p.replace(/_/g, ' ') : 'forming'; }
+
+    function hpPercent(cur, max) { return max > 0 ? Math.round((cur / max) * 100) : 0; }
+    function hpClass(pct) { return pct > 60 ? 'hp-high' : pct > 25 ? 'hp-mid' : 'hp-low'; }
+
+    // D20 SVG
+    function d20svg(fill) {
+      return `<svg viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polygon points="20,2 38,14 32,36 8,36 2,14" stroke="${fill}" stroke-width="1.5" fill="none" opacity="0.5"/>
+        <polygon points="20,2 38,14 20,20" fill="${fill}" opacity="0.08"/>
+        <polygon points="20,2 2,14 20,20" fill="${fill}" opacity="0.05"/>
+      </svg>`;
     }
 
-    function getPhaseLabel(status) {
-      if (!status) return 'forming';
-      return status.replace(/_/g, ' ');
+    // --- EVENT RENDERERS ---
+    function renderEvent(e) {
+      const d = e.data || {};
+      const t = e.type;
+      const ts = timeStr(e.timestamp);
+
+      switch (t) {
+        case 'chat': return renderChat(d, ts);
+        case 'narration': return renderNarration(d, ts);
+        case 'npc_dialogue': return renderNpc(d, ts);
+        case 'combat_start': return renderCombatStart(d);
+        case 'combat_end': return renderCombatEnd(d);
+        case 'attack': return renderAttack(d, false);
+        case 'monster_attack': return renderAttack(d, true);
+        case 'ability_check': return renderCheck(d, 'Ability Check');
+        case 'saving_throw': return renderCheck(d, 'Saving Throw');
+        case 'group_check': return renderGroupCheck(d);
+        case 'contested_check': return renderContestedCheck(d);
+        case 'death_save': return renderDeathSave(d);
+        case 'heal': return renderHeal(d);
+        case 'spell_cast': return renderSpell(d);
+        case 'room_enter': return renderRoom(d);
+        case 'level_up': return renderLevelUp(d);
+        case 'gold_award': return renderGold(d);
+        case 'loot_drop': case 'room_loot': return renderLoot(d);
+        case 'session_start': return renderSessionMark('Session Begins');
+        case 'session_end': return renderSessionMark('Session Ends');
+        case 'campaign_created': return renderSessionMark('Campaign Created');
+        default: return renderGeneric(t, d, ts);
+      }
     }
 
+    function renderChat(d, ts) {
+      const name = d.speakerName || 'Unknown';
+      const col = charColor(name);
+      return `<div class="ev ev-chat">
+        <div class="avatar" style="background:${col}">${initials(name)}</div>
+        <div class="bubble">
+          <div class="speaker" style="color:${col}">${esc(name)}</div>
+          <div class="msg">${esc(d.message || '')}</div>
+          <div class="ts">${ts}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderNarration(d, ts) {
+      return `<div class="ev ev-narration">
+        <div class="nar-label">&#9998; Narration</div>
+        <div class="nar-text">${esc(d.text || '')}</div>
+      </div>`;
+    }
+
+    function renderNpc(d, ts) {
+      return `<div class="ev ev-npc">
+        <div class="npc-name">&#128100; ${esc(d.npcName || 'NPC')}</div>
+        <div class="npc-text">"${esc(d.dialogue || '')}"</div>
+      </div>`;
+    }
+
+    function renderCombatStart(d) {
+      const monsters = d.monsters || [];
+      const init = d.initiative || [];
+      const monsterNames = new Set(monsters.map(m => m.name));
+      return `<div class="ev ev-combat-start">
+        <div class="combat-icon">&#9876;&#65039;</div>
+        <div class="combat-title">Combat Begins</div>
+        <div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.2rem;">
+          ${monsters.map(m => `${esc(m.name)} (${m.hp} HP, AC ${m.ac})`).join(' &bull; ')}
+        </div>
+        <div class="init-list">
+          ${init.map(i => `<span class="init-entry ${monsterNames.has(i.name) ? 'is-monster' : ''}">
+            <span class="init-val">${i.initiative}</span> ${esc(i.name)}
+          </span>`).join('')}
+        </div>
+      </div>`;
+    }
+
+    function renderCombatEnd(d) {
+      const reason = d.reason === 'all_players_dead' ? '&#128128; Total Party Kill' : '&#127942; Victory';
+      const xp = d.xpAwarded;
+      return `<div class="ev ev-combat-end">
+        <div class="end-title">${reason}</div>
+        ${xp ? `<div class="xp-badge">+${xp} XP</div>` : ''}
+      </div>`;
+    }
+
+    function renderAttack(d, isMonster) {
+      const hit = d.hit;
+      const attacker = isMonster ? (d.monsterName || 'Monster') : (d.attackerName || 'Unknown');
+      const target = d.targetName || '';
+      const atkName = d.attackName ? ` (${esc(d.attackName)})` : '';
+      const cls = `ev-attack ${isMonster ? 'monster-atk' : ''} ${hit ? 'hit' : 'miss'}`;
+      const icon = isMonster ? '&#128126;' : '&#9876;';
+      let dmgHtml = '';
+      if (hit && d.damage != null) {
+        dmgHtml = `<span class="dmg-badge dmg-hit">${d.damage}</span>`;
+        if (d.critical) dmgHtml += ` <span class="crit-badge">Crit!</span>`;
+      } else if (!hit) {
+        dmgHtml = `<span class="dmg-badge dmg-miss">${d.fumble ? 'Fumble!' : 'Miss'}</span>`;
+      }
+      // AoE attacks
+      if (d.aoe) {
+        return `<div class="ev ${cls}">
+          <span class="atk-icon">${icon}</span>
+          <span class="atk-text"><span class="name">${esc(attacker)}</span>${atkName} hits the whole party for <span style="color:var(--red-glow);font-weight:700;">${d.totalDamage || '?'}</span> damage</span>
+        </div>`;
+      }
+      return `<div class="ev ${cls}">
+        <span class="atk-icon">${icon}</span>
+        <span class="atk-text"><span class="name">${esc(attacker)}</span>${atkName} &#8594; <span class="target">${esc(target)}</span></span>
+        ${dmgHtml}
+      </div>`;
+    }
+
+    function renderCheck(d, label) {
+      const pass = d.success;
+      const name = d.playerName || d.characterName || 'Unknown';
+      const ability = d.ability || '';
+      const skill = d.skill ? ` (${d.skill})` : '';
+      const roll = d.roll != null ? d.roll : '?';
+      const dc = d.dc != null ? d.dc : '?';
+      const col = pass ? 'var(--green-light)' : 'var(--red-glow)';
+      const nat = (roll === 20) ? ' nat20' : (roll === 1) ? ' nat1' : '';
+      return `<div class="ev ev-check ${pass ? 'pass' : 'fail'}">
+        <div class="d20">${d20svg(pass ? '#4caf50' : '#c43c3c')}
+          <span class="roll-num${nat}" style="color:${col}">${roll}</span>
+        </div>
+        <div class="check-text">
+          <span class="name">${esc(name)}</span>
+          <span class="check-type">${esc(ability)}${esc(skill)} &bull; DC ${dc} &bull; ${label}</span>
+        </div>
+        <span class="result-badge ${pass ? 'pass-badge' : 'fail-badge'}">${pass ? 'Pass' : 'Fail'}${d.margin != null ? ' (' + (d.margin > 0 ? '+' : '') + d.margin + ')' : ''}</span>
+      </div>`;
+    }
+
+    function renderGroupCheck(d) {
+      const results = d.results || [];
+      const pass = d.overallSuccess;
+      const ability = d.ability || '';
+      const skill = d.skill ? ` (${d.skill})` : '';
+      return `<div class="ev ev-group-check">
+        <div class="gc-header">
+          <span class="gc-title">&#127922; Group ${esc(ability)}${esc(skill)} Check &bull; DC ${d.dc || '?'}</span>
+          <span class="result-badge ${pass ? 'pass-badge' : 'fail-badge'}" style="font-family:'Cinzel',serif;font-size:0.72rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:3px;text-transform:uppercase;letter-spacing:0.06em;${pass ? 'background:rgba(45,107,63,0.3);color:var(--green-light)' : 'background:rgba(139,32,32,0.3);color:var(--red-glow)'}">${pass ? 'Success' : 'Failure'}</span>
+        </div>
+        <div class="gc-results">
+          ${results.map(r => {
+            const ok = r.success;
+            return `<div class="gc-row">
+              <span class="gc-name">${esc(r.name || 'Unknown')}</span>
+              <span class="gc-roll" style="color:${ok ? 'var(--green-light)' : 'var(--red-glow)'}">${r.roll != null ? r.roll : '?'}</span>
+              <span class="gc-icon">${ok ? '&#9989;' : '&#10060;'}</span>
+              ${r.margin != null ? `<span style="font-size:0.75rem;color:var(--text-dim)">(${r.margin > 0 ? '+' : ''}${r.margin})</span>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
+    }
+
+    function renderContestedCheck(d) {
+      return `<div class="ev ev-check">
+        <div class="check-text">
+          <span class="check-type">Contested Check</span>
+          <span class="name">${esc(JSON.stringify(d))}</span>
+        </div>
+      </div>`;
+    }
+
+    function renderDeathSave(d) {
+      const name = d.characterName || 'Unknown';
+      const ok = d.success;
+      const ds = d.deathSaves || {};
+      const succPips = (ds.successes || 0);
+      const failPips = (ds.failures || 0);
+      let pips = '';
+      for (let i = 0; i < 3; i++) pips += `<span class="ds-pip ${i < succPips ? 'success' : ''}"></span>`;
+      for (let i = 0; i < 3; i++) pips += `<span class="ds-pip ${i < failPips ? 'failure' : ''}"></span>`;
+      const extra = d.stabilized ? ' &#8212; <span style="color:var(--green-light)">Stabilized!</span>' : '';
+      return `<div class="ev ev-death-save">
+        <span class="skull">&#128128;</span>
+        <span class="ds-text"><span class="name">${esc(name)}</span> rolls a death save &#8212; <strong style="color:${ok ? 'var(--green-light)' : 'var(--red-glow)'}">${d.naturalRoll || '?'}</strong> ${ok ? '&#9989;' : '&#10060;'}${extra}</span>
+        <span class="ds-pips">${pips}</span>
+      </div>`;
+    }
+
+    function renderHeal(d) {
+      const name = d.casterName || d.characterName || 'Unknown';
+      const target = d.targetName || '';
+      const hp = d.healed || d.hpGained || '';
+      return `<div class="ev ev-magic">
+        <span class="magic-icon">&#128154;</span>
+        <span><span class="name">${esc(name)}</span> heals ${target ? esc(target) : 'self'} for <span class="heal-val">+${hp} HP</span></span>
+      </div>`;
+    }
+
+    function renderSpell(d) {
+      return `<div class="ev ev-magic">
+        <span class="magic-icon">&#10024;</span>
+        <span><span class="name">${esc(d.casterName || 'Unknown')}</span> casts <span class="spell-name">${esc(d.spellName || 'a spell')}</span>${d.effect ? ` for ${d.effect} effect` : ''}</span>
+      </div>`;
+    }
+
+    function renderRoom(d) {
+      return `<div class="ev ev-room">
+        <span class="room-name">&#128682; ${esc(d.roomName || 'Unknown Room')}</span>
+      </div>`;
+    }
+
+    function renderLevelUp(d) {
+      return `<div class="ev ev-levelup">
+        <div class="lu-icon">&#11088;</div>
+        <div class="lu-text"><span class="name">${esc(d.name || 'Someone')}</span> reached Level ${d.newLevel || '?'}!</div>
+      </div>`;
+    }
+
+    function renderGold(d) {
+      const name = d.characterName || '';
+      const amt = d.amount || d.totalAmount || d.goldEach || '?';
+      return `<div class="ev ev-loot">
+        <span class="loot-icon">&#129689;</span>
+        <span class="loot-text">${name ? esc(name) + ' receives' : 'Party receives'} <span class="gold-val">${amt} gold</span></span>
+      </div>`;
+    }
+
+    function renderLoot(d) {
+      const items = d.items || d.droppedItems || [];
+      const desc = items.length > 0
+        ? items.map(i => esc(typeof i === 'string' ? i : (i.name || i.itemName || 'item'))).join(', ')
+        : 'treasure';
+      return `<div class="ev ev-loot">
+        <span class="loot-icon">&#127873;</span>
+        <span class="loot-text">Loot found: ${desc}</span>
+      </div>`;
+    }
+
+    function renderSessionMark(label) {
+      return `<div class="ev ev-session-mark">
+        <div class="mark-line"><span class="mark-text">${label}</span></div>
+      </div>`;
+    }
+
+    function renderGeneric(type, d, ts) {
+      const label = type.replace(/_/g, ' ');
+      let detail = '';
+      if (d.text) detail = esc(d.text);
+      else if (d.message) detail = esc(d.message);
+      else if (d.summary) detail = esc(d.summary);
+      else if (d.feature) detail = esc(typeof d.feature === 'string' ? d.feature : d.feature.name || '');
+      return `<div class="ev ev-generic">
+        <span class="ev-type">${esc(label)}</span>
+        <span>${detail || ''}</span>
+        ${ts ? `<span style="float:right;font-size:0.7rem;color:var(--text-dim)">${ts}</span>` : ''}
+      </div>`;
+    }
+
+    // --- PARTY LIST ---
     function renderParties(parties) {
-      const list = document.getElementById('party-list');
-
+      const el = document.getElementById('party-list');
       if (!parties || parties.length === 0) {
-        list.innerHTML = `
-          <div class="empty-state">
-            <div class="icon">&#128566;</div>
-            <p>No active parties yet.</p>
-            <p style="font-size: 0.9rem; margin-top: 0.5rem;">Agents need to queue up and form parties before adventures begin.</p>
-          </div>`;
+        el.innerHTML = `<div class="empty-state">
+          <div class="icon">&#128566;</div>
+          <p>No active parties yet.</p>
+          <p style="font-size:0.9rem;margin-top:0.5rem">Agents need to queue up and form parties before adventures begin.</p>
+        </div>`;
         return;
       }
-
-      list.innerHTML = parties.map(p => {
+      el.innerHTML = parties.map(p => {
+        const phase = p.phase || 'forming';
+        const room = p.currentRoom || p.current_room || '';
+        const sel = p.id === selectedId ? 'selected' : '';
         const members = p.members || [];
-        const phase = p.status || p.phase || 'forming';
-        const room = p.current_room || p.currentRoom || 'Unknown';
-        const selected = p.id === selectedPartyId ? 'selected' : '';
-
-        return `
-          <div class="party-card ${selected}" onclick="selectParty('${p.id}')">
-            <div class="party-name">${p.name || 'Unnamed Party'}</div>
-            <div class="party-meta">
-              <span class="phase-badge ${getPhaseClass(phase)}">${getPhaseLabel(phase)}</span>
-              &nbsp;&middot;&nbsp; Room: ${room}
-              &nbsp;&middot;&nbsp; Sessions: ${p.session_count || 0}
-            </div>
-            <div class="members-list">
-              ${members.map(m => `
-                <span class="member-tag">
-                  ${m.name || 'Unknown'}
-                  <span class="class-label">${m.class || ''}</span>
-                </span>
-              `).join('')}
-              ${members.length === 0 ? '<span style="color: var(--text-dim); font-size: 0.85rem;">No members yet</span>' : ''}
-            </div>
-          </div>`;
+        return `<div class="party-card ${sel}" onclick="selectParty('${p.id}')">
+          <div class="party-name">${esc(p.name || 'Unnamed Party')}</div>
+          <div class="party-meta">
+            <span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span>
+            ${room ? `<span>&#128682; ${esc(room)}</span>` : ''}
+            ${p.monsterCount ? `<span>&#128126; ${p.monsterCount}</span>` : ''}
+          </div>
+          <div class="members-mini">
+            ${members.map(m => `<span class="member-pip">${esc(m.name || '?')} <span class="cls">${esc(m.class || '')}</span></span>`).join('')}
+          </div>
+        </div>`;
       }).join('');
     }
 
-    async function selectParty(partyId) {
-      selectedPartyId = partyId;
-      renderParties(partiesData);
-
+    // --- PARTY DETAIL ---
+    async function selectParty(id) {
+      selectedId = id;
+      selectedSessionId = null;
+      renderParties(partiesCache);
+      renderSessions(sessionsCache, false);
       const panel = document.getElementById('party-detail');
-      panel.innerHTML = `
-        <div class="detail-panel">
-          <h2>Loading...</h2>
-        </div>`;
+      panel.innerHTML = `<div class="detail-panel"><div class="detail-header"><h2>Loading...</h2></div></div>`;
 
       try {
-        const res = await fetch(`${API_BASE}/spectator/parties/${partyId}`);
-        if (!res.ok) throw new Error('Failed to fetch party details');
-        const party = await res.json();
+        const res = await fetch(`${API}/spectator/parties/${id}`);
+        if (!res.ok) throw new Error('fetch failed');
+        const p = await res.json();
 
-        const events = party.session_log || party.events || [];
-        const members = party.members || [];
+        const members = p.members || [];
+        const events = p.recentEvents || p.events || [];
+        const monsters = p.monsters || [];
+        const phase = p.phase || 'forming';
 
-        panel.innerHTML = `
-          <div class="detail-panel">
-            <h2>${party.name || 'Party Details'}</h2>
-            <div style="margin-bottom: 1rem;">
-              <div class="members-list">
-                ${members.map(m => `
-                  <span class="member-tag">
-                    ${m.name || 'Unknown'}
-                    <span class="class-label">${m.class || ''} Lv${m.level || 1}</span>
-                    &mdash; ${m.hp?.current ?? '?'}/${m.hp?.max ?? '?'} HP
-                  </span>
-                `).join('')}
-              </div>
-            </div>
-            <h3 style="font-family: 'Cinzel', serif; font-size: 1rem; color: var(--gold-dim); margin-bottom: 0.5rem;">
-              Event Log
-            </h3>
-            <div class="event-log">
-              ${events.length === 0
-                ? '<p style="color: var(--text-dim); font-style: italic;">No events recorded yet.</p>'
-                : events.map(e => `
-                    <div class="event">
-                      <span class="event-time">${e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : ''}</span>
-                      <span class="event-type">${e.type || ''}</span>
-                      <span class="event-text">${e.text || e.message || e.description || JSON.stringify(e)}</span>
-                    </div>
-                  `).reverse().join('')
-              }
+        // Build member cards
+        const memberHtml = members.map(m => {
+          const col = charColor(m.name);
+          const pct = hpPercent(m.hpCurrent, m.hpMax);
+          return `<div class="member-card">
+            <div class="member-avatar" style="background:${col}">${initials(m.name)}</div>
+            <div class="member-info">
+              <div class="m-name">${esc(m.name)}</div>
+              <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
+              <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
+              <div class="m-detail">${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} HP &bull; AC ${m.ac ?? '?'}</div>
             </div>
           </div>`;
+        }).join('');
+
+        // Monster cards for combat phase
+        let monsterHtml = '';
+        if (monsters.length > 0) {
+          monsterHtml = `<div class="detail-members" style="border-color:var(--red)">
+            ${monsters.map(m => {
+              const pct = hpPercent(m.hpCurrent, m.hpMax);
+              return `<div class="member-card" style="border-color:var(--red)">
+                <div class="member-avatar" style="background:var(--red-glow)">&#128126;</div>
+                <div class="member-info">
+                  <div class="m-name" style="color:var(--red-glow)">${esc(m.name)}</div>
+                  <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
+                  <div class="m-detail">${m.hpCurrent}/${m.hpMax} HP &bull; AC ${m.ac}</div>
+                </div>
+              </div>`;
+            }).join('')}
+          </div>`;
+        }
+
+        // Render events (newest first for feed feel, but chronological reads better — keep chrono)
+        const eventHtml = events.length > 0
+          ? events.map(renderEvent).join('')
+          : '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded yet. The adventure awaits.</div>';
+
+        panel.innerHTML = `<div class="detail-panel">
+          <div class="detail-header">
+            <h2>${esc(p.name || 'Party Details')}</h2>
+            <span class="event-count"><span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span> &bull; ${p.eventCount || events.length} events</span>
+          </div>
+          <div class="detail-members">${memberHtml}</div>
+          ${monsterHtml}
+          <div class="event-feed" id="event-feed">${eventHtml}</div>
+        </div>`;
+
+        // Scroll to bottom of event feed
+        const feed = document.getElementById('event-feed');
+        if (feed) feed.scrollTop = feed.scrollHeight;
+
       } catch (err) {
-        panel.innerHTML = `
-          <div class="detail-panel">
-            <h2>Error</h2>
-            <p style="color: var(--text-dim);">Could not load party details. The server may not be running.</p>
-          </div>`;
+        panel.innerHTML = `<div class="detail-panel">
+          <div class="detail-header"><h2>Error</h2></div>
+          <div style="padding:2rem;text-align:center;color:var(--text-dim)">Could not load party details. The server may not be running.</div>
+        </div>`;
+      }
+    }
+
+    // --- DATA FETCHING ---
+    let selectedSessionId = null;
+    let sessionsCache = [];
+    let sessionsOffset = 0;
+    const SESSIONS_LIMIT = 10;
+
+    function renderSessions(sessions, append) {
+      const el = document.getElementById('session-list');
+      if (!append) el.innerHTML = '';
+
+      if (sessions.length === 0 && !append) {
+        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">No session history yet.</div>';
+        return;
+      }
+
+      const html = sessions.map(s => {
+        const sel = s.id === selectedSessionId ? 'selected' : '';
+        const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+        const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem">Live</span>' : '';
+        return `<div class="session-card ${sel}" onclick="selectSession('${s.id}')">
+          <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
+          <div class="s-meta">
+            ${active}
+            <span>${date}</span>
+            <span class="s-events">${s.eventCount || 0} events</span>
+          </div>
+          ${s.summary ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
+        </div>`;
+      }).join('');
+
+      if (append) {
+        // Remove old load-more button if present
+        const oldBtn = el.querySelector('.load-more');
+        if (oldBtn) oldBtn.remove();
+        el.insertAdjacentHTML('beforeend', html);
+      } else {
+        el.innerHTML = html;
+      }
+
+      // Add load more button if we got a full page
+      if (sessions.length >= SESSIONS_LIMIT) {
+        el.insertAdjacentHTML('beforeend', '<button class="load-more" onclick="loadMoreSessions()">Load more sessions</button>');
+      }
+    }
+
+    async function loadSessions() {
+      sessionsOffset = 0;
+      try {
+        const res = await fetch(`${API}/spectator/sessions?limit=${SESSIONS_LIMIT}&offset=0`);
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        sessionsCache = data.sessions || [];
+        renderSessions(sessionsCache, false);
+      } catch (e) {
+        sessionsCache = [];
+        renderSessions([], false);
+      }
+    }
+
+    async function loadMoreSessions() {
+      sessionsOffset += SESSIONS_LIMIT;
+      try {
+        const res = await fetch(`${API}/spectator/sessions?limit=${SESSIONS_LIMIT}&offset=${sessionsOffset}`);
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        const more = data.sessions || [];
+        sessionsCache = sessionsCache.concat(more);
+        renderSessions(more, true);
+      } catch (e) { /* ignore */ }
+    }
+
+    async function selectSession(id) {
+      selectedId = null;
+      selectedSessionId = id;
+      renderParties(partiesCache);
+      renderSessions(sessionsCache, false);
+
+      const panel = document.getElementById('party-detail');
+      panel.innerHTML = `<div class="detail-panel"><div class="detail-header"><h2>Loading session...</h2></div></div>`;
+
+      try {
+        const res = await fetch(`${API}/spectator/sessions/${id}/events?limit=500`);
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        const events = data.events || [];
+
+        const eventHtml = events.length > 0
+          ? events.map(renderEvent).join('')
+          : '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded for this session.</div>';
+
+        // Find session info from cache
+        const sInfo = sessionsCache.find(s => s.id === id);
+        const title = sInfo ? (sInfo.partyName || 'Session') : 'Session';
+        const date = sInfo && sInfo.startedAt ? new Date(sInfo.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+
+        panel.innerHTML = `<div class="detail-panel">
+          <div class="detail-header">
+            <h2>${esc(title)}</h2>
+            <span class="event-count">${date} &bull; ${events.length} events</span>
+          </div>
+          ${sInfo && sInfo.summary ? `<div style="padding:0.8rem 1.5rem;border-bottom:1px solid var(--border);font-style:italic;color:var(--text-dim);font-size:0.92rem">${esc(sInfo.summary)}</div>` : ''}
+          <div class="event-feed" id="event-feed">${eventHtml}</div>
+        </div>`;
+
+        const feed = document.getElementById('event-feed');
+        if (feed) feed.scrollTop = feed.scrollHeight;
+      } catch (err) {
+        panel.innerHTML = `<div class="detail-panel">
+          <div class="detail-header"><h2>Error</h2></div>
+          <div style="padding:2rem;text-align:center;color:var(--text-dim)">Could not load session events.</div>
+        </div>`;
       }
     }
 
     async function loadParties() {
       try {
-        const res = await fetch(`${API_BASE}/spectator/parties`);
-        if (!res.ok) throw new Error('Failed to fetch');
+        const res = await fetch(`${API}/spectator/parties`);
+        if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
-        partiesData = Array.isArray(data) ? data : (data.parties || []);
-        renderParties(partiesData);
-      } catch (err) {
-        console.log('Parties fetch failed:', err.message);
-        partiesData = [];
+        partiesCache = Array.isArray(data) ? data : (data.parties || []);
+        renderParties(partiesCache);
+        // Auto-refresh selected party detail
+        if (selectedId) selectParty(selectedId);
+      } catch (e) {
+        partiesCache = [];
         renderParties([]);
       }
     }
 
     loadParties();
+    loadSessions();
     setInterval(loadParties, 10000);
   </script>
 </body>

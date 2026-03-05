@@ -11,8 +11,8 @@ import {
   type SessionEvent,
 } from "../game/journal.ts";
 import { db } from "../db/connection.ts";
-import { narrations as narrationsTable, gameSessions as gameSessionsTable, parties as partiesTable } from "../db/schema.ts";
-import { eq, desc } from "drizzle-orm";
+import { narrations as narrationsTable, gameSessions as gameSessionsTable, parties as partiesTable, sessionEvents as sessionEventsTable } from "../db/schema.ts";
+import { eq, desc, count, sql, asc } from "drizzle-orm";
 
 // --- Tavern Board in-memory storage ---
 
@@ -89,7 +89,7 @@ spectator.get("/parties", (c) => {
 });
 
 // GET /spectator/parties/:id — detailed party view with recent events
-spectator.get("/parties/:id", (c) => {
+spectator.get("/parties/:id", async (c) => {
   const partyId = c.req.param("id");
   const state = gm.getState();
   const party = state.parties.get(partyId);
@@ -142,12 +142,37 @@ spectator.get("/parties/:id", (c) => {
   }
 
   // Return the last 50 events for the session feed
-  const recentEvents = party.events.slice(-50).map((e) => ({
+  let recentEvents = party.events.slice(-50).map((e) => ({
     type: e.type,
     actorId: e.actorId,
     data: e.data,
     timestamp: e.timestamp.toISOString(),
   }));
+
+  // Fall back to DB events if in-memory is empty but we have a DB session
+  if (recentEvents.length === 0 && party.dbSessionId) {
+    try {
+      const rows = await db.select({
+        type: sessionEventsTable.type,
+        actorId: sessionEventsTable.actorId,
+        data: sessionEventsTable.data,
+        createdAt: sessionEventsTable.createdAt,
+      })
+        .from(sessionEventsTable)
+        .where(eq(sessionEventsTable.sessionId, party.dbSessionId))
+        .orderBy(asc(sessionEventsTable.createdAt))
+        .limit(50);
+
+      recentEvents = rows.map((r) => ({
+        type: r.type,
+        actorId: r.actorId,
+        data: r.data,
+        timestamp: r.createdAt.toISOString(),
+      }));
+    } catch (err) {
+      console.error("[DB] Failed to fetch session events for party detail:", err);
+    }
+  }
 
   const sessionSummary = party.events.length > 0
     ? summarizeSession(party.events)
@@ -327,6 +352,90 @@ spectator.get("/leaderboard", (c) => {
     totalCharacters: allChars.length,
     totalParties: partyEntries.length,
   });
+});
+
+// --- Session History ---
+
+// GET /spectator/sessions — list past sessions, newest first
+spectator.get("/sessions", async (c) => {
+  const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
+  const offset = Number(c.req.query("offset") ?? "0");
+
+  try {
+    const rows = await db.select({
+      id: gameSessionsTable.id,
+      partyId: gameSessionsTable.partyId,
+      partyName: partiesTable.name,
+      phase: gameSessionsTable.phase,
+      isActive: gameSessionsTable.isActive,
+      summary: gameSessionsTable.summary,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+      eventCount: count(sessionEventsTable.id),
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .leftJoin(sessionEventsTable, eq(gameSessionsTable.id, sessionEventsTable.sessionId))
+      .groupBy(gameSessionsTable.id, partiesTable.name)
+      .orderBy(desc(gameSessionsTable.startedAt))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      sessions: rows.map((r) => ({
+        id: r.id,
+        partyId: r.partyId,
+        partyName: r.partyName ?? null,
+        phase: r.phase,
+        isActive: r.isActive,
+        summary: r.summary ?? null,
+        startedAt: r.startedAt.toISOString(),
+        endedAt: r.endedAt ? r.endedAt.toISOString() : null,
+        eventCount: Number(r.eventCount),
+      })),
+      limit,
+      offset,
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch sessions:", err);
+    return c.json({ sessions: [], limit, offset });
+  }
+});
+
+// GET /spectator/sessions/:id/events — all events for a session
+spectator.get("/sessions/:id/events", async (c) => {
+  const sessionId = c.req.param("id");
+  const limit = Math.min(Number(c.req.query("limit") ?? "200"), 1000);
+  const offset = Number(c.req.query("offset") ?? "0");
+
+  try {
+    const rows = await db.select({
+      type: sessionEventsTable.type,
+      actorId: sessionEventsTable.actorId,
+      data: sessionEventsTable.data,
+      createdAt: sessionEventsTable.createdAt,
+    })
+      .from(sessionEventsTable)
+      .where(eq(sessionEventsTable.sessionId, sessionId))
+      .orderBy(asc(sessionEventsTable.createdAt))
+      .limit(limit)
+      .offset(offset);
+
+    return c.json({
+      sessionId,
+      events: rows.map((r) => ({
+        type: r.type,
+        actorId: r.actorId,
+        data: r.data,
+        timestamp: r.createdAt.toISOString(),
+      })),
+      limit,
+      offset,
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch session events:", err);
+    return c.json({ sessionId, events: [], limit, offset });
+  }
 });
 
 // --- Narrations (dramatic prose) ---

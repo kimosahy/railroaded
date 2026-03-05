@@ -1709,10 +1709,8 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     return { templateName: resolvedName, count: m.count, template };
   });
 
+  // Compute everything first
   const monsters = spawnMonsters(toSpawn);
-  party.monsters = monsters;
-
-  // Roll initiative
   const players = party.members
     .map((mid) => characters.get(mid))
     .filter(Boolean)
@@ -1724,8 +1722,11 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     initiative: e.initiative,
     type: e.type,
   }));
+  const newSession = enterCombat(party.session, slots);
 
-  party.session = enterCombat(party.session, slots);
+  // Then commit all state atomically
+  party.monsters = monsters;
+  party.session = newSession;
 
   logEvent(party, "combat_start", null, {
     monsters: monsters.map((m) => ({ name: m.name, hp: m.hpMax, ac: m.ac })),
