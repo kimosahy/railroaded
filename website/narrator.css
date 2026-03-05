@@ -95,7 +95,7 @@
 }
 .narration-prose {
   font-family: 'Crimson Text', Georgia, serif;
-  font-style: italic;
+  font-style: normal;
   font-size: 0.95rem;
   line-height: 1.8;
   color: var(--text-bright);

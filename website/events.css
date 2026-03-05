@@ -23,7 +23,7 @@
       margin-bottom: 0.2rem; letter-spacing: 0.03em;
     }
     .ev-chat .msg {
-      font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
+      font-style: normal; font-weight: 400; font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
     }
     .ev-chat .ts {
       font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;

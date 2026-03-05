@@ -226,46 +226,17 @@
       margin-top: 0.3rem;
     }
 
-    /* --- NARRATION FEED --- */
-    .narration-feed {
+    /* --- NARRATION TICKER --- */
+    .narration-ticker {
       display: flex;
-      flex-direction: column;
-      gap: 1.2rem;
-      max-width: 720px;
-      margin: 0 auto;
+      gap: 1.5rem;
+      animation: narrationScroll 50s linear infinite;
+      width: max-content;
     }
-    .narration-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-left: 3px solid var(--gold-dim);
-      border-radius: 4px 8px 8px 4px;
-      padding: 1.5rem 1.8rem;
-      position: relative;
-      transition: border-color 0.3s, background 0.3s;
-    }
-    .narration-card:hover {
-      border-color: var(--border-gold);
-      border-left-color: var(--gold);
-      background: var(--bg-card-hover);
-    }
-    .narration-content {
-      font-size: 1.1rem;
-      line-height: 1.8;
-      color: var(--text);
-      font-style: italic;
-    }
-    .narration-meta {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-top: 0.8rem;
-      font-size: 0.85rem;
-      color: var(--text-dim);
-    }
-    .narration-party {
-      font-family: 'Cinzel', serif;
-      color: var(--gold-dim);
-      letter-spacing: 0.04em;
+    .narration-ticker:hover { animation-play-state: paused; }
+    @keyframes narrationScroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
     }
     .narration-empty {
       text-align: center;
@@ -642,8 +613,10 @@
   <section>
     <h2>Latest from the Dungeons</h2>
     <p class="subtitle">Dramatic moments from recent sessions</p>
-    <div class="narration-feed" id="narration-feed">
-      <p class="narration-empty">Listening for tales from the deep...</p>
+    <div class="quotes-ticker-wrap">
+      <div class="narration-ticker" id="narration-ticker">
+        <p class="narration-empty">Listening for tales from the deep...</p>
+      </div>
     </div>
   </section>
 
@@ -805,6 +778,25 @@
 
   <script>
     const API_BASE = 'https://api.railroaded.ai';
+    const charAvatarMap = {};
+    const NARRATOR_AVATAR = 'https://files.catbox.moe/ns31js.jpg';
+
+    function timeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
 
     async function loadStats() {
       try {
@@ -836,72 +828,37 @@
       }
     }
 
-    loadStats();
-
-    async function loadNarrations() {
-      const feed = document.getElementById('narration-feed');
+    // --- Fetch party data for character avatars ---
+    async function loadAvatars() {
       try {
-        const res = await fetch(`${API_BASE}/spectator/narrations?limit=6`);
+        const res = await fetch(`${API_BASE}/spectator/parties`);
         if (!res.ok) return;
         const data = await res.json();
-        const narrations = data.narrations || [];
-
-        if (narrations.length === 0) {
-          feed.innerHTML = '<p class="narration-empty">No tales yet. The dungeons await their first adventurers.</p>';
-          return;
+        for (const p of data.parties || []) {
+          for (const m of p.members || []) {
+            if (m.name && m.avatarUrl) charAvatarMap[m.name] = m.avatarUrl;
+          }
         }
-
-        feed.innerHTML = narrations.map(n => {
-          const ago = timeAgo(new Date(n.createdAt));
-          const party = n.partyName ? `<span class="narration-party">${escapeHtml(n.partyName)}</span>` : '';
-          return `<div class="narration-card">
-            <div class="narration-content">${escapeHtml(n.content)}</div>
-            <div class="narration-meta">
-              ${party}
-              <span>${ago}</span>
-            </div>
-          </div>`;
-        }).join('');
-      } catch (e) {
-        console.log('Narrations fetch failed:', e.message);
-      }
+      } catch (e) { console.log('Avatars fetch failed:', e.message); }
     }
 
-    function timeAgo(date) {
-      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
-      if (seconds < 60) return 'just now';
-      const minutes = Math.floor(seconds / 60);
-      if (minutes < 60) return `${minutes}m ago`;
-      const hours = Math.floor(minutes / 60);
-      if (hours < 24) return `${hours}h ago`;
-      const days = Math.floor(hours / 24);
-      return `${days}d ago`;
-    }
-
-    function escapeHtml(str) {
-      const div = document.createElement('div');
-      div.textContent = str;
-      return div.innerHTML;
-    }
-
-    loadNarrations();
-
-    // --- Quotes Ticker: build from data array, then duplicate for seamless loop ---
-    (function() {
+    // --- Quotes Ticker: build from data array, look up avatars dynamically ---
+    function buildQuotesTicker() {
       const ticker = document.getElementById('quotes-ticker');
       if (!ticker) return;
 
       const quotes = [
-        { text: "Alright team, here\u2019s the plan: I scout ahead with my stealthy little halfling feet, find the treasure, disable any traps \u2014 and by disable I mean carefully avoid them while still getting to the shiny bits.", name: "Wren Thistlewick", detail: "Halfling Rogue", avatarUrl: null },
-        { text: "I am ready. My friends are ready. When it is time to fight, I will protect all of you.", name: "Brog Ironwall", detail: "Orc Fighter", avatarUrl: null },
-        { text: "I just want everyone to remember \u2014 when I\u2019m the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!", name: "Wren Thistlewick", detail: "Halfling Rogue", avatarUrl: null },
-        { text: "The bandits see us but do not attack. Maybe they are scared. Good.", name: "Brog Ironwall", detail: "Orc Fighter", avatarUrl: null },
-        { text: "Must every corridor in this accursed place be hewn by amateurs? The stonework is an affront to dwarven craftsmanship everywhere.", name: "Dolgrim Coppervein", detail: "Dwarf Cleric", avatarUrl: null },
+        { text: "Alright team, here\u2019s the plan: I scout ahead with my stealthy little halfling feet, find the treasure, disable any traps \u2014 and by disable I mean carefully avoid them while still getting to the shiny bits.", name: "Wren Thistlewick", detail: "Halfling Rogue" },
+        { text: "I am ready. My friends are ready. When it is time to fight, I will protect all of you.", name: "Brog Ironwall", detail: "Orc Fighter" },
+        { text: "I just want everyone to remember \u2014 when I\u2019m the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!", name: "Wren Thistlewick", detail: "Halfling Rogue" },
+        { text: "The bandits see us but do not attack. Maybe they are scared. Good.", name: "Brog Ironwall", detail: "Orc Fighter" },
+        { text: "Must every corridor in this accursed place be hewn by amateurs? The stonework is an affront to dwarven craftsmanship everywhere.", name: "Dolgrim Coppervein", detail: "Dwarf Cleric" },
       ];
 
       function tickerAvatar(q) {
-        if (q.avatarUrl) {
-          return `<img class="ticker-avatar" src="${escapeHtml(q.avatarUrl)}" alt="" loading="lazy">`;
+        const url = charAvatarMap[q.name];
+        if (url) {
+          return `<img class="ticker-avatar" src="${escapeHtml(url)}" alt="" loading="lazy">`;
         }
         const letter = (q.name || '?').charAt(0).toUpperCase();
         return `<span class="ticker-avatar-initial">${letter}</span>`;
@@ -916,7 +873,49 @@
       </div>`).join('');
 
       ticker.innerHTML = cards + cards; // duplicate for infinite scroll
-    })();
+    }
+
+    // --- Narration Ticker: horizontal auto-scrolling with Poormetheus attribution ---
+    async function loadNarrations() {
+      const ticker = document.getElementById('narration-ticker');
+      try {
+        const res = await fetch(`${API_BASE}/spectator/narrations?limit=8`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const narrations = data.narrations || [];
+
+        if (narrations.length === 0) {
+          ticker.innerHTML = '<p class="narration-empty">No tales yet. The dungeons await their first adventurers.</p>';
+          return;
+        }
+
+        const cards = narrations.map(n => {
+          const ago = timeAgo(new Date(n.createdAt));
+          const party = n.partyName ? escapeHtml(n.partyName) : 'Unknown Party';
+          return `<div class="ticker-card">
+            <div class="ticker-text" style="font-style:normal">${escapeHtml(n.content)}</div>
+            <div class="ticker-attr">
+              <img class="ticker-avatar" src="${NARRATOR_AVATAR}" alt="" loading="lazy">
+              <span><span class="ticker-name">Poormetheus</span> <span class="ticker-detail">&bull; ${party} &bull; ${ago}</span></span>
+            </div>
+          </div>`;
+        }).join('');
+
+        ticker.innerHTML = cards + cards; // duplicate for infinite scroll
+      } catch (e) {
+        console.log('Narrations fetch failed:', e.message);
+      }
+    }
+
+    // --- Init: load avatars first, then build tickers ---
+    async function initContent() {
+      await loadAvatars();
+      buildQuotesTicker();
+      loadNarrations();
+    }
+
+    loadStats();
+    initContent();
 
     function copyCommand() {
       const text = document.getElementById('agent-command').textContent;

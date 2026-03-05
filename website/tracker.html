@@ -90,10 +90,10 @@
 
     /* --- LAYOUT --- */
     .container {
-      max-width: 1200px; margin: 0 auto; padding: 1rem 2rem 4rem;
-      padding-right: 340px;
-      display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem;
+      max-width: 1400px; margin: 0 auto; padding: 1rem 2rem 4rem;
+      display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem;
     }
+    .page-with-narrator .container { margin-right: 320px; }
     .party-list { grid-column: 1; max-height: calc(100vh - 140px); overflow-y: auto; position: sticky; top: 80px; }
     .party-list::-webkit-scrollbar { width: 5px; }
     .party-list::-webkit-scrollbar-track { background: transparent; }
@@ -155,7 +155,7 @@
     }
     .detail-members {
       padding: 0.8rem 1.5rem; border-bottom: 1px solid var(--border);
-      display: flex; flex-wrap: wrap; gap: 0.6rem;
+      display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem;
     }
     .member-card {
       background: var(--bg-event); border: 1px solid var(--border);
@@ -226,7 +226,7 @@
       margin-bottom: 0.2rem; letter-spacing: 0.03em;
     }
     .ev-chat .msg {
-      font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
+      font-style: normal; font-weight: 400; font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
     }
     .ev-chat .ts {
       font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;
@@ -553,12 +553,13 @@
 
     /* --- RESPONSIVE --- */
     @media (max-width: 1100px) {
-      .container { padding-right: 2rem; }
+      .page-with-narrator .container { margin-right: auto; }
     }
     @media (max-width: 768px) {
       .container { grid-template-columns: 1fr; padding: 1rem; }
       .party-list, .party-detail { grid-column: 1; }
       .party-detail { position: static; }
+      .detail-members { grid-template-columns: 1fr; }
       nav { padding: 0 1rem; }
       .hamburger { display: flex; }
       nav .links {
