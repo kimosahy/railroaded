@@ -1,32 +1,22 @@
 /* Narrator sidebar panel — shared across tracker & journals pages */
 
-/* --- Layout wrapper: sits around .container + .narrator-panel --- */
+/* --- Layout wrapper: container stays centered, narrator is fixed-positioned --- */
 .page-with-narrator {
-  display: flex;
-  gap: 1.5rem;
-  align-items: flex-start;
-  max-width: 1520px;
-  margin: 0 auto;
-  padding: 0 1rem;
-}
-.page-with-narrator > .container {
-  flex: 1 1 0%;
-  min-width: 0;
-  margin: 0;
+  position: relative;
 }
 
 /* --- Panel chrome --- */
 .narrator-panel {
   width: 300px;
-  flex-shrink: 0;
-  position: sticky;
+  position: fixed;
   top: 80px;
-  align-self: flex-start;
+  right: 1rem;
   max-height: calc(100vh - 100px);
   overflow-y: auto;
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 8px;
+  z-index: 10;
 }
 .narrator-panel::-webkit-scrollbar { width: 5px; }
 .narrator-panel::-webkit-scrollbar-track { background: transparent; }
@@ -127,19 +117,10 @@
 
 /* --- Responsive: collapse narrator below main content --- */
 @media (max-width: 1100px) {
-  .page-with-narrator {
-    flex-direction: column;
-    align-items: center;
-    padding: 0;
-  }
-  .page-with-narrator > .container {
-    margin: 0 auto;
-    width: 100%;
-  }
   .narrator-panel {
+    position: static;
     width: 100%;
     max-width: 800px;
-    position: static;
     max-height: none;
     margin: 0 auto 2rem;
   }
