@@ -624,6 +624,15 @@
       if (!name) return '?';
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     }
+
+    // Character name → avatar URL lookup (populated from party/leaderboard data)
+    const charAvatarMap = new Map();
+    function updateAvatarMap(members) {
+      for (const m of members || []) {
+        if (m.name && m.avatarUrl) charAvatarMap.set(m.name, m.avatarUrl);
+      }
+    }
+    function charAvatar(name) { return charAvatarMap.get(name) || null; }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
       size = size || 36;
@@ -693,9 +702,9 @@
     function renderChat(d, ts) {
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
-      const url = d.avatarUrl || null;
+      const url = charAvatar(name) || d.avatarUrl || null;
       const avatarContent = url
-        ? `<img src="${url}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+        ? `<img src="${esc(url)}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
         : initials(name);
       const avatarBg = url ? 'transparent' : col;
       return `<div class="ev ev-chat">
@@ -968,6 +977,7 @@
         const events = p.recentEvents || p.events || [];
         const monsters = p.monsters || [];
         const phase = p.phase || 'forming';
+        updateAvatarMap(members);
 
         // Build member cards
         const memberHtml = members.map(m => {
@@ -1116,6 +1126,15 @@
       panel.innerHTML = `<div class="detail-panel"><div class="detail-header"><h2>Loading session...</h2></div></div>`;
 
       try {
+        // Fetch party members for avatar lookup
+        const sInfo = sessionsCache.find(s => s.id === id);
+        if (sInfo && sInfo.partyId) {
+          try {
+            const pRes = await fetch(`${API}/spectator/parties/${sInfo.partyId}`);
+            if (pRes.ok) { const pd = await pRes.json(); updateAvatarMap(pd.members); }
+          } catch (_) {}
+        }
+
         const res = await fetch(`${API}/spectator/sessions/${id}/events?limit=500`);
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
@@ -1124,9 +1143,6 @@
         const eventHtml = events.length > 0
           ? events.slice().reverse().map(renderEvent).join('')
           : '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded for this session.</div>';
-
-        // Find session info from cache
-        const sInfo = sessionsCache.find(s => s.id === id);
         const title = sInfo ? (sInfo.partyName || 'Session') : 'Session';
         const date = sInfo && sInfo.startedAt ? new Date(sInfo.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
 
@@ -1153,6 +1169,7 @@
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
         partiesCache = Array.isArray(data) ? data : (data.parties || []);
+        for (const p of partiesCache) updateAvatarMap(p.members);
         renderParties(partiesCache);
       } catch (e) {
         partiesCache = [];
@@ -1170,7 +1187,8 @@
         const events = p.recentEvents || p.events || [];
         const newCount = events.length;
 
-        // Update member HP/status in header without re-rendering events
+        // Update avatar map + member HP/status in header without re-rendering events
+        updateAvatarMap(p.members);
         const membersEl = document.querySelector('.detail-members');
         if (membersEl && p.members) {
           membersEl.innerHTML = p.members.map(m => {

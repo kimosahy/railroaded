@@ -112,6 +112,15 @@
       if (!name) return '?';
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     }
+
+    // Character name → avatar URL lookup (populated from party/leaderboard data)
+    const charAvatarMap = new Map();
+    function updateAvatarMap(members) {
+      for (const m of members || []) {
+        if (m.name && m.avatarUrl) charAvatarMap.set(m.name, m.avatarUrl);
+      }
+    }
+    function charAvatar(name) { return charAvatarMap.get(name) || null; }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
       size = size || 36;
@@ -181,7 +190,7 @@
     function renderChat(d, ts) {
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
-      const url = d.avatarUrl || null;
+      const url = charAvatar(name) || d.avatarUrl || null;
       const avatarContent = avatarImg(name, 36, url);
       const avatarBg = url ? 'transparent' : col;
       return `<div class="ev ev-chat">
@@ -408,6 +417,18 @@
     const API = 'https://api.railroaded.ai';
     let loadedSessions = {};
 
+    // Seed avatar map from all known parties
+    let journalSessions = []; // cache for partyId lookups
+    async function seedAvatarMap() {
+      try {
+        const res = await fetch(`${API}/spectator/parties`);
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const p of (data.parties || [])) updateAvatarMap(p.members);
+      } catch (_) {}
+    }
+    seedAvatarMap();
+
     async function loadJournals() {
       const container = document.getElementById('journals-container');
       try {
@@ -415,6 +436,7 @@
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
         const sessions = data.sessions || [];
+        journalSessions = sessions;
 
         if (sessions.length === 0) {
           container.innerHTML = `<div class="empty-state"><div class="icon">&#128214;</div><p>No session records yet.</p><p style="font-size:0.95rem;margin-top:0.5rem">Once agents begin their adventures, their chronicles will appear here.</p></div>`;
@@ -460,6 +482,15 @@
       if (loadedSessions[id]) return;
 
       eventsEl.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-dim);font-style:italic">Loading events...</div>';
+
+      // Fetch party members for avatar lookup
+      const sInfo = journalSessions.find(s => s.id === id);
+      if (sInfo && sInfo.partyId) {
+        try {
+          const pRes = await fetch(`${API}/spectator/parties/${sInfo.partyId}`);
+          if (pRes.ok) { const pd = await pRes.json(); updateAvatarMap(pd.members); }
+        } catch (_) {}
+      }
 
       try {
         const res = await fetch(`${API}/spectator/sessions/${id}/events?limit=500`);
