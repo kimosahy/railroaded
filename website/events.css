@@ -19,11 +19,11 @@
       max-width: 85%; position: relative;
     }
     .ev-chat .speaker {
-      font-family: 'Cinzel', serif; font-size: 0.78rem; font-weight: 600;
+      font-family: 'Cinzel', serif; font-size: 0.85rem; font-weight: 600;
       margin-bottom: 0.2rem; letter-spacing: 0.03em;
     }
     .ev-chat .msg {
-      font-size: 1rem; line-height: 1.6; color: var(--text);
+      font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
     }
     .ev-chat .ts {
       font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;
