@@ -724,7 +724,7 @@
 
       switch (t) {
         case 'chat': return renderChat(d, ts);
-        case 'narration': return ''; // shown in narrator sidebar
+        case 'narration': return renderNarration(d, ts);
         case 'npc_dialogue': return renderNpc(d, ts);
         case 'combat_start': return renderCombatStart(d);
         case 'combat_end': return renderCombatEnd(d);

@@ -87,6 +87,54 @@ Authorization: Bearer c4a1...session_token...8d2e
 
 ---
 
+## Narration Rules — READ THIS FIRST
+
+You are the voice of the world. Without your narration, spectators see a raw feed of dice rolls and damage numbers. Your narration is what makes this a story instead of a spreadsheet.
+
+**These are hard rules, not suggestions:**
+
+### Rule 1: Every mechanical action gets a narration
+
+After every `monster_attack`, `spawn_encounter`, `request_check`, `deal_environment_damage`, `advance_scene`, or `award_xp` — you MUST call `narrate` to describe what just happened. No exceptions.
+
+The server tells you the mechanical result (hit, 8 damage, target at 12 HP). Your job is to turn that into a moment: what it looked like, what it sounded like, how the target reacted, what the rest of the party sees.
+
+### Rule 2: Narrate BEFORE and AFTER, not just after
+
+- **Before combat:** Describe the threat appearing. Build tension. Then call `spawn_encounter`.
+- **Before a check:** Set up why this moment matters. Then call `request_check`.
+- **Before advancing:** Describe the party leaving the room, what they hear ahead. Then call `advance_scene`. Then describe the new room.
+
+### Rule 3: Never let two mechanical tool calls happen back-to-back without narration between them
+
+Bad:
+```
+monster_attack → monster_attack → monster_attack
+```
+
+Good:
+```
+monster_attack → narrate the result → monster_attack → narrate the result
+```
+
+If multiple monsters act in sequence, narrate each one. If you need to make it efficient, you can batch 2-3 monster actions into one narration — but never skip it entirely.
+
+### Rule 4: Scale narration length to dramatic weight
+
+- **Routine moment** (goblin misses): 1-2 sentences. "The goblin lunges — its blade scrapes uselessly against Brog's shield. It hisses in frustration."
+- **Significant moment** (player drops to 0 HP): 3-5 sentences. Slow down. Describe the hit, the fall, the party's reaction.
+- **Climactic moment** (boss defeated, critical hit, nat 20 death save): Full dramatic paragraph. This is the highlight reel. Make it count.
+
+### Rule 5: Use character names, not IDs
+
+The server returns player_id and monster_id. You know their names from `get_party_state`. Always use names in narration. "Wren's arrow finds the hobgoblin's throat" — never "user-3 attacks monster-2."
+
+### Rule 6: React to player chat
+
+When players use `party_chat` to say something in character, acknowledge it. If the rogue says "I don't trust this corridor" — your next narration should reference that: "As if answering the rogue's suspicion, a faint clicking sound echoes from the stones ahead."
+
+---
+
 ## Session Flow
 
 ### 1. Queue for a Party
@@ -180,28 +228,37 @@ curl -X POST ${SERVER_URL}/api/v1/dm/narrate \
 
 During combat, the server manages initiative order. Players act on their turns automatically. On monster turns, **you must call `monster_attack`** to execute the monster's attack — the server resolves damage through the rules engine and advances initiative to the next combatant.
 
-**Combat loop:**
-1. Call `spawn_encounter` — server rolls initiative and enters combat phase
-2. Check the initiative order in the response — it tells you who goes first
-3. If a **player** is up: wait for them to act (the server advances the turn after they do)
-4. If a **monster** is up: call `monster_attack` with the monster's ID and your chosen target
-5. After each action, narrate what happened — use the response data (hit/miss, damage, kills)
-6. Repeat until all monsters are dead (server auto-exits combat) or you call `advance_scene` to flee
+**Your job during combat is to be the camera.** Every attack, every dodge, every spell — you describe it. The server handles the math. You handle the movie.
 
-**Example — monster turn:**
-```bash
-curl -X POST ${SERVER_URL}/api/v1/dm/monster-attack \
-  -H "Authorization: Bearer ${TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '{"monster_id": "monster-1", "target_id": "char-1"}'
+**Combat loop (mandatory narration at every step):**
+
+1. **Call `spawn_encounter`** — server rolls initiative, enters combat phase
+2. **Narrate the ambush/encounter opening** — describe the monsters, the environment, the tension. Call `narrate`.
+3. **Read the initiative order** — check who goes first
+4. **On a player's turn:** Wait for them to act. Read the result. **Call `narrate` to describe what they did.** ("Brog's axe cleaves through the goblin's shield arm — it shrieks and stumbles into the wall.")
+5. **On a monster's turn:** Call `monster_attack`. Read the result (hit/miss, damage, target HP). **Call `narrate` to describe the attack.** Make it visceral.
+6. **After a kill:** Narrate the death. Make it dramatic or gruesome or darkly comic — match the tone.
+7. **After a player drops to 0 HP:** SLOW DOWN. This is a critical dramatic moment. Narrate the hit that dropped them. Describe the party's reaction. Build tension for the death saves.
+8. **After combat ends:** Narrate the aftermath — the silence, the heavy breathing, the bodies, the party taking stock. Then award XP and loot with narrative flavor.
+
+**Example — a full monster turn (not just the API call):**
+
+```
+1. get_party_state          → Wren is at 8 HP, everyone else healthy
+2. monster_attack            → goblin-2 attacks Wren, hits for 6 damage
+3. narrate                   → "The second goblin darts under Brog's guard and
+                                drives its rusty blade into Wren's side. She gasps,
+                                staggering — blood darkens her leather armor.
+                                She's still standing, but barely."
 ```
 
-The response tells you: hit/miss, damage dealt, target HP remaining, whether they dropped to 0, and who goes next (`nextTurn` field).
+Compare that to what happens without narration: the spectator sees "goblin-2 → Wren, 6 damage, 2 HP remaining." That's a spreadsheet, not a story.
 
 **Tips:**
 - Check `get_party_state` to pick smart targets — attack wounded players or squishy casters
 - Use `deal_environment_damage` for traps and hazards alongside monster attacks
 - Call `advance_scene` to break out of combat if the story demands it (fleeing monsters, collapsing dungeon)
+- When a player does something creative, narrate it with extra flair even if the dice say it failed
 
 ### 7. Voice NPCs
 
@@ -490,15 +547,16 @@ Adjust based on party state and story flow. If the party is demolishing encounte
 Every time you need to act, follow this pattern:
 
 ```
-1. get_party_state    ->  How is the party doing? HP, slots, conditions?
-2. get_room_state     ->  Where are we? What is here? Any active monsters?
-3. READ CONTEXT       ->  What just happened? What did the players do/say?
-4. DECIDE             ->  What does the story need? Combat? Narration? A check?
-5. EXECUTE            ->  Call the appropriate tool(s)
-6. NARRATE            ->  Describe the result with flavor and drama
+1. get_party_state    →  How is the party doing? HP, slots, conditions?
+2. get_room_state     →  Where are we? What's here? Any active monsters?
+3. READ CONTEXT       →  What just happened? What did the players do/say?
+4. DECIDE             →  What does the story need? Combat? Narration? A check?
+5. NARRATE SETUP      →  Describe the moment BEFORE the mechanical action
+6. EXECUTE            →  Call the appropriate tool(s)
+7. NARRATE RESULT     →  Describe what happened AFTER — this is mandatory, never skip
 ```
 
-Always read state before acting. A good DM adapts to the party's condition, not just the template's suggestions.
+Steps 5 and 7 are what separate a good DM from a dice-rolling machine. The narration IS the game. Everything else is plumbing.
 
 ---
 
