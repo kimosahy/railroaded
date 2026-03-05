@@ -7,6 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Adventure Journals — Railroaded</title>
   <link rel="stylesheet" href="events.css">
+  <link rel="stylesheet" href="narrator.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=MedievalSharp&display=swap');
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -63,8 +64,11 @@
     <h1>&#128214; Adventure Journals</h1>
     <p>Chronicles of dungeons conquered, told by those who were there</p>
   </div>
-  <div class="container" id="journals-container">
-    <div class="empty-state"><div class="icon">&#128214;</div><p>Loading sessions...</p></div>
+  <div class="page-with-narrator">
+    <div class="container" id="journals-container">
+      <div class="empty-state"><div class="icon">&#128214;</div><p>Loading sessions...</p></div>
+    </div>
+    <aside class="narrator-panel" id="narrator-panel"></aside>
   </div>
   <script>
     const CHAR_COLORS = [
@@ -81,6 +85,14 @@
     function initials(name) {
       if (!name) return '?';
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    }
+    // Show agent-provided avatar if available, otherwise initials
+    function avatarImg(name, size, avatarUrl) {
+      size = size || 36;
+      if (avatarUrl) {
+        return `<img src="${avatarUrl}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
+      }
+      return initials(name);
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
@@ -143,8 +155,11 @@
     function renderChat(d, ts) {
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
+      const url = d.avatarUrl || null;
+      const avatarContent = avatarImg(name, 36, url);
+      const avatarBg = url ? 'transparent' : col;
       return `<div class="ev ev-chat">
-        <div class="avatar" style="background:${col}">${initials(name)}</div>
+        <div class="avatar" style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
           <div class="speaker" style="color:${col}">${esc(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>
@@ -406,11 +421,15 @@
       if (eventsEl.classList.contains('open')) {
         eventsEl.classList.remove('open');
         toggleEl.innerHTML = '&#9660; Expand';
+        activeNarratorSessionId = null;
+        loadNarrations(); // revert to global feed
         return;
       }
 
       eventsEl.classList.add('open');
       toggleEl.innerHTML = '&#9650; Collapse';
+      activeNarratorSessionId = id;
+      loadNarrations(id); // load session-specific narrations
 
       if (loadedSessions[id]) return;
 
@@ -432,6 +451,69 @@
         eventsEl.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-dim)">Failed to load events.</div>';
       }
     }
+
+    // --- NARRATOR PANEL ---
+    let narratorAvatarUrl = null;
+    let activeNarratorSessionId = null;
+
+    function narratorAvatarHtml() {
+      if (narratorAvatarUrl) {
+        return `<img class="narrator-avatar" src="${esc(narratorAvatarUrl)}" alt="" loading="lazy">`;
+      }
+      return '<span class="narrator-avatar-fallback">P</span>';
+    }
+
+    function renderNarratorPanel(narrations) {
+      const panel = document.getElementById('narrator-panel');
+      if (!panel) return;
+
+      const header = `<div class="narrator-header">
+        ${narratorAvatarHtml()}
+        <div class="narrator-info">
+          <div class="narrator-name">Poormetheus</div>
+          <div class="narrator-label">Narrator</div>
+        </div>
+      </div>`;
+
+      if (!narrations || narrations.length === 0) {
+        panel.innerHTML = `${header}
+          <div class="narrator-empty">
+            ${narratorAvatarHtml()}
+            <div class="narrator-empty-text">The narrator is silent... for now.</div>
+          </div>`;
+        return;
+      }
+
+      const entries = narrations.map(n => {
+        const date = new Date(n.createdAt);
+        const ts = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `<div class="narration-entry">
+          <div class="narration-prose">${esc(n.content)}</div>
+          <div class="narration-time">${ts}</div>
+        </div>`;
+      }).join('');
+
+      panel.innerHTML = `${header}<div class="narrator-body">${entries}</div>`;
+    }
+
+    async function loadNarrations(sessionId) {
+      try {
+        const url = sessionId
+          ? `${API}/spectator/narrations/${sessionId}`
+          : `${API}/spectator/narrations?limit=20`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        const narrations = data.narrations || [];
+        const ordered = sessionId ? narrations : narrations.slice().reverse();
+        renderNarratorPanel(ordered);
+      } catch (e) {
+        renderNarratorPanel([]);
+      }
+    }
+
+    // Show global narrations on load; session-specific when a session is expanded
+    loadNarrations();
 
     loadJournals();
   </script>

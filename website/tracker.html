@@ -6,6 +6,7 @@
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Live Tracker — Railroaded</title>
+  <link rel="stylesheet" href="narrator.css">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=MedievalSharp&display=swap');
 
@@ -553,27 +554,30 @@
     <span class="dot"></span> Auto-refreshes every 10 seconds
   </div>
 
-  <div class="container">
-    <div class="party-list">
-      <div class="section-label">&#9876; Live Parties</div>
-      <div id="party-list">
-        <div class="empty-state" style="padding:1.5rem">
-          <p style="color:var(--text-dim);font-size:0.95rem">Loading...</p>
+  <div class="page-with-narrator">
+    <div class="container">
+      <div class="party-list">
+        <div class="section-label">&#9876; Live Parties</div>
+        <div id="party-list">
+          <div class="empty-state" style="padding:1.5rem">
+            <p style="color:var(--text-dim);font-size:0.95rem">Loading...</p>
+          </div>
+        </div>
+        <div class="section-label">&#128214; Past Sessions</div>
+        <div id="session-list">
+          <div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">Loading session history...</div>
         </div>
       </div>
-      <div class="section-label">&#128214; Past Sessions</div>
-      <div id="session-list">
-        <div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">Loading session history...</div>
-      </div>
-    </div>
-    <div class="party-detail" id="party-detail">
-      <div class="detail-panel">
-        <div class="detail-header"><h2>Select a Party</h2></div>
-        <div style="padding: 2rem; text-align: center; color: var(--text-dim);">
-          Click a party to view their live session feed.
+      <div class="party-detail" id="party-detail">
+        <div class="detail-panel">
+          <div class="detail-header"><h2>Select a Party</h2></div>
+          <div style="padding: 2rem; text-align: center; color: var(--text-dim);">
+            Click a party to view their live session feed.
+          </div>
         </div>
       </div>
     </div>
+    <aside class="narrator-panel" id="narrator-panel"></aside>
   </div>
 
   <script>
@@ -926,6 +930,8 @@
     async function selectParty(id) {
       selectedId = id;
       selectedSessionId = null;
+      narratorSessionId = null; // live party — use global narrations
+      loadNarrations();
       renderParties(partiesCache);
       renderSessions(sessionsCache, false);
       const panel = document.getElementById('party-detail');
@@ -1079,6 +1085,8 @@
     async function selectSession(id) {
       selectedId = null;
       selectedSessionId = id;
+      narratorSessionId = id; // historical session — use session-specific narrations
+      loadNarrations(id);
       renderParties(partiesCache);
       renderSessions(sessionsCache, false);
 
@@ -1184,9 +1192,92 @@
       } catch (err) { /* silent */ }
     }
 
+    // --- NARRATOR PANEL ---
+    let narratorAvatarUrl = null; // populated if Poormetheus has an avatar
+    let narratorSessionId = null;
+    let lastNarrationIds = new Set();
+
+    function narratorAvatarHtml() {
+      if (narratorAvatarUrl) {
+        return `<img class="narrator-avatar" src="${esc(narratorAvatarUrl)}" alt="" loading="lazy">`;
+      }
+      return '<span class="narrator-avatar-fallback">P</span>';
+    }
+
+    function renderNarratorPanel(narrations) {
+      const panel = document.getElementById('narrator-panel');
+      if (!panel) return;
+
+      const header = `<div class="narrator-header">
+        ${narratorAvatarHtml()}
+        <div class="narrator-info">
+          <div class="narrator-name">Poormetheus</div>
+          <div class="narrator-label">Narrator</div>
+        </div>
+      </div>`;
+
+      if (!narrations || narrations.length === 0) {
+        panel.innerHTML = `${header}
+          <div class="narrator-empty">
+            ${narratorAvatarHtml()}
+            <div class="narrator-empty-text">The narrator is silent... for now.</div>
+          </div>`;
+        return;
+      }
+
+      const entries = narrations.map(n => {
+        const ago = narratorTimeAgo(new Date(n.createdAt));
+        return `<div class="narration-entry">
+          <div class="narration-prose">${esc(n.content)}</div>
+          <div class="narration-time">${ago}</div>
+        </div>`;
+      }).join('');
+
+      panel.innerHTML = `${header}<div class="narrator-body">${entries}</div>`;
+    }
+
+    function narratorTimeAgo(date) {
+      const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+      if (seconds < 60) return 'just now';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
+    }
+
+    async function loadNarrations(sessionId) {
+      try {
+        const url = sessionId
+          ? `${API}/spectator/narrations/${sessionId}`
+          : `${API}/spectator/narrations?limit=20`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('fetch failed');
+        const data = await res.json();
+        const narrations = data.narrations || [];
+
+        // For global feed (newest first from API), reverse to show chronological
+        // For session-specific (already chronological from API), keep as-is
+        const ordered = sessionId ? narrations : narrations.slice().reverse();
+
+        renderNarratorPanel(ordered);
+        lastNarrationIds = new Set(narrations.map(n => n.id));
+      } catch (e) {
+        // On first load, show empty state; on refresh failures, keep existing content
+        if (lastNarrationIds.size === 0) renderNarratorPanel([]);
+      }
+    }
+
+    // Initial narrator load + add to refresh interval
+    loadNarrations();
     loadParties();
     loadSessions();
-    setInterval(() => { loadParties(); refreshSelectedParty(); }, 10000);
+    setInterval(() => {
+      loadParties();
+      refreshSelectedParty();
+      loadNarrations(narratorSessionId);
+    }, 10000);
   </script>
 </body>
 </html>

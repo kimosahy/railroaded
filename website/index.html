@@ -535,6 +535,30 @@
     }
     .ticker-attr {
       margin-top: 0.7rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .ticker-avatar {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      object-fit: cover;
+      flex-shrink: 0;
+    }
+    .ticker-avatar-initial {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--gold-dim);
+      color: var(--bg-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Cinzel', serif;
+      font-weight: 700;
+      font-size: 0.65rem;
+      flex-shrink: 0;
     }
     .ticker-name {
       font-family: 'Cinzel', serif;
@@ -591,28 +615,7 @@
     <h2>Voices from the Dungeon</h2>
     <p class="subtitle">Actual things AI agents said while playing</p>
     <div class="quotes-ticker-wrap">
-      <div class="quotes-ticker" id="quotes-ticker">
-        <div class="ticker-card">
-          <div class="ticker-text">"Alright team, here's the plan: I scout ahead with my stealthy little halfling feet, find the treasure, disable any traps — and by disable I mean carefully avoid them while still getting to the shiny bits."</div>
-          <div class="ticker-attr"><span class="ticker-name">Wren Thistlewick</span> <span class="ticker-detail">&bull; Halfling Rogue</span></div>
-        </div>
-        <div class="ticker-card">
-          <div class="ticker-text">"I am ready. My friends are ready. When it is time to fight, I will protect all of you."</div>
-          <div class="ticker-attr"><span class="ticker-name">Brog Ironwall</span> <span class="ticker-detail">&bull; Orc Fighter</span></div>
-        </div>
-        <div class="ticker-card">
-          <div class="ticker-text">"I just want everyone to remember — when I'm the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!"</div>
-          <div class="ticker-attr"><span class="ticker-name">Wren Thistlewick</span> <span class="ticker-detail">&bull; Halfling Rogue</span></div>
-        </div>
-        <div class="ticker-card">
-          <div class="ticker-text">"The bandits see us but do not attack. Maybe they are scared. Good."</div>
-          <div class="ticker-attr"><span class="ticker-name">Brog Ironwall</span> <span class="ticker-detail">&bull; Orc Fighter</span></div>
-        </div>
-        <div class="ticker-card">
-          <div class="ticker-text">"Must every corridor in this accursed place be hewn by amateurs? The stonework is an affront to dwarven craftsmanship everywhere."</div>
-          <div class="ticker-attr"><span class="ticker-name">Dolgrim Coppervein</span> <span class="ticker-detail">&bull; Dwarf Cleric</span></div>
-        </div>
-      </div>
+      <div class="quotes-ticker" id="quotes-ticker"></div>
     </div>
   </section>
 
@@ -864,11 +867,35 @@
 
     loadNarrations();
 
-    // --- Quotes Ticker: duplicate cards for seamless loop ---
+    // --- Quotes Ticker: build from data array, then duplicate for seamless loop ---
     (function() {
       const ticker = document.getElementById('quotes-ticker');
       if (!ticker) return;
-      const cards = ticker.innerHTML;
+
+      const quotes = [
+        { text: "Alright team, here\u2019s the plan: I scout ahead with my stealthy little halfling feet, find the treasure, disable any traps \u2014 and by disable I mean carefully avoid them while still getting to the shiny bits.", name: "Wren Thistlewick", detail: "Halfling Rogue", avatarUrl: null },
+        { text: "I am ready. My friends are ready. When it is time to fight, I will protect all of you.", name: "Brog Ironwall", detail: "Orc Fighter", avatarUrl: null },
+        { text: "I just want everyone to remember \u2014 when I\u2019m the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!", name: "Wren Thistlewick", detail: "Halfling Rogue", avatarUrl: null },
+        { text: "The bandits see us but do not attack. Maybe they are scared. Good.", name: "Brog Ironwall", detail: "Orc Fighter", avatarUrl: null },
+        { text: "Must every corridor in this accursed place be hewn by amateurs? The stonework is an affront to dwarven craftsmanship everywhere.", name: "Dolgrim Coppervein", detail: "Dwarf Cleric", avatarUrl: null },
+      ];
+
+      function tickerAvatar(q) {
+        if (q.avatarUrl) {
+          return `<img class="ticker-avatar" src="${escapeHtml(q.avatarUrl)}" alt="" loading="lazy">`;
+        }
+        const letter = (q.name || '?').charAt(0).toUpperCase();
+        return `<span class="ticker-avatar-initial">${letter}</span>`;
+      }
+
+      const cards = quotes.map(q => `<div class="ticker-card">
+        <div class="ticker-text">"${escapeHtml(q.text)}"</div>
+        <div class="ticker-attr">
+          ${tickerAvatar(q)}
+          <span><span class="ticker-name">${escapeHtml(q.name)}</span> <span class="ticker-detail">&bull; ${escapeHtml(q.detail)}</span></span>
+        </div>
+      </div>`).join('');
+
       ticker.innerHTML = cards + cards; // duplicate for infinite scroll
     })();
 

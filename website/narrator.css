@@ -1,0 +1,146 @@
+/* Narrator sidebar panel — shared across tracker & journals pages */
+
+/* --- Layout wrapper: sits around .container + .narrator-panel --- */
+.page-with-narrator {
+  display: flex;
+  gap: 1.5rem;
+  align-items: flex-start;
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+.page-with-narrator > .container {
+  flex: 1 1 0%;
+  min-width: 0;
+  margin: 0;
+}
+
+/* --- Panel chrome --- */
+.narrator-panel {
+  width: 300px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 80px;
+  align-self: flex-start;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.narrator-panel::-webkit-scrollbar { width: 5px; }
+.narrator-panel::-webkit-scrollbar-track { background: transparent; }
+.narrator-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* --- Header: avatar + name + label --- */
+.narrator-header {
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  border-radius: 8px 8px 0 0;
+  z-index: 1;
+}
+.narrator-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border-gold);
+  flex-shrink: 0;
+}
+.narrator-avatar-fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--bg-dark);
+  border: 2px solid var(--border-gold);
+  flex-shrink: 0;
+}
+.narrator-info .narrator-name {
+  font-family: 'Cinzel', serif;
+  font-weight: 600;
+  color: var(--gold-light);
+  font-size: 0.85rem;
+  line-height: 1.2;
+}
+.narrator-info .narrator-label {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* --- Body: narration entries --- */
+.narrator-body {
+  padding: 0.6rem;
+}
+.narration-entry {
+  padding: 0.7rem 0.9rem;
+  margin-bottom: 0.5rem;
+  background: rgba(201, 168, 76, 0.03);
+  border-left: 2px solid var(--gold-dim);
+  border-radius: 0 4px 4px 0;
+}
+.narration-entry:last-child {
+  margin-bottom: 0;
+}
+.narration-prose {
+  font-family: 'Crimson Text', Georgia, serif;
+  font-style: italic;
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+.narration-time {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 0.3rem;
+}
+
+/* --- Empty state --- */
+.narrator-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.narrator-empty .narrator-avatar-fallback,
+.narrator-empty .narrator-avatar {
+  margin: 0 auto 0.8rem;
+}
+.narrator-empty-text {
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--text-dim);
+  line-height: 1.6;
+}
+
+/* --- Responsive: collapse narrator below main content --- */
+@media (max-width: 1100px) {
+  .page-with-narrator {
+    flex-direction: column;
+    align-items: center;
+    padding: 0;
+  }
+  .page-with-narrator > .container {
+    margin: 0 auto;
+    width: 100%;
+  }
+  .narrator-panel {
+    width: 100%;
+    max-width: 800px;
+    position: static;
+    max-height: none;
+    margin: 0 auto 2rem;
+  }
+}
