@@ -23,7 +23,7 @@
       margin-bottom: 0.2rem; letter-spacing: 0.03em;
     }
     .ev-chat .msg {
-      font-style: normal; font-weight: 400; font-size: 1.05rem; line-height: 1.7; color: var(--text-bright);
+      font-style: normal; font-weight: 400; font-size: 1.05rem; line-height: 1.7; color: var(--text);
     }
     .ev-chat .ts {
       font-size: 0.7rem; color: var(--text-dim); margin-top: 0.3rem;
@@ -42,7 +42,7 @@
     }
     .ev-narration .nar-text {
       font-style: italic; font-size: 1.05rem; line-height: 1.8;
-      color: var(--text-bright);
+      color: var(--text);
     }
 
     /* NPC Dialogue */
