@@ -425,7 +425,7 @@
         if (events.length === 0) {
           eventsEl.innerHTML = '<div style="padding:1.5rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded.</div>';
         } else {
-          eventsEl.innerHTML = events.map(renderEvent).join('');
+          eventsEl.innerHTML = events.slice().reverse().map(renderEvent).join('');
         }
         loadedSessions[id] = true;
       } catch (e) {

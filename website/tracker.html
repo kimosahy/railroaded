@@ -979,9 +979,9 @@
           </div>`;
         }
 
-        // Render events (newest first for feed feel, but chronological reads better — keep chrono)
+        // Render events (newest first)
         const eventHtml = events.length > 0
-          ? events.map(renderEvent).join('')
+          ? events.slice().reverse().map(renderEvent).join('')
           : '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded yet. The adventure awaits.</div>';
 
         panel.innerHTML = `<div class="detail-panel">
@@ -996,10 +996,6 @@
 
         // Track event count for incremental refresh
         liveEventCount = events.length;
-
-        // Scroll to bottom of event feed
-        const feed = document.getElementById('event-feed');
-        if (feed) feed.scrollTop = feed.scrollHeight;
 
       } catch (err) {
         panel.innerHTML = `<div class="detail-panel">
@@ -1096,7 +1092,7 @@
         const events = data.events || [];
 
         const eventHtml = events.length > 0
-          ? events.map(renderEvent).join('')
+          ? events.slice().reverse().map(renderEvent).join('')
           : '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events recorded for this session.</div>';
 
         // Find session info from cache
@@ -1113,8 +1109,6 @@
           <div class="event-feed" id="event-feed">${eventHtml}</div>
         </div>`;
 
-        const feed = document.getElementById('event-feed');
-        if (feed) feed.scrollTop = feed.scrollHeight;
       } catch (err) {
         panel.innerHTML = `<div class="detail-panel">
           <div class="detail-header"><h2>Error</h2></div>
@@ -1183,18 +1177,10 @@
         const feed = document.getElementById('event-feed');
         if (!feed) return;
 
-        // Check if user was scrolled near the bottom
-        const wasAtBottom = (feed.scrollHeight - feed.scrollTop - feed.clientHeight) < 80;
-
-        // Append new events at the end (chronological order)
-        const newHtml = newEvents.map(renderEvent).join('');
-        feed.insertAdjacentHTML('beforeend', newHtml);
+        // Prepend new events at the top (newest first)
+        const newHtml = newEvents.slice().reverse().map(renderEvent).join('');
+        feed.insertAdjacentHTML('afterbegin', newHtml);
         liveEventCount = newCount;
-
-        // Auto-scroll to new events only if user was already at the bottom
-        if (wasAtBottom) {
-          feed.scrollTop = feed.scrollHeight;
-        }
       } catch (err) { /* silent */ }
     }
 

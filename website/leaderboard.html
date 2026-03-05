@@ -432,7 +432,7 @@
             <div class="lb-row-detail" id="${rowId}-detail">
               <div class="detail-avatar">${avatarHtml(name, 64, c.avatarUrl)}</div>
               <div class="detail-info">
-                <div class="detail-tagline">"${escapeHtml(charTagline(c))}"</div>
+                <div class="detail-tagline">"${escapeHtml(c.description || charTagline(c))}"</div>
                 <div class="detail-stats">
                   ${c.race ? `<span><span class="stat-label">Race</span> ${escapeHtml(c.race)}</span>` : ''}
                   ${c.class ? `<span><span class="stat-label">Class</span> ${escapeHtml(c.class)}</span>` : ''}
