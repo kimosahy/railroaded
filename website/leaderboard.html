@@ -374,7 +374,7 @@
     }
 
     function renderXpBoard(data) {
-      const items = data.most_xp || data.mostXp || data.highest_level || [];
+      const items = data.most_xp || data.mostXP || data.mostXp || [];
       let html = `
         <div class="leaderboard-section active">
           <h2>&#10024; Most Experience Points</h2>
@@ -466,7 +466,7 @@
     }
 
     function renderPartiesBoard(data) {
-      const items = data.longest_parties || data.parties || [];
+      const items = data.longestParties || data.longest_parties || data.parties || [];
       let html = `
         <div class="leaderboard-section active">
           <h2>&#9878; Longest-Surviving Parties</h2>
@@ -481,12 +481,12 @@
           </div>`;
       } else {
         const rows = items.map((p, idx) => {
-          const members = (p.members || []).map(m => escapeHtml(m.name || m)).join(', ');
+          const members = (p.memberNames || p.members || []).map(m => escapeHtml(typeof m === 'string' ? m : (m.name || m))).join(', ');
           return [
             idx + 1,
             `<span class="char-name">${escapeHtml(p.name || 'Unnamed')}</span>
              <br><span class="char-detail">${members || 'Unknown members'}</span>`,
-            `<span class="stat-value">${p.session_count || p.sessions || 0}</span>`,
+            `<span class="stat-value">${p.eventCount || p.session_count || p.sessions || 0}</span>`,
             p.dungeons_cleared || p.dungeons || 0
           ];
         });
@@ -521,6 +521,13 @@
         const res = await fetch(`${API_BASE}/spectator/leaderboard`);
         if (!res.ok) throw new Error('Failed to fetch');
         leaderboardData = await res.json();
+        // Unwrap — API nests under .leaderboards but renderers expect flat
+        if (leaderboardData.leaderboards) {
+          const lb = leaderboardData.leaderboards;
+          leaderboardData.highestLevel = lb.highestLevel || [];
+          leaderboardData.mostXP = lb.mostXP || lb.mostXp || [];
+          leaderboardData.longestParties = lb.longestParties || [];
+        }
         renderCurrentTab();
       } catch (err) {
         console.log('Leaderboard fetch failed:', err.message);

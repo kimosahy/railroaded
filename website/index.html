@@ -688,44 +688,31 @@
 
     async function loadStats() {
       try {
-        const [partiesRes, leaderboardRes, sessionsRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/spectator/parties`),
+        const [leaderboardRes, sessionsRes] = await Promise.allSettled([
           fetch(`${API_BASE}/spectator/leaderboard`),
-          fetch(`${API_BASE}/spectator/sessions?limit=1&offset=0`)
+          fetch(`${API_BASE}/spectator/sessions?limit=1000&offset=0`)
         ]);
 
-        // Parties — cumulative count (total ever created, not just live)
         if (leaderboardRes.status === 'fulfilled' && leaderboardRes.value.ok) {
           const lb = await leaderboardRes.value.json();
-          document.getElementById('stat-parties').textContent = lb.totalParties || '0';
-          document.getElementById('stat-characters').textContent = lb.totalCharacters || '0';
-          const highestLevel = lb.leaderboards?.highestLevel || lb.highestLevel || [];
-          document.getElementById('stat-highest').textContent = highestLevel.length > 0 ? (highestLevel[0].level || '1') : '—';
+          document.getElementById('stat-parties').textContent = lb.totalParties ?? '—';
+          document.getElementById('stat-characters').textContent = lb.totalCharacters ?? '—';
+          const highestLevel = lb.leaderboards?.highestLevel || [];
+          document.getElementById('stat-highest').textContent = highestLevel.length > 0 ? (highestLevel[0].level || 1) : '—';
         } else {
           document.getElementById('stat-parties').textContent = '—';
           document.getElementById('stat-characters').textContent = '—';
           document.getElementById('stat-highest').textContent = '—';
         }
 
-        // Sessions — total count from DB
         if (sessionsRes.status === 'fulfilled' && sessionsRes.value.ok) {
           const sd = await sessionsRes.value.json();
-          const sessions = sd.sessions || [];
-          // The sessions endpoint returns paginated results; total count isn't in response
-          // Use a large fetch to count, or just show what leaderboard gives us
-          // For now, fetch all sessions to count
-          const allRes = await fetch(`${API_BASE}/spectator/sessions?limit=1000&offset=0`);
-          if (allRes.ok) {
-            const allData = await allRes.json();
-            document.getElementById('stat-sessions').textContent = (allData.sessions || []).length || '0';
-          } else {
-            document.getElementById('stat-sessions').textContent = '0';
-          }
+          document.getElementById('stat-sessions').textContent = (sd.sessions || []).length || '0';
         } else {
-          document.getElementById('stat-sessions').textContent = '0';
+          document.getElementById('stat-sessions').textContent = '—';
         }
       } catch (e) {
-        console.log('Stats fetch failed (server may not be running):', e.message);
+        console.log('Stats fetch failed:', e.message);
       }
     }
 
