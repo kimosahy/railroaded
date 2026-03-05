@@ -398,6 +398,44 @@ export function handleCreateCharacter(userId: string, params: {
   return { success: true, character };
 }
 
+// --- Character Update ---
+
+export function handleUpdateCharacter(userId: string, params: {
+  avatar_url?: string;
+  description?: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found. Create one first." };
+
+  if (params.avatar_url !== undefined) char.avatarUrl = params.avatar_url;
+  if (params.description !== undefined) char.description = params.description;
+
+  // Persist to DB (fire-and-forget)
+  if (char.dbCharId) {
+    const updates: Record<string, unknown> = {};
+    if (params.avatar_url !== undefined) updates.avatarUrl = params.avatar_url;
+    if (params.description !== undefined) updates.description = params.description;
+    if (Object.keys(updates).length > 0) {
+      db.update(charactersTable)
+        .set(updates)
+        .where(eq(charactersTable.id, char.dbCharId))
+        .catch((err) => console.error("[DB] Failed to update character:", err));
+    }
+  }
+
+  return {
+    success: true,
+    data: {
+      character: {
+        id: char.id, name: char.name, race: char.race, class: char.class,
+        level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax,
+        ac: char.ac, avatarUrl: char.avatarUrl, description: char.description,
+        equipment: char.equipment, inventory: char.inventory,
+      },
+    },
+  };
+}
+
 // --- Query helpers ---
 
 export function getCharacterForUser(userId: string): GameCharacter | null {

@@ -4,6 +4,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   handleCreateCharacter,
+  handleUpdateCharacter,
   getCharacterForUser,
   handleGetStatus,
   handleGetInventory,
@@ -84,5 +85,92 @@ describe("avatar_url and description fields", () => {
     const result = handlePartyChat("avatar-user-5", { message: "I have no avatar." });
     expect(result.success).toBe(true);
     expect(result.data!.avatarUrl).toBeNull();
+  });
+});
+
+describe("handleUpdateCharacter", () => {
+  test("update both avatar_url and description", () => {
+    handleCreateCharacter("upd-user-1", {
+      name: "UpdateBoth",
+      race: "human",
+      class: "fighter",
+      ability_scores: scores,
+      avatar_url: "https://example.com/old.png",
+      description: "Old description.",
+    });
+    const result = handleUpdateCharacter("upd-user-1", {
+      avatar_url: "https://example.com/new.png",
+      description: "New description.",
+    });
+    expect(result.success).toBe(true);
+    const char = result.data!.character as Record<string, unknown>;
+    expect(char.avatarUrl).toBe("https://example.com/new.png");
+    expect(char.description).toBe("New description.");
+  });
+
+  test("update only avatar_url — description unchanged", () => {
+    handleCreateCharacter("upd-user-2", {
+      name: "UpdateAvatar",
+      race: "elf",
+      class: "wizard",
+      ability_scores: scores,
+      description: "Stays the same.",
+    });
+    const result = handleUpdateCharacter("upd-user-2", {
+      avatar_url: "https://example.com/elf.png",
+    });
+    expect(result.success).toBe(true);
+    const char = result.data!.character as Record<string, unknown>;
+    expect(char.avatarUrl).toBe("https://example.com/elf.png");
+    expect(char.description).toBe("Stays the same.");
+  });
+
+  test("update only description — avatar_url unchanged", () => {
+    handleCreateCharacter("upd-user-3", {
+      name: "UpdateDesc",
+      race: "dwarf",
+      class: "cleric",
+      ability_scores: scores,
+      avatar_url: "https://example.com/dwarf.png",
+    });
+    const result = handleUpdateCharacter("upd-user-3", {
+      description: "A new description for the dwarf.",
+    });
+    expect(result.success).toBe(true);
+    const char = result.data!.character as Record<string, unknown>;
+    expect(char.avatarUrl).toBe("https://example.com/dwarf.png");
+    expect(char.description).toBe("A new description for the dwarf.");
+  });
+
+  test("update with no character returns error", () => {
+    const result = handleUpdateCharacter("upd-user-nonexistent", {
+      avatar_url: "https://example.com/nope.png",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No character found");
+  });
+
+  test("other fields unchanged after update", () => {
+    handleCreateCharacter("upd-user-4", {
+      name: "StableFields",
+      race: "halfling",
+      class: "rogue",
+      ability_scores: scores,
+      avatar_url: "https://example.com/halfling.png",
+      description: "A sneaky halfling.",
+    });
+    const before = getCharacterForUser("upd-user-4")!;
+    const hpBefore = before.hpCurrent;
+    const acBefore = before.ac;
+    const levelBefore = before.level;
+
+    handleUpdateCharacter("upd-user-4", { description: "An even sneakier halfling." });
+
+    const after = getCharacterForUser("upd-user-4")!;
+    expect(after.hpCurrent).toBe(hpBefore);
+    expect(after.ac).toBe(acBefore);
+    expect(after.level).toBe(levelBefore);
+    expect(after.name).toBe("StableFields");
+    expect(after.description).toBe("An even sneakier halfling.");
   });
 });

@@ -154,6 +154,33 @@ export const playerTools: PlayerToolDefinition[] = [
     handler: "handleCreateCharacter",
   },
 
+  // ── Character Update ───────────────────────────────────────────────────
+  {
+    name: "update_character",
+    description:
+      "Update your character's avatar image or description after creation. " +
+      "Both fields are optional — only provided fields are changed. " +
+      "Returns the updated character sheet.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        avatar_url: {
+          type: "string",
+          description:
+            "URL to your character's avatar/profile image. Shown next to your name in the tracker and chat.",
+        },
+        description: {
+          type: "string",
+          description:
+            "A short 1-2 sentence description of your character in third person.",
+          maxLength: 500,
+        },
+      },
+      additionalProperties: false,
+    },
+    handler: "handleUpdateCharacter",
+  },
+
   // ── Observation ─────────────────────────────────────────────────────────
   {
     name: "look",

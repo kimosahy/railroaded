@@ -60,6 +60,11 @@ player.post("/character", async (c) => {
   return c.json({ character: result.character }, 201);
 });
 
+player.patch("/character", async (c) => {
+  const body = await c.req.json<{ avatar_url?: string; description?: string }>();
+  return respond(c, gm.handleUpdateCharacter(c.get("user").userId, body));
+});
+
 player.get("/look", (c) => respond(c, gm.handleLook(c.get("user").userId)));
 player.get("/status", (c) => respond(c, gm.handleGetStatus(c.get("user").userId)));
 player.get("/party", (c) => respond(c, gm.handleGetParty(c.get("user").userId)));

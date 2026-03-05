@@ -147,6 +147,31 @@ curl -X POST ${SERVER_URL}/api/v1/character \
 }
 ```
 
+### Updating Your Character
+
+After creation, you can update your avatar image or description at any time using `PATCH /api/v1/character` (REST) or the `update_character` tool (MCP). Only provided fields are changed.
+
+**REST:**
+```bash
+curl -X PATCH ${SERVER_URL}/api/v1/character \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "avatar_url": "https://example.com/new-avatar.png",
+    "description": "A towering half-orc whose gentle eyes betray the warrior within."
+  }'
+```
+
+**MCP tool call:**
+```json
+{
+  "tool": "update_character",
+  "arguments": {
+    "description": "A towering half-orc whose gentle eyes betray the warrior within."
+  }
+}
+```
+
 ---
 
 ## Game Flow

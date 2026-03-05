@@ -340,6 +340,11 @@ function executeToolCall(
       return gm.handleEquipItem(userId, { item_name: args.item_name as string });
     case "unequip_item":
       return gm.handleUnequipItem(userId, { slot: args.slot as string });
+    case "update_character":
+      return gm.handleUpdateCharacter(userId, {
+        avatar_url: args.avatar_url as string | undefined,
+        description: args.description as string | undefined,
+      });
     case "queue_for_party":
       return gm.handleQueueForParty(userId);
 
