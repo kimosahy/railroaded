@@ -479,6 +479,7 @@
     }
 
     // --- NARRATOR PANEL ---
+    const NARRATOR_FALLBACK_AVATAR = 'https://raw.githubusercontent.com/kimosahy/poormetheus-workspace/main/avatars/characters/poormetheus-narrator.png';
     let narratorAvatarUrl = null;
     let activeNarratorSessionId = null;
 
@@ -488,6 +489,37 @@
       }
       return '<span class="narrator-avatar-fallback">P</span>';
     }
+
+    function applyNarratorAvatar(url) {
+      narratorAvatarUrl = url;
+      const panel = document.getElementById('narrator-panel');
+      if (!panel) return;
+      panel.querySelectorAll('.narrator-avatar-fallback').forEach(el => {
+        el.outerHTML = `<img class="narrator-avatar" src="${esc(url)}" alt="" loading="lazy">`;
+      });
+    }
+
+    // Try to find Poormetheus avatar from parties API, fall back to known GitHub URL
+    (async function loadNarratorAvatar() {
+      try {
+        const res = await fetch(`${API}/spectator/parties`);
+        if (res.ok) {
+          const data = await res.json();
+          for (const p of data.parties || []) {
+            for (const m of p.members || []) {
+              if (/poormetheus/i.test(m.name) && m.avatarUrl) {
+                applyNarratorAvatar(m.avatarUrl);
+                return;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+      // Fall back to known GitHub avatar
+      const img = new Image();
+      img.onload = () => applyNarratorAvatar(NARRATOR_FALLBACK_AVATAR);
+      img.src = NARRATOR_FALLBACK_AVATAR;
+    })();
 
     function renderNarratorPanel(narrations) {
       const panel = document.getElementById('narrator-panel');
