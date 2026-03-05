@@ -177,6 +177,46 @@
     }
     .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
 
+    /* --- EXPANDABLE ROWS --- */
+    .lb-table tbody tr { cursor: pointer; }
+    .lb-table tbody tr .expand-arrow {
+      display: inline-block; transition: transform 0.2s; font-size: 0.7rem;
+      color: var(--text-dim); margin-left: 0.3rem;
+    }
+    .lb-table tbody tr.expanded .expand-arrow { transform: rotate(90deg); }
+    .lb-row-detail {
+      display: none; padding: 1rem 1.2rem;
+      background: rgba(201,168,76,0.03);
+      border-bottom: 1px solid var(--border);
+    }
+    .lb-row-detail.open { display: flex; gap: 1.2rem; align-items: flex-start; }
+    .lb-row-detail .detail-avatar {
+      flex-shrink: 0; border-radius: 50%; overflow: hidden;
+      border: 2px solid var(--border-gold);
+    }
+    .lb-row-detail .detail-info { flex: 1; }
+    .lb-row-detail .detail-tagline {
+      font-style: italic; color: var(--text); font-size: 1rem;
+      line-height: 1.6; margin-bottom: 0.5rem;
+    }
+    .lb-row-detail .detail-stats {
+      display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.85rem; color: var(--text-dim);
+    }
+    .lb-row-detail .detail-stats span {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.2rem 0.6rem;
+    }
+    .lb-row-detail .detail-stats .stat-label {
+      font-family: 'Cinzel', serif; font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--gold-dim);
+    }
+
+    /* Avatar in table row */
+    .char-cell { display: flex; align-items: center; gap: 0.7rem; }
+    .char-cell .row-avatar {
+      width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex-shrink: 0;
+    }
+
     /* --- PODIUM (top 3 visual) --- */
     .podium {
       display: flex; justify-content: center; align-items: flex-end;
@@ -285,6 +325,37 @@
       return div.innerHTML;
     }
 
+    // DiceBear avatars
+    function avatarUrl(name, size) {
+      size = size || 40;
+      return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || 'unknown')}&size=${size}`;
+    }
+    function avatarImg(name, size) {
+      size = size || 40;
+      return `<img src="${avatarUrl(name, size)}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;" loading="lazy">`;
+    }
+
+    // Generate a flavour tagline from character data
+    function charTagline(c) {
+      if (c.tagline) return c.tagline;
+      const race = c.race || '';
+      const cls = c.class || '';
+      const lvl = c.level || 1;
+      const xp = c.xp || 0;
+      const lines = [
+        `A battle-scarred ${race} ${cls}, forged in the fires of the deep.`,
+        `${race} ${cls}, seeker of gold and glory.`,
+        `Level ${lvl} ${race} ${cls} — ${xp} XP earned the hard way.`,
+        `A wandering ${cls} of the ${race} bloodline.`,
+        `${race} ${cls}, veteran of countless dungeon corridors.`,
+      ];
+      // Deterministic pick based on name hash
+      let hash = 0;
+      const name = c.name || '';
+      for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash) + name.charCodeAt(i);
+      return lines[Math.abs(hash) % lines.length];
+    }
+
     function rankClass(idx) {
       if (idx === 0) return 'rank-1';
       if (idx === 1) return 'rank-2';
@@ -294,7 +365,6 @@
 
     function renderPodium(items, valueFn, labelFn) {
       if (!items || items.length < 1) return '';
-      // Reorder for podium: 2nd, 1st, 3rd
       const order = [1, 0, 2];
       const podiumClasses = ['podium-2', 'podium-1', 'podium-3'];
 
@@ -302,13 +372,17 @@
       order.forEach((idx, i) => {
         if (idx < items.length) {
           const item = items[idx];
+          const name = item.name || item.character_name || 'Unknown';
           html += `
             <div class="podium-place ${podiumClasses[i]}">
               <div class="podium-bar">
+                <div style="border-radius:50%;overflow:hidden;border:2px solid ${idx===0?'rgba(255,215,0,0.4)':idx===1?'rgba(192,192,192,0.4)':'rgba(205,127,50,0.4)'};margin-bottom:0.5rem">
+                  ${avatarImg(name, 56)}
+                </div>
                 <div class="podium-rank">${idx === 0 ? '&#9733;' : idx + 1}</div>
                 <div class="podium-stat">${valueFn(item)}</div>
               </div>
-              <div class="podium-name">${escapeHtml(item.name || item.character_name || 'Unknown')}</div>
+              <div class="podium-name">${escapeHtml(name)}</div>
               <div class="podium-info">${labelFn(item)}</div>
             </div>`;
         }
@@ -317,7 +391,7 @@
       return html;
     }
 
-    function renderTable(headers, rows) {
+    function renderTable(headers, rows, itemData) {
       if (!rows || rows.length === 0) {
         return `
           <div class="empty-state">
@@ -333,18 +407,55 @@
       headers.forEach(h => { html += `<th>${h}</th>`; });
       html += '</tr></thead><tbody>';
       rows.forEach((row, idx) => {
-        html += '<tr>';
+        const rowId = `lb-row-${currentTab}-${idx}`;
+        html += `<tr onclick="toggleRow('${rowId}')" id="${rowId}-tr">`;
         row.forEach((cell, cIdx) => {
           if (cIdx === 0) {
             html += `<td class="rank-cell ${rankClass(idx)}">${cell}</td>`;
+          } else if (cIdx === 1 && itemData && itemData[idx]) {
+            // Character cell with avatar
+            const name = itemData[idx].name || 'Unknown';
+            html += `<td><div class="char-cell">
+              <div class="row-avatar">${avatarImg(name, 36)}</div>
+              <div>${cell}<span class="expand-arrow">&#9654;</span></div>
+            </div></td>`;
           } else {
             html += `<td>${cell}</td>`;
           }
         });
         html += '</tr>';
+        // Expandable detail row
+        if (itemData && itemData[idx]) {
+          const c = itemData[idx];
+          const name = c.name || 'Unknown';
+          html += `<tr><td colspan="${headers.length}" style="padding:0;border:none">
+            <div class="lb-row-detail" id="${rowId}-detail">
+              <div class="detail-avatar">${avatarImg(name, 64)}</div>
+              <div class="detail-info">
+                <div class="detail-tagline">"${escapeHtml(charTagline(c))}"</div>
+                <div class="detail-stats">
+                  ${c.race ? `<span><span class="stat-label">Race</span> ${escapeHtml(c.race)}</span>` : ''}
+                  ${c.class ? `<span><span class="stat-label">Class</span> ${escapeHtml(c.class)}</span>` : ''}
+                  ${c.level ? `<span><span class="stat-label">Level</span> ${c.level}</span>` : ''}
+                  ${c.xp ? `<span><span class="stat-label">XP</span> ${c.xp.toLocaleString()}</span>` : ''}
+                  ${c.gold != null ? `<span><span class="stat-label">Gold</span> ${c.gold}</span>` : ''}
+                  ${c.sessionsPlayed ? `<span><span class="stat-label">Sessions</span> ${c.sessionsPlayed}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          </td></tr>`;
+        }
       });
       html += '</tbody></table>';
       return html;
+    }
+
+    function toggleRow(rowId) {
+      const detail = document.getElementById(rowId + '-detail');
+      const tr = document.getElementById(rowId + '-tr');
+      if (!detail) return;
+      detail.classList.toggle('open');
+      if (tr) tr.classList.toggle('expanded');
     }
 
     function renderLevelBoard(data) {
@@ -368,7 +479,7 @@
         (c.xp || 0).toLocaleString()
       ]);
 
-      html += renderTable(['Rank', 'Character', 'Level', 'XP'], rows);
+      html += renderTable(['Rank', 'Character', 'Level', 'XP'], rows, items);
       html += '</div>';
       return html;
     }
@@ -394,7 +505,7 @@
         c.level || 1
       ]);
 
-      html += renderTable(['Rank', 'Character', 'XP', 'Level'], rows);
+      html += renderTable(['Rank', 'Character', 'XP', 'Level'], rows, items);
       html += '</div>';
       return html;
     }
@@ -428,7 +539,7 @@
           c.level || 1
         ]);
 
-        html += renderTable(['Rank', 'Character', 'Dungeons', 'Level'], rows);
+        html += renderTable(['Rank', 'Character', 'Dungeons', 'Level'], rows, items);
       }
 
       html += '</div>';

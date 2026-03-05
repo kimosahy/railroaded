@@ -580,6 +580,7 @@
     const API = 'https://api.railroaded.ai';
     let selectedId = null;
     let partiesCache = [];
+    let liveEventCount = 0; // track event count for incremental refresh
 
     // Consistent character colors
     const CHAR_COLORS = [
@@ -596,6 +597,15 @@
     function initials(name) {
       if (!name) return '?';
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    }
+    // DiceBear avatars — deterministic from character name
+    function avatarUrl(name, size) {
+      size = size || 40;
+      return `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name || 'unknown')}&size=${size}`;
+    }
+    function avatarImg(name, size) {
+      size = size || 36;
+      return `<img src="${avatarUrl(name, size)}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;" loading="lazy">`;
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
@@ -659,7 +669,7 @@
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
       return `<div class="ev ev-chat">
-        <div class="avatar" style="background:${col}">${initials(name)}</div>
+        <div class="avatar" style="background:transparent;overflow:hidden">${avatarImg(name, 36)}</div>
         <div class="bubble">
           <div class="speaker" style="color:${col}">${esc(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>
@@ -932,7 +942,7 @@
           const col = charColor(m.name);
           const pct = hpPercent(m.hpCurrent, m.hpMax);
           return `<div class="member-card">
-            <div class="member-avatar" style="background:${col}">${initials(m.name)}</div>
+            <div class="member-avatar" style="background:transparent">${avatarImg(m.name, 32)}</div>
             <div class="member-info">
               <div class="m-name">${esc(m.name)}</div>
               <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
@@ -974,6 +984,9 @@
           ${monsterHtml}
           <div class="event-feed" id="event-feed">${eventHtml}</div>
         </div>`;
+
+        // Track event count for incremental refresh
+        liveEventCount = events.length;
 
         // Scroll to bottom of event feed
         const feed = document.getElementById('event-feed');
@@ -1108,17 +1121,72 @@
         const data = await res.json();
         partiesCache = Array.isArray(data) ? data : (data.parties || []);
         renderParties(partiesCache);
-        // Only auto-refresh detail for live parties, never for historical sessions
-        if (selectedId && !selectedSessionId) selectParty(selectedId);
       } catch (e) {
         partiesCache = [];
         renderParties([]);
       }
     }
 
+    // Incremental refresh: only prepend new events instead of full re-render
+    async function refreshSelectedParty() {
+      if (!selectedId || selectedSessionId) return;
+      try {
+        const res = await fetch(`${API}/spectator/parties/${selectedId}`);
+        if (!res.ok) return;
+        const p = await res.json();
+        const events = p.recentEvents || p.events || [];
+        const newCount = events.length;
+
+        // Update member HP/status in header without re-rendering events
+        const membersEl = document.querySelector('.detail-members');
+        if (membersEl && p.members) {
+          membersEl.innerHTML = p.members.map(m => {
+            const col = charColor(m.name);
+            const pct = hpPercent(m.hpCurrent, m.hpMax);
+            return `<div class="member-card">
+              <div class="member-avatar" style="background:${col}">${avatarImg(m.name, 32)}</div>
+              <div class="member-info">
+                <div class="m-name">${esc(m.name)}</div>
+                <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
+                <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
+                <div class="m-detail">${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} HP &bull; AC ${m.ac ?? '?'}</div>
+              </div>
+            </div>`;
+          }).join('');
+        }
+
+        // Update phase badge in header
+        const countEl = document.querySelector('.detail-header .event-count');
+        if (countEl) {
+          countEl.innerHTML = `<span class="phase-badge ${phaseClass(p.phase)}">${phaseLabel(p.phase)}</span> &bull; ${p.eventCount || newCount} events`;
+        }
+
+        // Only add truly new events
+        if (newCount <= liveEventCount) return;
+        const newEvents = events.slice(liveEventCount);
+        if (newEvents.length === 0) return;
+
+        const feed = document.getElementById('event-feed');
+        if (!feed) return;
+
+        // Check if user was scrolled near the bottom
+        const wasAtBottom = (feed.scrollHeight - feed.scrollTop - feed.clientHeight) < 80;
+
+        // Append new events at the end (chronological order)
+        const newHtml = newEvents.map(renderEvent).join('');
+        feed.insertAdjacentHTML('beforeend', newHtml);
+        liveEventCount = newCount;
+
+        // Auto-scroll to new events only if user was already at the bottom
+        if (wasAtBottom) {
+          feed.scrollTop = feed.scrollHeight;
+        }
+      } catch (err) { /* silent */ }
+    }
+
     loadParties();
     loadSessions();
-    setInterval(loadParties, 10000);
+    setInterval(() => { loadParties(); refreshSelectedParty(); }, 10000);
   </script>
 </body>
 </html>
