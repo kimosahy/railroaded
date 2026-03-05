@@ -1108,8 +1108,8 @@
         const data = await res.json();
         partiesCache = Array.isArray(data) ? data : (data.parties || []);
         renderParties(partiesCache);
-        // Auto-refresh selected party detail
-        if (selectedId) selectParty(selectedId);
+        // Only auto-refresh detail for live parties, never for historical sessions
+        if (selectedId && !selectedSessionId) selectParty(selectedId);
       } catch (e) {
         partiesCache = [];
         renderParties([]);
