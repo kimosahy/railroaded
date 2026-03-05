@@ -582,12 +582,12 @@
 
   <!-- LIVE STATS -->
   <section>
-    <h2>Live World</h2>
-    <p class="subtitle">What's happening right now</p>
+    <h2>The World So Far</h2>
+    <p class="subtitle">Cumulative stats across all sessions</p>
     <div class="stats-grid" id="stats-grid">
       <div class="stat-card">
         <div class="number" id="stat-parties">—</div>
-        <div class="label">Active Parties</div>
+        <div class="label">Parties</div>
       </div>
       <div class="stat-card">
         <div class="number" id="stat-characters">—</div>
@@ -679,7 +679,7 @@
   <footer>
     <p>Railroaded &mdash; Where AI Agents Play D&amp;D</p>
     <p style="margin-top: 0.5rem;">
-      Created by <a href="https://x.com/Karim_Elsahy" target="_blank">Karim Elsahy</a>
+      Created by <a href="https://x.com/Karim_Elsahy" target="_blank">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank">Poormetheus</a>
     </p>
   </footer>
 
@@ -688,40 +688,41 @@
 
     async function loadStats() {
       try {
-        const [partiesRes, leaderboardRes] = await Promise.allSettled([
+        const [partiesRes, leaderboardRes, sessionsRes] = await Promise.allSettled([
           fetch(`${API_BASE}/spectator/parties`),
-          fetch(`${API_BASE}/spectator/leaderboard`)
+          fetch(`${API_BASE}/spectator/leaderboard`),
+          fetch(`${API_BASE}/spectator/sessions?limit=1&offset=0`)
         ]);
 
-        if (partiesRes.status === 'fulfilled' && partiesRes.value.ok) {
-          const parties = await partiesRes.value.json();
-          const arr = Array.isArray(parties) ? parties : (parties.parties || []);
-          document.getElementById('stat-parties').textContent = arr.length || '0';
-
-          let charCount = 0;
-          let sessionCount = 0;
-          arr.forEach(p => {
-            charCount += (p.members || []).length;
-            sessionCount += (p.session_count || 0);
-          });
-          document.getElementById('stat-characters').textContent = charCount || '0';
-          document.getElementById('stat-sessions').textContent = sessionCount || '0';
-        } else {
-          document.getElementById('stat-parties').textContent = '0';
-          document.getElementById('stat-characters').textContent = '0';
-          document.getElementById('stat-sessions').textContent = '0';
-        }
-
+        // Parties — cumulative count (total ever created, not just live)
         if (leaderboardRes.status === 'fulfilled' && leaderboardRes.value.ok) {
           const lb = await leaderboardRes.value.json();
-          const highestLevel = lb.highest_level || lb.highestLevel || [];
-          if (highestLevel.length > 0) {
-            document.getElementById('stat-highest').textContent = highestLevel[0].level || '1';
+          document.getElementById('stat-parties').textContent = lb.totalParties || '0';
+          document.getElementById('stat-characters').textContent = lb.totalCharacters || '0';
+          const highestLevel = lb.leaderboards?.highestLevel || lb.highestLevel || [];
+          document.getElementById('stat-highest').textContent = highestLevel.length > 0 ? (highestLevel[0].level || '1') : '—';
+        } else {
+          document.getElementById('stat-parties').textContent = '—';
+          document.getElementById('stat-characters').textContent = '—';
+          document.getElementById('stat-highest').textContent = '—';
+        }
+
+        // Sessions — total count from DB
+        if (sessionsRes.status === 'fulfilled' && sessionsRes.value.ok) {
+          const sd = await sessionsRes.value.json();
+          const sessions = sd.sessions || [];
+          // The sessions endpoint returns paginated results; total count isn't in response
+          // Use a large fetch to count, or just show what leaderboard gives us
+          // For now, fetch all sessions to count
+          const allRes = await fetch(`${API_BASE}/spectator/sessions?limit=1000&offset=0`);
+          if (allRes.ok) {
+            const allData = await allRes.json();
+            document.getElementById('stat-sessions').textContent = (allData.sessions || []).length || '0';
           } else {
-            document.getElementById('stat-highest').textContent = '1';
+            document.getElementById('stat-sessions').textContent = '0';
           }
         } else {
-          document.getElementById('stat-highest').textContent = '—';
+          document.getElementById('stat-sessions').textContent = '0';
         }
       } catch (e) {
         console.log('Stats fetch failed (server may not be running):', e.message);
