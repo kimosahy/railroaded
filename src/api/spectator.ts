@@ -105,8 +105,14 @@ spectator.get("/parties", async (c) => {
     });
   }
 
-  // Fall back to DB for parties not in memory
+  // Fall back to DB for parties not in memory — only include those with an active game session
   try {
+    // Get party IDs that have an active session in the DB
+    const activeSessionRows = await db.select({
+      partyId: gameSessionsTable.partyId,
+    }).from(gameSessionsTable).where(eq(gameSessionsTable.isActive, true));
+    const activePartyIds = new Set(activeSessionRows.map((r) => r.partyId));
+
     const dbParties = await db.select({
       id: partiesTable.id,
       name: partiesTable.name,
@@ -134,9 +140,11 @@ spectator.get("/parties", async (c) => {
     for (const dbParty of dbParties) {
       if (knownDbIds.has(dbParty.id)) continue;
 
-      // Skip stale/ended parties — only in-memory parties are truly "live"
-      // DB parties are historical context only, not active sessions
+      // Skip ended/disbanded parties
       if (dbParty.status === "ended" || dbParty.status === "completed" || dbParty.status === "disbanded") continue;
+
+      // Skip parties with no active session — they're stale from a previous server run
+      if (!activePartyIds.has(dbParty.id)) continue;
 
       const members = (charsByParty.get(dbParty.id) ?? []).map((m) => ({
         id: m.id,

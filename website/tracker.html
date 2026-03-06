@@ -768,7 +768,7 @@
 
     function renderNarration(d, ts) {
       return `<div class="ev ev-narration">
-        <div class="nar-label">&#9998; Narration</div>
+        <div class="nar-label">&#9876; Dungeon Master</div>
         <div class="nar-text">${esc(d.text || '')}</div>
       </div>`;
     }
@@ -881,10 +881,36 @@
     }
 
     function renderContestedCheck(d) {
-      return `<div class="ev ev-check">
-        <div class="check-text">
-          <span class="check-type">Contested Check</span>
-          <span class="name">${esc(JSON.stringify(d))}</span>
+      const p1 = d.player1 || {};
+      const p2 = d.player2 || {};
+      const w = d.winner; // 1 or 2
+      const margin = d.margin != null ? d.margin : '?';
+      const p1Win = w === 1;
+      const p2Win = w === 2;
+      const p1Color = p1Win ? 'var(--green-light)' : 'var(--red-glow)';
+      const p2Color = p2Win ? 'var(--green-light)' : 'var(--red-glow)';
+      function contestantRow(p, isWinner, col) {
+        const name = p.name || 'Unknown';
+        const ability = (p.ability || '').toUpperCase();
+        const skill = p.skill ? ` (${esc(p.skill)})` : '';
+        const roll = p.roll != null ? p.roll : '?';
+        const nameCol = charColor(name);
+        return `<div class="gc-row" style="align-items:center;gap:0.5rem;${isWinner ? '' : 'opacity:0.65'}">
+          <div class="d20" style="width:2rem;height:2rem;position:relative">${d20svg(isWinner ? '#4caf50' : '#c43c3c')}
+            <span class="roll-num" style="color:${col};font-size:0.75rem">${roll}</span>
+          </div>
+          <span class="name" style="color:${nameCol}">${esc(name)}</span>
+          <span class="check-type" style="font-size:0.75rem">${ability}${skill}</span>
+          ${isWinner ? `<span class="result-badge pass-badge" style="font-size:0.7rem">Win (+${margin})</span>` : ''}
+        </div>`;
+      }
+      return `<div class="ev ev-group-check">
+        <div class="gc-header">
+          <span class="gc-title">&#9876; Contested Check</span>
+        </div>
+        <div class="gc-results">
+          ${contestantRow(p1, p1Win, p1Color)}
+          ${contestantRow(p2, p2Win, p2Color)}
         </div>
       </div>`;
     }
