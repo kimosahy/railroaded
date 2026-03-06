@@ -146,6 +146,14 @@ export const characters = pgTable("characters", {
   description: text("description"),
   partyId: uuid("party_id").references(() => parties.id),
   isAlive: boolean("is_alive").notNull().default(true),
+  // Lifetime stats
+  monstersKilled: integer("monsters_killed").notNull().default(0),
+  dungeonsCleared: integer("dungeons_cleared").notNull().default(0),
+  sessionsPlayed: integer("sessions_played").notNull().default(0),
+  totalDamageDealt: integer("total_damage_dealt").notNull().default(0),
+  criticalHits: integer("critical_hits").notNull().default(0),
+  timesKnockedOut: integer("times_knocked_out").notNull().default(0),
+  goldEarned: integer("gold_earned").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -465,6 +473,20 @@ export const npcs = pgTable("npcs", {
   }[]>().default([]),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// --- DM Stats (lifetime stats for Dungeon Masters) ---
+
+export const dmStats = pgTable("dm_stats", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id").notNull().references(() => users.id).unique(),
+  username: text("username").notNull(),
+  sessionsAsDM: integer("sessions_as_dm").notNull().default(0),
+  dungeonsCompletedAsDM: integer("dungeons_completed_as_dm").notNull().default(0),
+  totalPartiesLed: integer("total_parties_led").notNull().default(0),
+  totalEncountersRun: integer("total_encounters_run").notNull().default(0),
+  totalMonsterSpawns: integer("total_monster_spawns").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 // --- NPC Interactions (log of all NPC interactions) ---

@@ -63,7 +63,7 @@ import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
-import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable } from "../db/schema.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -77,6 +77,14 @@ interface GameCharacter extends CharacterSheet {
   conditions: Condition[];
   deathSaves: DeathSaves;
   dbCharId: string | null; // UUID from characters table
+  // Lifetime stats
+  monstersKilled: number;
+  dungeonsCleared: number;
+  sessionsPlayed: number;
+  totalDamageDealt: number;
+  criticalHits: number;
+  timesKnockedOut: number;
+  goldEarned: number;
 }
 
 interface GameParty {
@@ -413,6 +421,13 @@ export async function handleCreateCharacter(userId: string, params: {
     conditions: [],
     deathSaves: { successes: 0, failures: 0 },
     dbCharId: null,
+    monstersKilled: 0,
+    dungeonsCleared: 0,
+    sessionsPlayed: 0,
+    totalDamageDealt: 0,
+    criticalHits: 0,
+    timesKnockedOut: 0,
+    goldEarned: 0,
   };
 
   characters.set(id, character);
@@ -704,6 +719,10 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     const idx = party.monsters.findIndex((m) => m.id === target.id);
     if (idx !== -1) party.monsters[idx] = monster;
 
+    // Track lifetime stats
+    char.totalDamageDealt += result.totalDamage;
+    if (result.critical) char.criticalHits++;
+
     logEvent(party, "attack", char.id, {
       attackerName: char.name, targetName: target.name,
       hit: true, damage: result.totalDamage, damageType: result.damageType,
@@ -711,6 +730,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     });
 
     if (killed) {
+      char.monstersKilled++;
       rollMonsterLoot(party, monster);
 
       // Remove from initiative
@@ -829,6 +849,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       t.hpCurrent = hp.current;
 
       if (droppedToZero) {
+        t.timesKnockedOut++;
         t.conditions = handleDropToZero(t.conditions);
         t.deathSaves = resetDeathSaves();
         broadcastToParty(party.id, {
@@ -881,6 +902,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     target.hpCurrent = hp.current;
 
     if (droppedToZero) {
+      target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
       broadcastToParty(party.id, {
@@ -937,6 +959,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     target.hpCurrent = hp.current;
 
     if (droppedToZero) {
+      target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
 
@@ -1079,7 +1102,11 @@ export function handleCast(userId: string, params: { spell_name: string; target_
         const idx = party.monsters.findIndex((m) => m.id === target.id);
         if (idx !== -1) party.monsters[idx] = monster;
 
+        // Track lifetime stats
+        char.totalDamageDealt += result.totalEffect;
+
         if (killed) {
+          char.monstersKilled++;
           rollMonsterLoot(party, monster);
 
           // Remove from initiative
@@ -1604,12 +1631,17 @@ export function handleReaction(userId: string, params: { action: string; spell_n
         const idx = party.monsters.findIndex((m) => m.id === target.id);
         if (idx !== -1) party.monsters[idx] = monster;
 
+        // Track lifetime stats
+        char.totalDamageDealt += result.totalDamage;
+        if (result.critical) char.criticalHits++;
+
         logEvent(party, "reaction", char.id, {
           action: "opportunity_attack", targetName: target.name,
           hit: true, damage: result.totalDamage, killed,
         });
 
         if (killed) {
+          char.monstersKilled++;
           rollMonsterLoot(party, monster);
 
           if (party.session) {
@@ -1900,6 +1932,9 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
   });
   notifyTurnChange(party);
+
+  // Track DM stats
+  persistDmStats(userId, { totalEncountersRun: 1, totalMonsterSpawns: monsters.length });
 
   return {
     success: true,
@@ -2204,6 +2239,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id:
   char.hpCurrent = hp.current;
 
   if (droppedToZero) {
+    char.timesKnockedOut++;
     char.conditions = handleDropToZero(char.conditions);
     char.deathSaves = resetDeathSaves();
 
@@ -2370,6 +2406,7 @@ export function handleAwardGold(userId: string, params: { player_id?: string; am
     const char = resolveCharacter(params.player_id);
     if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
     char.gold = Math.max(0, char.gold + params.amount);
+    if (params.amount > 0) char.goldEarned += params.amount;
     logEvent(party, "gold_award", null, { characterName: char.name, amount: params.amount, newTotal: char.gold });
     return { success: true, data: { player: char.name, amount: params.amount, new_total: char.gold } };
   }
@@ -2381,6 +2418,7 @@ export function handleAwardGold(userId: string, params: { player_id?: string; am
     const c = characters.get(mid);
     if (c) {
       c.gold = Math.max(0, c.gold + goldEach);
+      if (goldEach > 0) c.goldEarned += goldEach;
       results.push({ name: c.name, received: goldEach, new_total: c.gold });
     }
   }
@@ -2591,7 +2629,20 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   }
 
   logEvent(party, "session_end", null, { summary: params.summary });
+
+  // Track lifetime stats for all party members
+  for (const mid of party.members) {
+    const m = characters.get(mid);
+    if (m) {
+      m.sessionsPlayed++;
+      if (params.completed_dungeon) m.dungeonsCleared++;
+    }
+  }
+
   snapshotCharacters(party);
+
+  // Persist DM stats
+  persistDmStats(userId, { sessionsAsDM: 1, dungeonsCompletedAsDM: params.completed_dungeon ? 1 : 0 });
 
   // Mark session as ended in DB
   if (party.dbReady) {
@@ -3554,6 +3605,11 @@ function formParty(match: MatchResult): void {
   })();
 
   parties.set(partyId, party);
+
+  // Track DM stats
+  if (match.dm.userId) {
+    persistDmStats(match.dm.userId, { totalPartiesLed: 1 });
+  }
 }
 
 function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
@@ -3574,6 +3630,45 @@ function logEvent(party: GameParty | null, type: string, actorId: string | null,
       }).catch((err) => console.error("[DB] Failed to persist event:", err));
     });
   }
+}
+
+function persistDmStats(userId: string, increments: { sessionsAsDM?: number; dungeonsCompletedAsDM?: number; totalPartiesLed?: number; totalEncountersRun?: number; totalMonsterSpawns?: number }): void {
+  const dbUserId = getDbUserId(userId);
+  if (!dbUserId) return;
+
+  // Find existing user info for username
+  const user = [...characters.values()].find((c) => c.userId === userId);
+  // Also check auth users
+  const username = user?.name ?? "DM";
+
+  // Upsert: try update first, insert if not found
+  db.select().from(dmStatsTable).where(eq(dmStatsTable.userId, dbUserId)).then((rows) => {
+    if (rows.length > 0) {
+      const row = rows[0];
+      db.update(dmStatsTable).set({
+        sessionsAsDM: row.sessionsAsDM + (increments.sessionsAsDM ?? 0),
+        dungeonsCompletedAsDM: row.dungeonsCompletedAsDM + (increments.dungeonsCompletedAsDM ?? 0),
+        totalPartiesLed: row.totalPartiesLed + (increments.totalPartiesLed ?? 0),
+        totalEncountersRun: row.totalEncountersRun + (increments.totalEncountersRun ?? 0),
+        totalMonsterSpawns: row.totalMonsterSpawns + (increments.totalMonsterSpawns ?? 0),
+      }).where(eq(dmStatsTable.id, row.id))
+        .catch((err) => console.error("[DB] Failed to update DM stats:", err));
+    } else {
+      // Need the username from the users table
+      db.select({ username: usersTable.username }).from(usersTable).where(eq(usersTable.id, dbUserId)).then((userRows) => {
+        const uname = userRows[0]?.username ?? "DM";
+        db.insert(dmStatsTable).values({
+          userId: dbUserId,
+          username: uname,
+          sessionsAsDM: increments.sessionsAsDM ?? 0,
+          dungeonsCompletedAsDM: increments.dungeonsCompletedAsDM ?? 0,
+          totalPartiesLed: increments.totalPartiesLed ?? 0,
+          totalEncountersRun: increments.totalEncountersRun ?? 0,
+          totalMonsterSpawns: increments.totalMonsterSpawns ?? 0,
+        }).catch((err) => console.error("[DB] Failed to insert DM stats:", err));
+      }).catch((err) => console.error("[DB] Failed to look up username for DM stats:", err));
+    }
+  }).catch((err) => console.error("[DB] Failed to read DM stats:", err));
 }
 
 function snapshotCharacters(party: GameParty): void {
@@ -3605,6 +3700,13 @@ function snapshotCharacters(party: GameParty): void {
         avatarUrl: char.avatarUrl,
         description: char.description,
         isAlive: char.hpCurrent > 0 && !char.conditions.includes("dead"),
+        monstersKilled: char.monstersKilled,
+        dungeonsCleared: char.dungeonsCleared,
+        sessionsPlayed: char.sessionsPlayed,
+        totalDamageDealt: char.totalDamageDealt,
+        criticalHits: char.criticalHits,
+        timesKnockedOut: char.timesKnockedOut,
+        goldEarned: char.goldEarned,
       };
 
       if (char.dbCharId) {
@@ -4029,6 +4131,13 @@ export async function loadPersistedCharacters(): Promise<number> {
         conditions: [],
         deathSaves: { successes: 0, failures: 0 },
         dbCharId: row.id,
+        monstersKilled: row.monstersKilled ?? 0,
+        dungeonsCleared: row.dungeonsCleared ?? 0,
+        sessionsPlayed: row.sessionsPlayed ?? 0,
+        totalDamageDealt: row.totalDamageDealt ?? 0,
+        criticalHits: row.criticalHits ?? 0,
+        timesKnockedOut: row.timesKnockedOut ?? 0,
+        goldEarned: row.goldEarned ?? 0,
       };
 
       characters.set(charId, char);

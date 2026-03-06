@@ -21,6 +21,7 @@ import {
   journalEntries as journalEntriesTable,
   tavernPosts as tavernPostsTable,
   tavernReplies as tavernRepliesTable,
+  dmStats as dmStatsTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull } from "drizzle-orm";
 
@@ -424,6 +425,13 @@ spectator.get("/leaderboard", async (c) => {
     xp: number;
     avatarUrl: string | null;
     description: string | null;
+    monstersKilled: number;
+    dungeonsCleared: number;
+    sessionsPlayed: number;
+    totalDamageDealt: number;
+    criticalHits: number;
+    timesKnockedOut: number;
+    goldEarned: number;
   }
 
   // Merge in-memory + DB characters (dedup by DB id)
@@ -433,6 +441,10 @@ spectator.get("/leaderboard", async (c) => {
       id: char.dbCharId ?? id, name: char.name,
       class: char.class, race: char.race, level: char.level, xp: char.xp,
       avatarUrl: char.avatarUrl, description: char.description,
+      monstersKilled: char.monstersKilled ?? 0, dungeonsCleared: char.dungeonsCleared ?? 0,
+      sessionsPlayed: char.sessionsPlayed ?? 0, totalDamageDealt: char.totalDamageDealt ?? 0,
+      criticalHits: char.criticalHits ?? 0, timesKnockedOut: char.timesKnockedOut ?? 0,
+      goldEarned: char.goldEarned ?? 0,
     });
   }
 
@@ -445,11 +457,22 @@ spectator.get("/leaderboard", async (c) => {
       class: charactersTable.class, race: charactersTable.race,
       level: charactersTable.level, xp: charactersTable.xp,
       avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
+      monstersKilled: charactersTable.monstersKilled,
+      dungeonsCleared: charactersTable.dungeonsCleared,
+      sessionsPlayed: charactersTable.sessionsPlayed,
+      totalDamageDealt: charactersTable.totalDamageDealt,
+      criticalHits: charactersTable.criticalHits,
+      timesKnockedOut: charactersTable.timesKnockedOut,
+      goldEarned: charactersTable.goldEarned,
     }).from(charactersTable);
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
-        charMap.set(ch.id, ch);
+        charMap.set(ch.id, {
+          ...ch,
+          avatarUrl: ch.avatarUrl ?? null,
+          description: ch.description ?? null,
+        });
       }
     }
     dbTotalCharacters = charMap.size;
@@ -527,8 +550,40 @@ spectator.get("/leaderboard", async (c) => {
     .sort((a, b) => b.eventCount - a.eventCount)
     .slice(0, 10);
 
+  // Dungeons Cleared leaderboard
+  const dungeons_cleared = [...allChars]
+    .filter((c) => c.dungeonsCleared > 0)
+    .sort((a, b) => b.dungeonsCleared - a.dungeonsCleared || b.level - a.level)
+    .slice(0, 10)
+    .map((c) => ({
+      name: c.name, class: c.class, race: c.race,
+      level: c.level, dungeons_cleared: c.dungeonsCleared,
+      avatarUrl: c.avatarUrl, description: c.description,
+      monstersKilled: c.monstersKilled,
+    }));
+
+  // Best DMs leaderboard
+  let best_dms: { name: string; sessions: number; dungeons_completed: number; parties_led: number; encounters_run: number; rating: number; style: string }[] = [];
+  try {
+    const dmStatsRows = await db.select().from(dmStatsTable)
+      .orderBy(desc(dmStatsTable.sessionsAsDM))
+      .limit(10);
+
+    best_dms = dmStatsRows.map((dm) => ({
+      name: dm.username,
+      sessions: dm.sessionsAsDM,
+      dungeons_completed: dm.dungeonsCompletedAsDM,
+      parties_led: dm.totalPartiesLed,
+      encounters_run: dm.totalEncountersRun,
+      rating: 0,
+      style: "",
+    }));
+  } catch (err) {
+    console.error("[DB] Failed to fetch DM stats for leaderboard:", err);
+  }
+
   return c.json({
-    leaderboards: { highestLevel, mostXP, longestParties },
+    leaderboards: { highestLevel, mostXP, longestParties, dungeons_cleared, best_dms },
     totalCharacters: dbTotalCharacters,
     totalParties: dbTotalParties,
   });
