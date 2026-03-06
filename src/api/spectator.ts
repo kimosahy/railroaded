@@ -66,11 +66,7 @@ spectator.get("/parties", async (c) => {
     monsterCount: number;
   }[] = [];
 
-  // Track DB IDs of in-memory parties to avoid duplicates
-  const knownDbIds = new Set<string>();
-
   for (const [id, party] of state.parties) {
-    if (party.dbPartyId) knownDbIds.add(party.dbPartyId);
 
     // Skip parties with no active session — they're historical, not live
     if (!party.session) continue;
@@ -105,69 +101,9 @@ spectator.get("/parties", async (c) => {
     });
   }
 
-  // Fall back to DB for parties not in memory — only include those with an active game session
-  try {
-    // Get party IDs that have an active session in the DB
-    const activeSessionRows = await db.select({
-      partyId: gameSessionsTable.partyId,
-    }).from(gameSessionsTable).where(eq(gameSessionsTable.isActive, true));
-    const activePartyIds = new Set(activeSessionRows.map((r) => r.partyId));
-
-    const dbParties = await db.select({
-      id: partiesTable.id,
-      name: partiesTable.name,
-      dmUserId: partiesTable.dmUserId,
-      status: partiesTable.status,
-    }).from(partiesTable);
-
-    const dbChars = await db.select({
-      id: charactersTable.id,
-      name: charactersTable.name,
-      class: charactersTable.class,
-      level: charactersTable.level,
-      partyId: charactersTable.partyId,
-      avatarUrl: charactersTable.avatarUrl,
-      description: charactersTable.description,
-    }).from(charactersTable).where(isNotNull(charactersTable.partyId));
-
-    const charsByParty = new Map<string, typeof dbChars>();
-    for (const ch of dbChars) {
-      const list = charsByParty.get(ch.partyId!) ?? [];
-      list.push(ch);
-      charsByParty.set(ch.partyId!, list);
-    }
-
-    for (const dbParty of dbParties) {
-      if (knownDbIds.has(dbParty.id)) continue;
-
-      // Skip ended/disbanded parties
-      if (dbParty.status === "ended" || dbParty.status === "completed" || dbParty.status === "disbanded") continue;
-
-      // Skip parties with no active session — they're stale from a previous server run
-      if (!activePartyIds.has(dbParty.id)) continue;
-
-      const members = (charsByParty.get(dbParty.id) ?? []).map((m) => ({
-        id: m.id,
-        name: m.name,
-        class: m.class,
-        level: m.level,
-        avatarUrl: m.avatarUrl ?? null,
-        description: m.description ?? null,
-      }));
-
-      partyList.push({
-        id: dbParty.id,
-        name: dbParty.name ?? "Unknown Party",
-        members,
-        phase: null, // DB parties have no active session phase
-        currentRoom: null,
-        dmUserId: dbParty.dmUserId ?? null,
-        monsterCount: 0,
-      });
-    }
-  } catch (err) {
-    console.error("[DB] Failed to fetch DB parties:", err);
-  }
+  // Live parties = in-memory only. DB parties are historical (shown in Past Sessions).
+  // loadPersistedState() restores active sessions to memory on startup,
+  // so anything not in memory is genuinely not running.
 
   return c.json({ parties: partyList });
 });
