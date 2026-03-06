@@ -1872,6 +1872,7 @@ export function handleNarrateTo(userId: string, params: { player_id: string; tex
 }
 
 export function handleSpawnEncounter(userId: string, params: { monsters: { template_name: string; count: number }[] }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  try {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
   if (!party.session) return { success: false, error: "No active session." };
@@ -1944,6 +1945,10 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
       phase: "combat",
     },
   };
+  } catch (err) {
+    console.error("[spawn-encounter] Unexpected error:", err);
+    return { success: false, error: `Internal error spawning encounter: ${(err as Error).message}` };
+  }
 }
 
 export function handleTriggerEncounter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -3628,7 +3633,7 @@ function logEvent(party: GameParty | null, type: string, actorId: string | null,
         data,
         createdAt: timestamp,
       }).catch((err) => console.error("[DB] Failed to persist event:", err));
-    });
+    }).catch((err) => console.error("[DB] logEvent: dbReady rejected:", err));
   }
 }
 
