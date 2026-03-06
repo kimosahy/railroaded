@@ -3838,8 +3838,13 @@ try {
 
 export async function loadPersistedState(): Promise<number> {
   try {
-    // Find active sessions
-    const activeSessions = await db.select().from(gameSessionsTable).where(eq(gameSessionsTable.isActive, true));
+    // Mark all previously-active sessions as inactive on startup.
+    // Without connected players/DM, restored sessions are ghost parties.
+    // Fresh sessions should be created by agents after restart.
+    await db.update(gameSessionsTable).set({ isActive: false }).where(eq(gameSessionsTable.isActive, true));
+
+    // Nothing to restore — all sessions deactivated above
+    const activeSessions: typeof gameSessionsTable.$inferSelect[] = [];
     let loaded = 0;
 
     for (const sessionRow of activeSessions) {
