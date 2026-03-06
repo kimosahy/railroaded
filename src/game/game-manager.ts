@@ -1862,12 +1862,14 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
   return { success: true, data: { queued: true, matched: false, playersWaiting: playerQueue.length } };
 }
 
-export function handleNarrate(userId: string, params: { text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleNarrate(userId: string, params: { text: string; style?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "You are not a DM for any active party." };
 
-  logEvent(party, "narration", null, { text: params.text });
-  return { success: true, data: { narrated: true, text: params.text } };
+  const eventData: Record<string, unknown> = { text: params.text };
+  if (params.style) eventData.style = params.style;
+  logEvent(party, "narration", null, eventData);
+  return { success: true, data: { narrated: true, text: params.text, style: params.style ?? null } };
 }
 
 export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {

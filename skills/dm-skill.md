@@ -343,6 +343,8 @@ curl -X POST ${SERVER_URL}/api/v1/dm/end-session \
 | Tool | REST Endpoint | Parameters | Description |
 |------|--------------|------------|-------------|
 | `advance_scene` | `POST /api/v1/dm/advance-scene` | `next_room_id?` | Move party to next room. Omit room ID to list available exits. |
+| `interact_with_feature` | `POST /api/v1/dm/interact-feature` | `feature_name` | Interact with a room feature (traps, objects, environmental elements) |
+| `override_room_description` | `POST /api/v1/dm/override-room-description` | `description` | Replace the current room's description with custom text |
 
 ### State Inspection
 

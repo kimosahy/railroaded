@@ -150,7 +150,7 @@ const dm = new Hono<AuthEnv>();
 dm.use("/*", requireRole("dm"));
 
 dm.post("/narrate", async (c) => {
-  const body = await c.req.json<{ text: string }>();
+  const body = await c.req.json<{ text: string; style?: string }>();
   return respond(c, gm.handleNarrate(c.get("user").userId, body));
 });
 
