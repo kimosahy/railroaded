@@ -1,0 +1,279 @@
+import { describe, test, expect, beforeEach } from "bun:test";
+import {
+  handleCreateCharacter,
+  handleQueueForParty,
+  handleDMQueueForParty,
+  handleSpawnEncounter,
+  handleAttack,
+  handleMonsterAttack,
+  handleAdvanceScene,
+  handleEndSession,
+  handleAwardXp,
+  getState,
+  getCharacterForUser,
+} from "../src/game/game-manager.ts";
+
+// --- Helpers ---
+
+let tc = 0;
+function uid(prefix: string) { return `${prefix}-${++tc}`; }
+
+function resetState() {
+  const { characters, parties, playerQueue, dmQueue } = getState();
+  characters.clear();
+  parties.clear();
+  playerQueue.length = 0;
+  dmQueue.length = 0;
+}
+
+function createChar(userId: string, overrides?: Record<string, unknown>) {
+  return handleCreateCharacter(userId, {
+    name: `Char-${userId}`,
+    race: "human",
+    class: "fighter",
+    ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+    ...overrides,
+  } as Parameters<typeof handleCreateCharacter>[1]);
+}
+
+function createTestParty() {
+  const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
+  const dmId = uid("dm");
+  pids.forEach((id) => createChar(id));
+  pids.forEach((id) => handleQueueForParty(id));
+  handleDMQueueForParty(dmId);
+  const { parties } = getState();
+  const partyId = [...parties.keys()].pop()!;
+  return { partyId, playerUserIds: pids, dmUserId: dmId };
+}
+
+// --- Tests ---
+
+beforeEach(resetState);
+
+// (a) Character creation
+
+describe("Character creation", () => {
+  test("creates character with valid params → success, character in state", () => {
+    const userId = uid("u");
+    const result = createChar(userId);
+    expect(result.success).toBe(true);
+    expect(result.character).toBeDefined();
+    expect(result.character!.name).toBe(`Char-${userId}`);
+    expect(result.character!.userId).toBe(userId);
+    const { characters } = getState();
+    expect(characters.has(result.character!.id)).toBe(true);
+  });
+
+  test("rejects duplicate userId", () => {
+    const userId = uid("u");
+    createChar(userId);
+    const result = createChar(userId, { name: "Duplicate" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("already have a character");
+  });
+
+  test("rejects invalid ability scores", () => {
+    const result = handleCreateCharacter(uid("u"), {
+      name: "Bad",
+      race: "human",
+      class: "fighter",
+      ability_scores: { str: 20, dex: 20, con: 20, int: 20, wis: 20, cha: 20 },
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+  });
+});
+
+// (b) Party formation (matchmaker)
+
+describe("Party formation", () => {
+  test("4 players + 1 DM queue → party formed", () => {
+    const { partyId } = createTestParty();
+    const { parties } = getState();
+    expect(parties.has(partyId)).toBe(true);
+  });
+
+  test("party has correct members and DM", () => {
+    const { partyId, dmUserId } = createTestParty();
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.members).toHaveLength(4);
+    expect(party.dmUserId).toBe(dmUserId);
+    expect(party.session).not.toBeNull();
+    expect(party.session!.phase).toBe("exploration");
+  });
+});
+
+// (c) handleSpawnEncounter
+
+describe("handleSpawnEncounter", () => {
+  test("DM spawns monsters → combat, monsters in state, initiative rolled", () => {
+    const { partyId, dmUserId } = createTestParty();
+    const result = handleSpawnEncounter(dmUserId, {
+      monsters: [{ template_name: "Goblin", count: 2 }],
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("combat");
+    expect(result.data!.monsters).toHaveLength(2);
+    expect((result.data!.initiative as unknown[]).length).toBeGreaterThan(0);
+
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.session!.phase).toBe("combat");
+    expect(party.monsters).toHaveLength(2);
+    expect(party.session!.initiativeOrder.length).toBeGreaterThan(0);
+  });
+
+  test("non-DM user cannot spawn", () => {
+    const { playerUserIds } = createTestParty();
+    const result = handleSpawnEncounter(playerUserIds[0]!, {
+      monsters: [{ template_name: "Goblin", count: 1 }],
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("spawning when already in combat replaces encounter", () => {
+    const { partyId, dmUserId } = createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const result = handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 3 }] });
+    expect(result.success).toBe(true);
+    const { parties } = getState();
+    expect(parties.get(partyId)!.monsters).toHaveLength(3);
+  });
+});
+
+// (d) handleAttack
+
+describe("handleAttack", () => {
+  test("player attacks monster → resolves hit or miss", () => {
+    const { partyId, playerUserIds, dmUserId } = createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    const monsterId = party.monsters[0]!.id;
+
+    const result = handleAttack(playerUserIds[0]!, { target_id: monsterId });
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+    expect(typeof result.data!.hit).toBe("boolean");
+  });
+
+  test("attack when not in combat → error", () => {
+    const { playerUserIds } = createTestParty();
+    const result = handleAttack(playerUserIds[0]!, { target_id: "monster-999" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("only attack during combat");
+  });
+
+  test.todo("attack when unconscious (0 HP) → error (guard not yet implemented)");
+
+  test("killing a monster removes it from initiative and ends combat", () => {
+    const { partyId, playerUserIds, dmUserId } = createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    const monsterId = party.monsters[0]!.id;
+
+    // Make monster trivially easy to kill
+    party.monsters[0]!.hpCurrent = 1;
+    party.monsters[0]!.ac = 1;
+
+    // Attack until monster dies (statistically near-certain within 20 tries)
+    for (let i = 0; i < 20; i++) {
+      if (!party.monsters.find((m) => m.id === monsterId)?.isAlive) break;
+      if (party.session?.phase !== "combat") break;
+      handleAttack(playerUserIds[i % 4]!, { target_id: monsterId });
+    }
+
+    const monster = party.monsters.find((m) => m.id === monsterId)!;
+    expect(monster.isAlive).toBe(false);
+    // Single monster: combat should have ended
+    expect(party.session!.phase).toBe("exploration");
+  });
+});
+
+// (e) handleMonsterAttack
+
+describe("handleMonsterAttack", () => {
+  test("DM commands monster attack → resolves against player", () => {
+    const { partyId, dmUserId } = createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties, characters } = getState();
+    const party = parties.get(partyId)!;
+    const monster = party.monsters[0]!;
+
+    // Set initiative so monster goes first
+    const monsterIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === monster.id);
+    party.session!.currentTurn = monsterIdx;
+
+    const targetCharId = party.members[0]!;
+    const result = handleMonsterAttack(dmUserId, {
+      monster_id: monster.id,
+      target_id: targetCharId,
+    });
+    expect(result.success).toBe(true);
+    expect(typeof result.data!.hit).toBe("boolean");
+  });
+
+  test.todo("monster attacks unconscious player → death save failures (not yet implemented)");
+});
+
+// (f) handleAdvanceScene
+
+describe("handleAdvanceScene", () => {
+  test("DM advances to next room → room changes", () => {
+    const { partyId, dmUserId } = createTestParty();
+    const result = handleAdvanceScene(dmUserId, { next_room_id: "room-2" });
+    expect(result.success).toBe(true);
+    expect(result.data!.advanced).toBe(true);
+    expect(result.data!.room).toBeDefined();
+
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.session!.phase).toBe("exploration");
+  });
+
+  test("advance during combat exits combat", () => {
+    const { partyId, dmUserId } = createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.session!.phase).toBe("combat");
+
+    const result = handleAdvanceScene(dmUserId, {});
+    expect(result.success).toBe(true);
+    expect(party.session!.phase).toBe("exploration");
+    expect(party.monsters).toHaveLength(0);
+  });
+});
+
+// (g) handleEndSession
+
+describe("handleEndSession", () => {
+  test("end session → session state updated, events logged", () => {
+    const { partyId, dmUserId } = createTestParty();
+    const result = handleEndSession(dmUserId, { summary: "Session complete" });
+    expect(result.success).toBe(true);
+    expect(result.data!.ended).toBe(true);
+
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.session!.isActive).toBe(false);
+    expect(party.session!.endedAt).not.toBeNull();
+    expect(party.events.length).toBeGreaterThan(0);
+  });
+
+  test("XP awarded before end persists", () => {
+    const { playerUserIds, dmUserId } = createTestParty();
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    const xpBefore = char.xp;
+
+    handleAwardXp(dmUserId, { amount: 400 });
+    expect(char.xp).toBe(xpBefore + 100); // 400 / 4 members
+
+    handleEndSession(dmUserId, { summary: "Done" });
+    expect(char.xp).toBe(xpBefore + 100); // persists
+  });
+});
