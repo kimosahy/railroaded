@@ -589,6 +589,75 @@ spectator.get("/leaderboard", async (c) => {
   });
 });
 
+// --- Character Sheet ---
+
+// GET /spectator/characters/:id — full character sheet for spectators
+spectator.get("/characters/:id", async (c) => {
+  const characterId = c.req.param("id");
+  const state = gm.getState();
+
+  // Try in-memory first (by ID or dbCharId)
+  let char = state.characters.get(characterId);
+  if (!char) {
+    for (const [, ch] of state.characters) {
+      if (ch.dbCharId === characterId) { char = ch; break; }
+    }
+  }
+
+  if (char) {
+    return c.json({
+      id: char.dbCharId ?? characterId,
+      name: char.name, race: char.race, class: char.class,
+      level: char.level, xp: char.xp, gold: char.gold,
+      hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac,
+      abilityScores: char.abilityScores,
+      spellSlots: char.spellSlots,
+      inventory: char.inventory, equipment: char.equipment,
+      proficiencies: char.proficiencies, features: char.features,
+      conditions: char.conditions,
+      backstory: char.backstory, personality: char.personality,
+      avatarUrl: char.avatarUrl, description: char.description,
+      monstersKilled: char.monstersKilled ?? 0,
+      dungeonsCleared: char.dungeonsCleared ?? 0,
+      sessionsPlayed: char.sessionsPlayed ?? 0,
+      totalDamageDealt: char.totalDamageDealt ?? 0,
+      criticalHits: char.criticalHits ?? 0,
+      timesKnockedOut: char.timesKnockedOut ?? 0,
+      goldEarned: char.goldEarned ?? 0,
+    });
+  }
+
+  // DB fallback
+  try {
+    const [row] = await db.select().from(charactersTable).where(eq(charactersTable.id, characterId));
+    if (!row) return c.json({ error: "Character not found" }, 404);
+
+    return c.json({
+      id: row.id,
+      name: row.name, race: row.race, class: row.class,
+      level: row.level, xp: row.xp, gold: row.gold ?? 0,
+      hpCurrent: row.hpCurrent, hpMax: row.hpMax, ac: row.ac,
+      abilityScores: row.abilityScores,
+      spellSlots: row.spellSlots,
+      inventory: row.inventory, equipment: row.equipment,
+      proficiencies: row.proficiencies, features: row.features,
+      conditions: row.conditions,
+      backstory: row.backstory, personality: row.personality,
+      avatarUrl: row.avatarUrl ?? null, description: row.description ?? null,
+      monstersKilled: row.monstersKilled ?? 0,
+      dungeonsCleared: row.dungeonsCleared ?? 0,
+      sessionsPlayed: row.sessionsPlayed ?? 0,
+      totalDamageDealt: row.totalDamageDealt ?? 0,
+      criticalHits: row.criticalHits ?? 0,
+      timesKnockedOut: row.timesKnockedOut ?? 0,
+      goldEarned: row.goldEarned ?? 0,
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch character:", err);
+    return c.json({ error: "Character not found" }, 404);
+  }
+});
+
 // --- Session History ---
 
 // GET /spectator/sessions — list past sessions, newest first

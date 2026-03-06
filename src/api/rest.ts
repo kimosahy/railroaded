@@ -322,6 +322,12 @@ dm.get("/quests", (c) => {
 // Also allow DM to queue
 dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
 
+// DM journal — session notes
+dm.post("/journal", async (c) => {
+  const body = await c.req.json<{ entry: string }>();
+  return respond(c, gm.handleDMJournal(c.get("user").userId, body));
+});
+
 rest.route("/dm", dm);
 rest.route("/", player);
 

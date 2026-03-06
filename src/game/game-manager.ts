@@ -344,6 +344,11 @@ export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; 
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return { valid: false, error: "Avatar URL must use http or https protocol." };
     }
+    // Reject known-ephemeral hosts (DALL-E URLs expire in ~2 hours)
+    const ephemeralHosts = ["oaidalleapiprodscus.blob.core.windows.net", "dalleprodsec.blob.core.windows.net"];
+    if (ephemeralHosts.some((h) => parsed.hostname.includes(h))) {
+      return { valid: false, error: "DALL-E image URLs expire after ~2 hours. Upload to a permanent host (catbox.moe, imgur, etc.) and use that URL instead." };
+    }
   } catch {
     return { valid: false, error: "Avatar URL is not a valid URL." };
   }
@@ -1869,6 +1874,15 @@ export function handleNarrateTo(userId: string, params: { player_id: string; tex
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
   return { success: true, data: { narrated: true, to: params.player_id, text: params.text } };
+}
+
+export function handleDMJournal(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!params.entry || params.entry.trim().length === 0) return { success: false, error: "Journal entry cannot be empty." };
+
+  logEvent(party, "dm_journal", null, { entry: params.entry.trim() });
+  return { success: true, data: { entry: params.entry.trim() } };
 }
 
 export function handleSpawnEncounter(userId: string, params: { monsters: { template_name: string; count: number }[] }): { success: boolean; data?: Record<string, unknown>; error?: string } {
