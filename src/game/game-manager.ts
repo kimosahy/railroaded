@@ -65,7 +65,7 @@ import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 
 // --- In-memory state ---
@@ -3969,6 +3969,76 @@ export async function loadPersistedState(): Promise<number> {
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load persisted state:", err);
+    return 0;
+  }
+}
+
+/**
+ * Load all characters from DB into memory so they persist across restarts.
+ * For each user, loads the most recent character (by createdAt).
+ * Resets HP to max and clears conditions/deathSaves (restart = long rest).
+ */
+export async function loadPersistedCharacters(): Promise<number> {
+  try {
+    const rows = await db.select().from(charactersTable).orderBy(desc(charactersTable.createdAt));
+    let loaded = 0;
+    const seenUsers = new Set<string>();
+
+    for (const row of rows) {
+      const userId = findUserIdByDbId(row.userId);
+      if (!userId) continue;
+
+      // One character per user — keep the most recent (rows ordered by createdAt DESC)
+      if (seenUsers.has(userId)) continue;
+      seenUsers.add(userId);
+
+      // Skip if user already has a character in memory (from loadPersistedState)
+      if (charactersByUser.has(userId)) continue;
+
+      const charId = nextId("char");
+      const abilityScores = row.abilityScores as AbilityScores;
+      const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+      const hitDice = row.hitDice as CharacterSheet["hitDice"];
+      const equipment = row.equipment as CharacterSheet["equipment"];
+
+      const char: GameCharacter = {
+        name: row.name,
+        race: row.race,
+        class: row.class,
+        level: row.level,
+        xp: row.xp,
+        gold: row.gold ?? 0,
+        abilityScores,
+        hpMax: row.hpMax,
+        hpCurrent: row.hpMax, // restart = long rest, full HP
+        ac: row.ac,
+        spellSlots,
+        hitDice,
+        inventory: row.inventory,
+        equipment,
+        proficiencies: row.proficiencies,
+        features: row.features,
+        backstory: row.backstory,
+        personality: row.personality,
+        playstyle: row.playstyle,
+        avatarUrl: row.avatarUrl ?? null,
+        description: row.description ?? null,
+        id: charId,
+        userId,
+        partyId: null, // no active party after restart
+        conditions: [],
+        deathSaves: { successes: 0, failures: 0 },
+        dbCharId: row.id,
+      };
+
+      characters.set(charId, char);
+      charactersByUser.set(userId, charId);
+      loaded++;
+    }
+
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load persisted characters:", err);
     return 0;
   }
 }

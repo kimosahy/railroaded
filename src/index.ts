@@ -10,7 +10,7 @@ import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
 import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
-import { loadPersistedState, loadCustomMonsters, loadCampaigns, loadNpcs } from "./game/game-manager.ts";
+import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs } from "./game/game-manager.ts";
 
 const app = new Hono();
 
@@ -87,6 +87,8 @@ app.route("/", openapi);
 // Load persisted state from DB
 const userCount = await loadPersistedUsers();
 if (userCount > 0) console.log(`  Loaded ${userCount} users from DB`);
+const charCount = await loadPersistedCharacters();
+if (charCount > 0) console.log(`  Loaded ${charCount} characters from DB`);
 const sessionCount = await loadPersistedState();
 if (sessionCount > 0) console.log(`  Loaded ${sessionCount} active sessions from DB`);
 const customMonsterCount = await loadCustomMonsters();
