@@ -205,12 +205,12 @@ dm.post("/request-contested-check", async (c) => {
 });
 
 dm.post("/environment-damage", async (c) => {
-  const body = await c.req.json<{ player_id: string; notation: string; type: string }>();
+  const body = await c.req.json<{ player_id?: string; target_id?: string; notation?: string; damage?: number | string; type?: string; damage_type?: string; description?: string }>();
   return respond(c, gm.handleDealEnvironmentDamage(c.get("user").userId, body));
 });
 
 dm.post("/advance-scene", async (c) => {
-  const body = await c.req.json<{ next_room_id?: string }>();
+  const body = await c.req.json<{ next_room_id?: string; exit_id?: string }>();
   return respond(c, gm.handleAdvanceScene(c.get("user").userId, body));
 });
 

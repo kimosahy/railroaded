@@ -2232,11 +2232,18 @@ export function handleRequestContestedCheck(userId: string, params: {
   };
 }
 
-export function handleDealEnvironmentDamage(userId: string, params: { player_id: string; notation: string; type: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  const char = resolveCharacter(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+export function handleDealEnvironmentDamage(userId: string, params: { player_id?: string; target_id?: string; notation?: string; damage?: number | string; type?: string; damage_type?: string; description?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  // Accept both param styles: {player_id, notation, type} and {target_id, damage, damage_type}
+  const playerId = params.player_id ?? params.target_id;
+  const damageNotation = params.notation ?? (typeof params.damage === "number" ? `${params.damage}d1` : params.damage) ?? "1d6";
+  const damageType = params.type ?? params.damage_type ?? "untyped";
 
-  const dmgRoll = roll(params.notation);
+  if (!playerId) return { success: false, error: "player_id or target_id is required." };
+
+  const char = resolveCharacter(playerId);
+  if (!char) return { success: false, error: `Player ${playerId} not found. Use character IDs from get_party_state (e.g. char-1).` };
+
+  const dmgRoll = roll(damageNotation);
   const { hp, droppedToZero } = applyDamage(
     { current: char.hpCurrent, max: char.hpMax, temp: 0 },
     dmgRoll.total
@@ -2254,8 +2261,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id:
         type: "character_down",
         characterId: char.id,
         characterName: char.name,
-        cause: `environment (${params.type})`,
-        message: `${char.name} has fallen unconscious from ${params.type} damage!`,
+        cause: `environment (${damageType})`,
+        message: `${char.name} has fallen unconscious from ${damageType} damage!`,
       });
 
       if (party.dmUserId) {
@@ -2263,9 +2270,9 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id:
           type: "character_down",
           characterId: char.id,
           characterName: char.name,
-          cause: `environment (${params.type})`,
+          cause: `environment (${damageType})`,
           hpMax: char.hpMax,
-          message: `${char.name} has dropped to 0 HP from ${params.type} damage!`,
+          message: `${char.name} has dropped to 0 HP from ${damageType} damage!`,
         });
       }
     }
@@ -2274,15 +2281,18 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id:
   return {
     success: true,
     data: {
-      player: char.name, damage: dmgRoll.total, type: params.type,
+      player: char.name, damage: dmgRoll.total, type: damageType,
       hpRemaining: char.hpCurrent, droppedToZero,
     },
   };
 }
 
-export function handleAdvanceScene(userId: string, params: { next_room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
+
+  // Accept both next_room_id and exit_id (agents send either)
+  const nextRoom = params.next_room_id ?? params.exit_id;
 
   // Exit combat if currently in combat
   if (party.session && party.session.phase === "combat") {
@@ -2292,8 +2302,8 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
     snapshotCharacters(party);
   }
 
-  if (params.next_room_id && party.dungeonState) {
-    const newState = moveToRoom(party.dungeonState, params.next_room_id);
+  if (nextRoom && party.dungeonState) {
+    const newState = moveToRoom(party.dungeonState, nextRoom);
     if (newState) {
       party.dungeonState = newState;
       const room = getCurrentRoom(newState);
@@ -2301,7 +2311,7 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
       return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase } };
     }
     const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
-    return { success: false, error: `Cannot move to room ${params.next_room_id} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
+    return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
   }
 
   // No room specified — just advance the scene (exit combat, return available exits)
