@@ -58,13 +58,17 @@ export function shortRest(params: {
     randomFn,
   } = params;
 
-  const actualDiceToSpend = Math.min(hitDiceToSpend, hitDice.current);
+  // Don't spend hit dice if already at full HP
+  const needsHealing = hp.current < hp.max;
+  const actualDiceToSpend = needsHealing ? Math.min(hitDiceToSpend, hitDice.current) : 0;
   const healingRolls: DiceRollResult[] = [];
   let currentHP = { ...hp };
   let totalHealing = 0;
   let remainingHitDice = hitDice.current;
 
   for (let i = 0; i < actualDiceToSpend; i++) {
+    // Stop spending if already at full HP
+    if (currentHP.current >= currentHP.max) break;
     const healRoll = roll(hitDice.die, randomFn);
     const healing = Math.max(healRoll.total + conModifier, 0);
     healingRolls.push(healRoll);
@@ -87,7 +91,7 @@ export function shortRest(params: {
   return {
     hpBefore: hp.current,
     hpAfter: currentHP.current,
-    hitDiceSpent: actualDiceToSpend,
+    hitDiceSpent: hitDice.current - remainingHitDice,
     hitDiceRemaining: remainingHitDice,
     healingRolls,
     totalHealing,

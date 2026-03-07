@@ -68,6 +68,41 @@ describe("shortRest", () => {
     expect(result.hpAfter).toBe(20); // capped at max
   });
 
+  test("no hit dice spent when at full HP", () => {
+    const result = shortRest({
+      hp: { current: 20, max: 20, temp: 0 },
+      hitDice: { current: 2, max: 3, die: "1d10" },
+      conModifier: 2,
+      hitDiceToSpend: 1,
+      characterClass: "fighter",
+      characterLevel: 1,
+      spellSlots: { level_1: { current: 0, max: 0 }, level_2: { current: 0, max: 0 } },
+      randomFn: makeRoller([8]),
+    });
+    expect(result.hitDiceSpent).toBe(0);
+    expect(result.hitDiceRemaining).toBe(2);
+    expect(result.totalHealing).toBe(0);
+    expect(result.hpBefore).toBe(20);
+    expect(result.hpAfter).toBe(20);
+  });
+
+  test("stops spending hit dice once HP is full", () => {
+    const result = shortRest({
+      hp: { current: 18, max: 20, temp: 0 },
+      hitDice: { current: 3, max: 3, die: "1d10" },
+      conModifier: 2,
+      hitDiceToSpend: 3,
+      characterClass: "fighter",
+      characterLevel: 1,
+      spellSlots: { level_1: { current: 0, max: 0 }, level_2: { current: 0, max: 0 } },
+      randomFn: makeRoller([8, 5, 3]),
+    });
+    // First die heals 10 (8+2), capping at 20. Second and third should not be spent.
+    expect(result.hitDiceSpent).toBe(1);
+    expect(result.hitDiceRemaining).toBe(2);
+    expect(result.hpAfter).toBe(20);
+  });
+
   test("wizard arcane recovery on short rest", () => {
     const result = shortRest({
       hp: { current: 10, max: 10, temp: 0 },
