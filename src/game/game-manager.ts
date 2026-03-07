@@ -1294,7 +1294,17 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
 export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
-  return { success: true, data: { from: char.name, to: params.player_id, message: params.message } };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party) return { success: false, error: "Not in a party." };
+
+  const target = resolveCharacter(params.player_id);
+  if (!target || target.partyId !== party.id) return { success: false, error: "Target not in your party." };
+
+  if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself." };
+
+  logEvent(party, "whisper", char.id, { from: char.name, to: target.name, message: params.message });
+  return { success: true, data: { from: char.name, to: target.name, message: params.message } };
 }
 
 export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {

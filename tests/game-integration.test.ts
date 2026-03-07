@@ -824,7 +824,37 @@ describe("I. Communication", () => {
     const result = handleWhisper(players[0], { player_id: char2.id, message: "Secret" });
     expect(result.success).toBe(true);
     expect(result.data!.from).toBeDefined();
+    expect(result.data!.to).toBe(char2.name);
     expect(result.data!.message).toBe("Secret");
+  });
+
+  test("handleWhisper fails without party membership", async () => {
+    const loneUserId = "comms-loner";
+    await handleCreateCharacter(loneUserId, {
+      name: "LoneWolf",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
+    });
+    const result = handleWhisper(loneUserId, { player_id: players[0], message: "psst" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Not in a party.");
+  });
+
+  test("handleWhisper fails when target not in same party", async () => {
+    const otherSetup = await setupParty("comms-other");
+    const otherChar = getCharacterForUser(otherSetup.players[0])!;
+    const result = handleWhisper(players[0], { player_id: otherChar.id, message: "hey" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Target not in your party.");
+  });
+
+  test("handleWhisper fails when whispering to self", () => {
+    const char1 = getCharacterForUser(players[0])!;
+    const result = handleWhisper(players[0], { player_id: char1.id, message: "talking to myself" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("You cannot whisper to yourself.");
   });
 
   test("handleNarrate (DM) succeeds", () => {
