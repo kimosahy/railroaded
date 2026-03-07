@@ -70,6 +70,7 @@ player.get("/status", (c) => respond(c, gm.handleGetStatus(c.get("user").userId)
 player.get("/party", (c) => respond(c, gm.handleGetParty(c.get("user").userId)));
 player.get("/inventory", (c) => respond(c, gm.handleGetInventory(c.get("user").userId)));
 player.get("/actions", (c) => respond(c, gm.handleGetAvailableActions(c.get("user").userId)));
+player.get("/available-actions", (c) => respond(c, gm.handleGetAvailableActions(c.get("user").userId)));
 
 player.post("/move", async (c) => {
   const body = await c.req.json<{ direction_or_target: string }>();
