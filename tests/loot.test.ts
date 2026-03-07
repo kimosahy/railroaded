@@ -121,7 +121,7 @@ describe("handleAwardLoot validation", () => {
 
     const result = handleAwardLoot("dm-1", {
       player_id: createResult.character!.id,
-      item_id: "Nonexistent Magic Sword",
+      item_name: "Nonexistent Magic Sword",
     });
     expect(result.success).toBe(false);
     expect(result.error).toContain("Unknown item");
@@ -131,7 +131,7 @@ describe("handleAwardLoot validation", () => {
     const char = getCharacterForUser("loot-test-user-1");
     const result = handleAwardLoot("dm-1", {
       player_id: char!.id,
-      item_id: "Potion of Healing",
+      item_name: "Potion of Healing",
     });
     expect(result.success).toBe(true);
     expect(result.data!.item).toBe("Potion of Healing");
@@ -155,7 +155,7 @@ describe("handleUseItem data-driven", () => {
     const char = createResult.character!;
 
     // Give the character a potion and deal damage
-    handleAwardLoot("dm-1", { player_id: char.id, item_id: "Potion of Healing" });
+    handleAwardLoot("dm-1", { player_id: char.id, item_name: "Potion of Healing" });
     const liveChar = getCharacterForUser("use-item-user-1")!;
     liveChar.hpCurrent = 5; // take damage
 
@@ -168,7 +168,7 @@ describe("handleUseItem data-driven", () => {
 
   test("Potion of Greater Healing heals via data lookup", () => {
     const char = getCharacterForUser("use-item-user-1")!;
-    handleAwardLoot("dm-1", { player_id: char.id, item_id: "Potion of Greater Healing" });
+    handleAwardLoot("dm-1", { player_id: char.id, item_name: "Potion of Greater Healing" });
     char.hpCurrent = 3;
 
     const result = handleUseItem("use-item-user-1", { item_id: "Potion of Greater Healing" });
@@ -202,7 +202,7 @@ describe("equipment swapping", () => {
     const oldWeapon = char.equipment.weapon;
 
     // Give the character a Greatsword
-    handleAwardLoot("dm-1", { player_id: char.id, item_id: "Greatsword" });
+    handleAwardLoot("dm-1", { player_id: char.id, item_name: "Greatsword" });
 
     const result = handleEquipItem("equip-user-1", { item_name: "Greatsword" });
     expect(result.success).toBe(true);
@@ -221,7 +221,7 @@ describe("equipment swapping", () => {
     const char = getCharacterForUser("equip-user-1")!;
 
     // Give leather armor
-    handleAwardLoot("dm-1", { player_id: char.id, item_id: "Leather Armor" });
+    handleAwardLoot("dm-1", { player_id: char.id, item_name: "Leather Armor" });
     const acBefore = char.ac;
 
     const result = handleEquipItem("equip-user-1", { item_name: "Leather Armor" });
@@ -262,7 +262,7 @@ describe("handleGetInventory with details", () => {
   test("returns item details for known items", () => {
     const char = getCharacterForUser("equip-user-1")!;
     // Character should have items in inventory from equip tests
-    handleAwardLoot("dm-1", { player_id: char.id, item_id: "Potion of Healing" });
+    handleAwardLoot("dm-1", { player_id: char.id, item_name: "Potion of Healing" });
 
     const result = handleGetInventory("equip-user-1");
     expect(result.success).toBe(true);

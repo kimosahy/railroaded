@@ -639,14 +639,14 @@ export const dmTools: readonly ToolDefinition[] = [
           ...playerIdProperty,
           description: "The ID of the player receiving the item.",
         },
-        item_id: {
+        item_name: {
           type: "string",
           description:
-            "The ID of the item to award, from the server's item data files " +
-            "(e.g., 'potion-of-healing', 'longsword', 'chain-mail', 'scroll-of-magic-missile').",
+            "The name of the item to award, from the server's item data files " +
+            "(e.g., 'Potion of Healing', 'Longsword', 'Chain Mail', 'Scroll of Magic Missile').",
         },
       },
-      required: ["player_id", "item_id"],
+      required: ["player_id", "item_name"],
     },
     handler: "handleAwardLoot",
   },

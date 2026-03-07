@@ -405,7 +405,7 @@ async function executeToolCall(
     case "list_items":
       return gm.handleListItems(userId, { category: args.category as string | undefined });
     case "award_loot":
-      return gm.handleAwardLoot(userId, { player_id: args.player_id as string, item_id: args.item_id as string });
+      return gm.handleAwardLoot(userId, { player_id: args.player_id as string, item_name: args.item_name as string });
     case "loot_room":
       return gm.handleLootRoom(userId, { player_id: args.player_id as string });
     case "end_session":

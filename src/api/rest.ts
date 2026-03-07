@@ -235,7 +235,7 @@ dm.get("/items", (c) => {
 });
 
 dm.post("/award-loot", async (c) => {
-  const body = await c.req.json<{ player_id: string; item_id: string }>();
+  const body = await c.req.json<{ player_id: string; item_name: string }>();
   return respond(c, gm.handleAwardLoot(c.get("user").userId, body));
 });
 

@@ -2507,24 +2507,24 @@ export function handleAwardGold(userId: string, params: { player_id?: string; am
   return { success: true, data: { total_amount: params.amount, gold_each: goldEach, results } };
 }
 
-export function handleAwardLoot(userId: string, params: { player_id: string; item_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAwardLoot(userId: string, params: { player_id: string; item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   // Validate item exists
-  if (!itemDefs.has(params.item_id)) {
+  if (!itemDefs.has(params.item_name)) {
     const categories = ["weapon", "armor", "potion", "scroll", "magic_item", "misc"];
     const suggestions = categories.map((cat) => {
       const items = getItemsByCategory(cat);
       return items.length > 0 ? `${cat}: ${items.map((i) => i.name).join(", ")}` : null;
     }).filter(Boolean).join("; ");
-    return { success: false, error: `Unknown item: "${params.item_id}". Available items — ${suggestions}` };
+    return { success: false, error: `Unknown item: "${params.item_name}". Available items — ${suggestions}` };
   }
 
-  char.inventory.push(params.item_id);
-  logEvent(findDMParty(userId), "loot", null, { characterId: params.player_id, characterName: char.name, itemName: params.item_id });
+  char.inventory.push(params.item_name);
+  logEvent(findDMParty(userId), "loot", null, { characterId: params.player_id, characterName: char.name, itemName: params.item_name });
 
-  return { success: true, data: { player: char.name, item: params.item_id } };
+  return { success: true, data: { player: char.name, item: params.item_name } };
 }
 
 export function handleLootRoom(userId: string, params: { player_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
