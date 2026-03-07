@@ -1,5 +1,15 @@
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach } from "bun:test";
 import { shortRest, longRest, hitDieForClass, hitDieSidesForClass } from "../src/engine/rest.ts";
+import {
+  handleCreateCharacter,
+  handleQueueForParty,
+  handleDMQueueForParty,
+  handleShortRest,
+  handleLongRest,
+  handleSpawnEncounter,
+  getState,
+  getCharacterForUser,
+} from "../src/game/game-manager.ts";
 
 function makeRoller(values: number[]) {
   let i = 0;
@@ -145,4 +155,120 @@ describe("hitDieForClass", () => {
 describe("hitDieSidesForClass", () => {
   test("fighter = 10", () => expect(hitDieSidesForClass("fighter")).toBe(10));
   test("wizard = 6", () => expect(hitDieSidesForClass("wizard")).toBe(6));
+});
+
+// --- B010: Rest requires active session ---
+
+describe("rest requires active session (B010)", () => {
+  let tc = 0;
+  function uid(prefix: string) { return `rest-b010-${prefix}-${++tc}`; }
+
+  function resetState() {
+    const { characters, parties, playerQueue, dmQueue } = getState();
+    characters.clear();
+    parties.clear();
+    playerQueue.length = 0;
+    dmQueue.length = 0;
+  }
+
+  async function createTestParty() {
+    const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
+    const dmId = uid("dm");
+    for (const id of pids) {
+      await handleCreateCharacter(id, {
+        name: `RestChar-${id}`,
+        race: "human",
+        class: "fighter",
+        ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+        avatar_url: "https://example.com/avatar.png",
+      });
+    }
+    pids.forEach((id) => handleQueueForParty(id));
+    handleDMQueueForParty(dmId);
+    return { playerUserIds: pids, dmUserId: dmId };
+  }
+
+  beforeEach(resetState);
+
+  test("short rest without active session fails", async () => {
+    const userId = uid("solo");
+    await handleCreateCharacter(userId, {
+      name: "Loner",
+      race: "human",
+      class: "fighter",
+      ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+      avatar_url: "https://example.com/avatar.png",
+    });
+    const char = getCharacterForUser(userId)!;
+    char.hpCurrent = 8; // simulate damage
+
+    const result = handleShortRest(userId);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not in an active session");
+    expect(char.hpCurrent).toBe(8); // HP unchanged
+  });
+
+  test("long rest without active session fails", async () => {
+    const userId = uid("solo");
+    await handleCreateCharacter(userId, {
+      name: "Loner2",
+      race: "human",
+      class: "fighter",
+      ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+      avatar_url: "https://example.com/avatar.png",
+    });
+    const char = getCharacterForUser(userId)!;
+    char.hpCurrent = 5;
+
+    const result = handleLongRest(userId);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not in an active session");
+    expect(char.hpCurrent).toBe(5); // HP unchanged
+  });
+
+  test("short rest during combat fails", async () => {
+    const { playerUserIds, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    char.hpCurrent = 8;
+
+    const result = handleShortRest(playerUserIds[0]!);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Cannot rest during combat");
+    expect(char.hpCurrent).toBe(8);
+  });
+
+  test("long rest during combat fails", async () => {
+    const { playerUserIds, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    char.hpCurrent = 5;
+
+    const result = handleLongRest(playerUserIds[0]!);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Cannot rest during combat");
+    expect(char.hpCurrent).toBe(5);
+  });
+
+  test("short rest during exploration succeeds", async () => {
+    const { playerUserIds } = await createTestParty();
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    char.hpCurrent = 8;
+
+    const result = handleShortRest(playerUserIds[0]!);
+    expect(result.success).toBe(true);
+    expect(result.data!.hpBefore).toBe(8);
+  });
+
+  test("long rest during exploration succeeds", async () => {
+    const { playerUserIds } = await createTestParty();
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    char.hpCurrent = 5;
+
+    const result = handleLongRest(playerUserIds[0]!);
+    expect(result.success).toBe(true);
+    expect(result.data!.hpAfter).toBe(char.hpMax);
+  });
 });

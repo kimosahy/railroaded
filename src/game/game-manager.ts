@@ -1312,6 +1312,10 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   if (!char) return { success: false, error: "No character found." };
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session) return { success: false, error: "Not in an active session." };
+  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat." };
+
   const conMod = abilityModifier(char.abilityScores.con);
   const result = doShortRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
@@ -1343,6 +1347,10 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session) return { success: false, error: "Not in an active session." };
+  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat." };
 
   const result = doLongRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
