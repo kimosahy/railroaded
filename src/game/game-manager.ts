@@ -1578,8 +1578,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
     }
 
     case "dash":
-    case "disengage":
-    case "hide": {
+    case "disengage": {
       if (!char.features.includes("Cunning Action")) {
         return { success: false, error: `Only Rogues with Cunning Action can ${params.action} as a bonus action.` };
       }
@@ -1588,6 +1587,24 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       return {
         success: true,
         data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.` },
+      };
+    }
+
+    case "hide": {
+      if (!char.features.includes("Cunning Action")) {
+        return { success: false, error: `Only Rogues with Cunning Action can hide as a bonus action.` };
+      }
+      const hideResult = abilityCheck({
+        abilityScores: char.abilityScores,
+        ability: "dex",
+        dc: 10,
+        proficiencyBonus: char.proficiencies.includes("Stealth") ? proficiencyBonus(char.level) : 0,
+      });
+      setTurnResources(party, char.id, { ...resources, bonusUsed: true });
+      logEvent(party, "bonus_action", char.id, { action: "hide", cunningAction: true, roll: hideResult.roll.total, hidden: hideResult.success });
+      return {
+        success: true,
+        data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10 },
       };
     }
 

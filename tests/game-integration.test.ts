@@ -242,6 +242,21 @@ describe("B. Bonus Actions", () => {
     expect(result.data!.action).toBe("dash");
   });
 
+  test("rogue bonus action hide returns stealth roll (Cunning Action)", () => {
+    const rogueChar = getCharacterForUser(players[0])!;
+    if (!rogueChar.features.includes("Cunning Action")) {
+      rogueChar.features.push("Cunning Action");
+    }
+    const onTurn = advanceToCharacterTurn(rogueChar.id, players, dm);
+    if (!onTurn) return;
+    const result = handleBonusAction(players[0], { action: "hide" });
+    expect(result.success).toBe(true);
+    expect(result.data!.action).toBe("hide");
+    expect(result.data!.stealthRoll).toBeGreaterThanOrEqual(1);
+    expect(result.data!.dc).toBe(10);
+    expect(typeof result.data!.hidden).toBe("boolean");
+  });
+
   test("double bonus action fails", () => {
     const rogueChar = getCharacterForUser(players[0])!;
     const onTurn = advanceToCharacterTurn(rogueChar.id, players, dm);
