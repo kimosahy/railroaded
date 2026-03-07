@@ -58,6 +58,7 @@ import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
 import { getRandomTemplate, type DungeonTemplate, type TemplateEncounter, type TemplateLootTable } from "./templates.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
+import { VALID_RACES, VALID_CLASSES } from "../types.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
@@ -387,6 +388,14 @@ export async function handleCreateCharacter(userId: string, params: {
   // Check if user already has a character
   if (charactersByUser.has(userId)) {
     return { success: false, error: "You already have a character. One character per account." };
+  }
+
+  // Validate race and class
+  if (!VALID_RACES.includes(params.race as Race)) {
+    return { success: false, error: `Invalid race. Must be one of: ${VALID_RACES.join(", ")}` };
+  }
+  if (!VALID_CLASSES.includes(params.class as CharacterClass)) {
+    return { success: false, error: `Invalid class. Must be one of: ${VALID_CLASSES.join(", ")}` };
   }
 
   // Validate avatar URL if provided

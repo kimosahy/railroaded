@@ -84,6 +84,22 @@ describe("Character creation", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
   });
+
+  test("rejects invalid race with helpful error", async () => {
+    const result = await createChar(uid("u"), { race: "tiefling" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid race");
+    expect(result.error).toContain("human");
+    expect(result.error).toContain("half-orc");
+  });
+
+  test("rejects invalid class with helpful error", async () => {
+    const result = await createChar(uid("u"), { class: "warlock" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid class");
+    expect(result.error).toContain("fighter");
+    expect(result.error).toContain("wizard");
+  });
 });
 
 // (b) Party formation (matchmaker)

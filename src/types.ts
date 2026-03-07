@@ -1,8 +1,10 @@
 // Shared type definitions for Quest Engine
 
-export type Race = "human" | "elf" | "dwarf" | "halfling" | "half-orc";
+export const VALID_RACES = ["human", "elf", "dwarf", "halfling", "half-orc"] as const;
+export type Race = (typeof VALID_RACES)[number];
 
-export type CharacterClass = "fighter" | "rogue" | "cleric" | "wizard";
+export const VALID_CLASSES = ["fighter", "rogue", "cleric", "wizard"] as const;
+export type CharacterClass = (typeof VALID_CLASSES)[number];
 
 export type AbilityName = "str" | "dex" | "con" | "int" | "wis" | "cha";
 
