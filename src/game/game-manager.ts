@@ -1260,6 +1260,15 @@ export function handleMove(userId: string, params: { direction_or_target: string
     return { success: false, error: "Not in a dungeon." };
   }
 
+  // Check if already in the target room
+  const currentRoom = getCurrentRoom(party.dungeonState);
+  if (currentRoom) {
+    const input = params.direction_or_target.toLowerCase();
+    if (currentRoom.id === params.direction_or_target || currentRoom.name.toLowerCase().includes(input)) {
+      return { success: true, data: { moved: false, room: currentRoom.name, description: currentRoom.description, type: currentRoom.type, message: `You're already in ${currentRoom.name}.` } };
+    }
+  }
+
   // Try to move to a room by ID or name
   const exits = getAvailableExits(party.dungeonState);
   const target = exits.find(

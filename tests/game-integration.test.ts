@@ -922,4 +922,40 @@ describe("J. Move", () => {
   test("handleMove fails for unknown user", () => {
     expect(handleMove("unknown-movt", { direction_or_target: "north" }).success).toBe(false);
   });
+
+  test("handleMove to current room returns already-here message", () => {
+    const party = getPartyForUser(players[0]);
+    if (!party?.dungeonState) return; // skip if no dungeon
+
+    // Get current room name
+    const roomState = handleGetRoomState(dm);
+    if (!roomState.success || !roomState.data?.room) return;
+    const currentRoomName = (roomState.data.room as { name: string }).name;
+
+    // Try to move to the room we're already in
+    const result = handleMove(players[0], { direction_or_target: currentRoomName });
+    expect(result.success).toBe(true);
+    expect(result.data!.moved).toBe(false);
+    expect(result.data!.message).toContain("already in");
+  });
+
+  test("handleMove to current room by second player after first player moved", () => {
+    const party = getPartyForUser(players[0]);
+    if (!party?.dungeonState) return;
+
+    const roomState = handleGetRoomState(dm);
+    if (!roomState.success || !roomState.data?.exits) return;
+    const exits = roomState.data.exits as { name: string; id: string }[];
+    if (exits.length === 0) return;
+
+    // Player 1 moves to first exit
+    const moveResult = handleMove(players[0], { direction_or_target: exits[0].id });
+    if (!moveResult.success) return;
+
+    // Player 2 tries to move to same room — should get "already here"
+    const result = handleMove(players[1], { direction_or_target: exits[0].name });
+    expect(result.success).toBe(true);
+    expect(result.data!.moved).toBe(false);
+    expect(result.data!.message).toContain("already in");
+  });
 });
