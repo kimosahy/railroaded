@@ -143,6 +143,17 @@ describe("Party formation", () => {
     expect(parties.has(partyId)).toBe(true);
   });
 
+  test("player queue returns structured response with message", async () => {
+    const userId = uid("u");
+    await createChar(userId);
+    const result = handleQueueForParty(userId);
+    expect(result.success).toBe(true);
+    expect(result.data!.queued).toBe(true);
+    expect(result.data!.matched).toBe(false);
+    expect(result.data!.message).toBe("You've joined the matchmaking queue. Waiting for party...");
+    expect(result.data!.position).toBe(1);
+  });
+
   test("party has correct members and DM", async () => {
     const { partyId, dmUserId } = await createTestParty();
     const { parties } = getState();

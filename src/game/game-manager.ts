@@ -1869,7 +1869,7 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     return { success: true, data: { queued: false, matched: true, message: "Party formed!" } };
   }
 
-  return { success: true, data: { queued: true, matched: false, position: playerQueue.length } };
+  return { success: true, data: { queued: true, matched: false, position: playerQueue.length, message: "You've joined the matchmaking queue. Waiting for party..." } };
 }
 
 // --- DM Tool Handlers ---
