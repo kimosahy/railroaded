@@ -211,8 +211,8 @@ dm.post("/environment-damage", async (c) => {
 });
 
 dm.post("/advance-scene", async (c) => {
-  let body: { next_room_id?: string; exit_id?: string } = {};
-  try { body = await c.req.json(); } catch { /* empty body is fine — both params optional */ }
+  let body: { next_room_id?: string; exit_id?: string; room_id?: string } = {};
+  try { body = await c.req.json(); } catch { /* empty body is fine — all params optional */ }
   return respond(c, gm.handleAdvanceScene(c.get("user").userId, body));
 });
 

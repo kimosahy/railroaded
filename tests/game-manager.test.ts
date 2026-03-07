@@ -290,6 +290,28 @@ describe("handleAdvanceScene", () => {
     expect(party.session!.phase).toBe("exploration");
   });
 
+  test("room_id param moves the party (alias for next_room_id)", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    const scoutResult = handleAdvanceScene(dmUserId, {});
+    expect(scoutResult.success).toBe(true);
+    const exits = scoutResult.data!.exits as { id: string; name: string }[];
+    if (exits.length > 0) {
+      const { parties } = getState();
+      const party = parties.get(partyId)!;
+      const oldRoom = party.dungeonState!.currentRoomId;
+
+      const result = handleAdvanceScene(dmUserId, { room_id: exits[0]!.id });
+      expect(result.success).toBe(true);
+      expect(result.data!.advanced).toBe(true);
+      expect(result.data!.room).toBeDefined();
+      // Party should have actually moved
+      expect(party.dungeonState!.currentRoomId).toBe(exits[0]!.id);
+      expect(party.dungeonState!.currentRoomId).not.toBe(oldRoom);
+      // Response should include exits for the NEW room
+      expect(result.data!.exits).toBeDefined();
+    }
+  });
+
   test("advance during combat exits combat", async () => {
     const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });

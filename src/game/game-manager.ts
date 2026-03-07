@@ -2353,12 +2353,12 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
   };
 }
 
-export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string; room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
-  // Accept both next_room_id and exit_id (agents send either)
-  const nextRoom = params.next_room_id ?? params.exit_id;
+  // Accept next_room_id, exit_id, or room_id (agents send any of these)
+  const nextRoom = params.next_room_id ?? params.exit_id ?? params.room_id;
 
   // Exit combat if currently in combat
   if (party.session && party.session.phase === "combat") {
@@ -2374,7 +2374,8 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
       party.dungeonState = newState;
       const room = getCurrentRoom(newState);
       logEvent(party, "room_enter", null, { roomName: room?.name });
-      return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase } };
+      const newExits = getAvailableExits(newState).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId }));
+      return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase, exits: newExits } };
     }
     const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
     return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };

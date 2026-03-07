@@ -393,7 +393,7 @@ async function executeToolCall(
     case "deal_environment_damage":
       return gm.handleDealEnvironmentDamage(userId, { player_id: args.player_id as string, notation: args.notation as string, type: args.type as string });
     case "advance_scene":
-      return gm.handleAdvanceScene(userId, { next_room_id: args.next_room_id as string | undefined });
+      return gm.handleAdvanceScene(userId, { next_room_id: args.next_room_id as string | undefined, room_id: args.room_id as string | undefined });
     case "get_party_state":
       return gm.handleGetPartyState(userId);
     case "get_room_state":
