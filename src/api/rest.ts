@@ -150,6 +150,8 @@ player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").use
 const dm = new Hono<AuthEnv>();
 dm.use("/*", requireRole("dm"));
 
+dm.get("/actions", (c) => respond(c, gm.handleGetDmActions(c.get("user").userId)));
+
 dm.post("/narrate", async (c) => {
   const body = await c.req.json<{ text: string; style?: string }>();
   return respond(c, gm.handleNarrate(c.get("user").userId, body));

@@ -1922,6 +1922,28 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
   return { success: true, data: { queued: true, matched: false, playersWaiting: playerQueue.length } };
 }
 
+export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "You are not a DM for any active party." };
+
+  const phase = party.session?.phase ?? "exploration";
+  const availableTools = getAllowedDMActions(phase);
+
+  const data: Record<string, unknown> = { phase, availableTools };
+
+  if (party.session && phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (current) {
+      const name = current.type === "monster"
+        ? party.monsters.find((m) => m.id === current.entityId)?.name ?? current.entityId
+        : characters.get(current.entityId)?.name ?? current.entityId;
+      data.currentTurn = { name, type: current.type, entityId: current.entityId };
+    }
+  }
+
+  return { success: true, data };
+}
+
 export function handleNarrate(userId: string, params: { text: string; style?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "You are not a DM for any active party." };
