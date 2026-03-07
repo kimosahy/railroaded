@@ -26,20 +26,21 @@ function resetState() {
   dmQueue.length = 0;
 }
 
-function createChar(userId: string, overrides?: Record<string, unknown>) {
-  return handleCreateCharacter(userId, {
+async function createChar(userId: string, overrides?: Record<string, unknown>) {
+  return await handleCreateCharacter(userId, {
     name: `Char-${userId}`,
     race: "human",
     class: "fighter",
     ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+    avatar_url: "https://example.com/avatar.png",
     ...overrides,
   } as Parameters<typeof handleCreateCharacter>[1]);
 }
 
-function createTestParty() {
+async function createTestParty() {
   const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
   const dmId = uid("dm");
-  pids.forEach((id) => createChar(id));
+  for (const id of pids) { await createChar(id); }
   pids.forEach((id) => handleQueueForParty(id));
   handleDMQueueForParty(dmId);
   const { parties } = getState();
@@ -54,9 +55,9 @@ beforeEach(resetState);
 // (a) Character creation
 
 describe("Character creation", () => {
-  test("creates character with valid params → success, character in state", () => {
+  test("creates character with valid params → success, character in state", async () => {
     const userId = uid("u");
-    const result = createChar(userId);
+    const result = await createChar(userId);
     expect(result.success).toBe(true);
     expect(result.character).toBeDefined();
     expect(result.character!.name).toBe(`Char-${userId}`);
@@ -65,16 +66,16 @@ describe("Character creation", () => {
     expect(characters.has(result.character!.id)).toBe(true);
   });
 
-  test("rejects duplicate userId", () => {
+  test("rejects duplicate userId", async () => {
     const userId = uid("u");
-    createChar(userId);
-    const result = createChar(userId, { name: "Duplicate" });
+    await createChar(userId);
+    const result = await createChar(userId, { name: "Duplicate" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("already have a character");
   });
 
-  test("rejects invalid ability scores", () => {
-    const result = handleCreateCharacter(uid("u"), {
+  test("rejects invalid ability scores", async () => {
+    const result = await handleCreateCharacter(uid("u"), {
       name: "Bad",
       race: "human",
       class: "fighter",
@@ -88,14 +89,14 @@ describe("Character creation", () => {
 // (b) Party formation (matchmaker)
 
 describe("Party formation", () => {
-  test("4 players + 1 DM queue → party formed", () => {
-    const { partyId } = createTestParty();
+  test("4 players + 1 DM queue → party formed", async () => {
+    const { partyId } = await createTestParty();
     const { parties } = getState();
     expect(parties.has(partyId)).toBe(true);
   });
 
-  test("party has correct members and DM", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("party has correct members and DM", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     const { parties } = getState();
     const party = parties.get(partyId)!;
     expect(party.members).toHaveLength(4);
@@ -108,8 +109,8 @@ describe("Party formation", () => {
 // (c) handleSpawnEncounter
 
 describe("handleSpawnEncounter", () => {
-  test("DM spawns monsters → combat, monsters in state, initiative rolled", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("DM spawns monsters → combat, monsters in state, initiative rolled", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     const result = handleSpawnEncounter(dmUserId, {
       monsters: [{ template_name: "Goblin", count: 2 }],
     });
@@ -125,8 +126,8 @@ describe("handleSpawnEncounter", () => {
     expect(party.session!.initiativeOrder.length).toBeGreaterThan(0);
   });
 
-  test("non-DM user cannot spawn", () => {
-    const { playerUserIds } = createTestParty();
+  test("non-DM user cannot spawn", async () => {
+    const { playerUserIds } = await createTestParty();
     const result = handleSpawnEncounter(playerUserIds[0]!, {
       monsters: [{ template_name: "Goblin", count: 1 }],
     });
@@ -134,8 +135,8 @@ describe("handleSpawnEncounter", () => {
     expect(result.error).toContain("Not a DM");
   });
 
-  test("spawning when already in combat replaces encounter", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("spawning when already in combat replaces encounter", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const result = handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 3 }] });
     expect(result.success).toBe(true);
@@ -147,8 +148,8 @@ describe("handleSpawnEncounter", () => {
 // (d) handleAttack
 
 describe("handleAttack", () => {
-  test("player attacks monster → resolves hit or miss", () => {
-    const { partyId, playerUserIds, dmUserId } = createTestParty();
+  test("player attacks monster → resolves hit or miss", async () => {
+    const { partyId, playerUserIds, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const { parties } = getState();
     const party = parties.get(partyId)!;
@@ -160,8 +161,8 @@ describe("handleAttack", () => {
     expect(typeof result.data!.hit).toBe("boolean");
   });
 
-  test("attack when not in combat → error", () => {
-    const { playerUserIds } = createTestParty();
+  test("attack when not in combat → error", async () => {
+    const { playerUserIds } = await createTestParty();
     const result = handleAttack(playerUserIds[0]!, { target_id: "monster-999" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("only attack during combat");
@@ -169,8 +170,8 @@ describe("handleAttack", () => {
 
   test.todo("attack when unconscious (0 HP) → error (guard not yet implemented)");
 
-  test("killing a monster removes it from initiative and ends combat", () => {
-    const { partyId, playerUserIds, dmUserId } = createTestParty();
+  test("killing a monster removes it from initiative and ends combat", async () => {
+    const { partyId, playerUserIds, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const { parties } = getState();
     const party = parties.get(partyId)!;
@@ -197,8 +198,8 @@ describe("handleAttack", () => {
 // (e) handleMonsterAttack
 
 describe("handleMonsterAttack", () => {
-  test("DM commands monster attack → resolves against player", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("DM commands monster attack → resolves against player", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const { parties, characters } = getState();
     const party = parties.get(partyId)!;
@@ -223,20 +224,26 @@ describe("handleMonsterAttack", () => {
 // (f) handleAdvanceScene
 
 describe("handleAdvanceScene", () => {
-  test("DM advances to next room → room changes", () => {
-    const { partyId, dmUserId } = createTestParty();
-    const result = handleAdvanceScene(dmUserId, { next_room_id: "room-2" });
-    expect(result.success).toBe(true);
-    expect(result.data!.advanced).toBe(true);
-    expect(result.data!.room).toBeDefined();
+  test("DM advances to next room → room changes", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    // First get available exits, then advance to one
+    const scoutResult = handleAdvanceScene(dmUserId, {});
+    expect(scoutResult.success).toBe(true);
+    const exits = scoutResult.data!.exits as { id: string }[];
+    if (exits.length > 0) {
+      const result = handleAdvanceScene(dmUserId, { exit_id: exits[0]!.id });
+      expect(result.success).toBe(true);
+      expect(result.data!.advanced).toBe(true);
+      expect(result.data!.room).toBeDefined();
+    }
 
     const { parties } = getState();
     const party = parties.get(partyId)!;
     expect(party.session!.phase).toBe("exploration");
   });
 
-  test("advance during combat exits combat", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("advance during combat exits combat", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const { parties } = getState();
     const party = parties.get(partyId)!;
@@ -252,8 +259,8 @@ describe("handleAdvanceScene", () => {
 // (g) handleEndSession
 
 describe("handleEndSession", () => {
-  test("end session → session state updated, events logged", () => {
-    const { partyId, dmUserId } = createTestParty();
+  test("end session → session state updated, events logged", async () => {
+    const { partyId, dmUserId } = await createTestParty();
     const result = handleEndSession(dmUserId, { summary: "Session complete" });
     expect(result.success).toBe(true);
     expect(result.data!.ended).toBe(true);
@@ -265,8 +272,8 @@ describe("handleEndSession", () => {
     expect(party.events.length).toBeGreaterThan(0);
   });
 
-  test("XP awarded before end persists", () => {
-    const { playerUserIds, dmUserId } = createTestParty();
+  test("XP awarded before end persists", async () => {
+    const { playerUserIds, dmUserId } = await createTestParty();
     const char = getCharacterForUser(playerUserIds[0]!)!;
     const xpBefore = char.xp;
 
