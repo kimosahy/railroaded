@@ -616,6 +616,59 @@ describe("F. DM Checks and Saves", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Not a DM");
   });
+
+  test("handleRequestCheck fails for non-DM user", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestCheck("random-user-no-party", { player_id: char.id, ability: "str", dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("handleRequestCheck fails for character not in DM's party", async () => {
+    const other = await setupParty("reqcheck-other");
+    const otherChar = getCharacterForUser(other.players[0])!;
+    const result = handleRequestCheck(dm, { player_id: otherChar.id, ability: "str", dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not in your party");
+  });
+
+  test("handleRequestSave fails for non-DM user", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestSave("random-user-no-party", { player_id: char.id, ability: "dex", dc: 12 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("handleRequestSave fails for character not in DM's party", async () => {
+    const other = await setupParty("reqsave-other");
+    const otherChar = getCharacterForUser(other.players[0])!;
+    const result = handleRequestSave(dm, { player_id: otherChar.id, ability: "dex", dc: 12 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not in your party");
+  });
+
+  test("handleRequestContestedCheck fails for non-DM user", () => {
+    const char1 = getCharacterForUser(players[0])!;
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleRequestContestedCheck("random-user-no-party", {
+      player_id_1: char1.id, ability_1: "str",
+      player_id_2: char2.id, ability_2: "str",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("handleRequestContestedCheck fails for character not in DM's party", async () => {
+    const other = await setupParty("reqcontest-other");
+    const otherChar = getCharacterForUser(other.players[0])!;
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestContestedCheck(dm, {
+      player_id_1: char.id, ability_1: "str",
+      player_id_2: otherChar.id, ability_2: "str",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not in your party");
+  });
 });
 
 // ==================== G. Advance Scene ====================

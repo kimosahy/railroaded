@@ -2066,8 +2066,13 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+
+  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
 
   const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
   const profBonus = params.skill && char.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
@@ -2081,8 +2086,6 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
     advantage: params.advantage,
     disadvantage: params.disadvantage,
   });
-
-  const party = getPartyForCharacter(char.id);
   logEvent(party, "ability_check", char.id, {
     playerName: char.name, ability: params.ability, skill: params.skill,
     dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
@@ -2105,8 +2108,13 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
 }
 
 export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
   const char = resolveCharacter(params.player_id);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+
+  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
 
   const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
   const result = savingThrow({
@@ -2116,8 +2124,6 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
     advantage: params.advantage,
     disadvantage: params.disadvantage,
   });
-
-  const party = getPartyForCharacter(char.id);
   logEvent(party, "saving_throw", char.id, {
     playerName: char.name, ability: params.ability,
     dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
@@ -2188,10 +2194,16 @@ export function handleRequestContestedCheck(userId: string, params: {
   player_id_1: string; ability_1: string; skill_1?: string; advantage_1?: boolean; disadvantage_1?: boolean;
   player_id_2: string; ability_2: string; skill_2?: string; advantage_2?: boolean; disadvantage_2?: boolean;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
   const char1 = resolveCharacter(params.player_id_1);
   if (!char1) return { success: false, error: `Player ${params.player_id_1} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  if (char1.partyId !== party.id) return { success: false, error: `Character ${params.player_id_1} is not in your party.` };
+
   const char2 = resolveCharacter(params.player_id_2);
   if (!char2) return { success: false, error: `Player ${params.player_id_2} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  if (char2.partyId !== party.id) return { success: false, error: `Character ${params.player_id_2} is not in your party.` };
 
   const ability1 = params.ability_1 as "str" | "dex" | "con" | "int" | "wis" | "cha";
   const ability2 = params.ability_2 as "str" | "dex" | "con" | "int" | "wis" | "cha";
@@ -2223,7 +2235,6 @@ export function handleRequestContestedCheck(userId: string, params: {
   const winner = result1.roll.total >= result2.roll.total ? 1 : 2;
   const margin = result1.roll.total - result2.roll.total;
 
-  const party = getPartyForCharacter(char1.id);
   logEvent(party, "contested_check", null, {
     player1: { id: char1.id, name: char1.name, ability: params.ability_1, skill: params.skill_1, roll: result1.roll.total },
     player2: { id: char2.id, name: char2.name, ability: params.ability_2, skill: params.skill_2, roll: result2.roll.total },
