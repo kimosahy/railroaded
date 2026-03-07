@@ -111,7 +111,7 @@ describe("healing clears unconscious and resets death saves (BUG 1)", () => {
     const user = getCharacterForUser(players[0])!;
     user.inventory.push("Potion of Healing");
 
-    const result = handleUseItem(players[0], { item_id: "Potion of Healing", target_id: target.id });
+    const result = handleUseItem(players[0], { item_name: "Potion of Healing", target_id: target.id });
     expect(result.success).toBe(true);
     expect(target.hpCurrent).toBeGreaterThan(0);
     expect(target.conditions).not.toContain("unconscious");
@@ -288,7 +288,7 @@ describe("unconscious characters cannot take actions (Round 3 Bug 1)", () => {
       return;
     }
     char.conditions = handleDropToZero(char.conditions);
-    const result = handleUseItem("healtest-p1", { item_id: "Potion of Healing" });
+    const result = handleUseItem("healtest-p1", { item_name: "Potion of Healing" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("unconscious");
     char.conditions = [];

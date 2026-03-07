@@ -159,7 +159,7 @@ describe("handleUseItem data-driven", () => {
     const liveChar = getCharacterForUser("use-item-user-1")!;
     liveChar.hpCurrent = 5; // take damage
 
-    const result = handleUseItem("use-item-user-1", { item_id: "Potion of Healing" });
+    const result = handleUseItem("use-item-user-1", { item_name: "Potion of Healing" });
     expect(result.success).toBe(true);
     expect(result.data!.healed).toBeDefined();
     expect(result.data!.healed as number).toBeGreaterThanOrEqual(4); // min 2d4+2 = 4
@@ -171,14 +171,14 @@ describe("handleUseItem data-driven", () => {
     handleAwardLoot("dm-1", { player_id: char.id, item_name: "Potion of Greater Healing" });
     char.hpCurrent = 3;
 
-    const result = handleUseItem("use-item-user-1", { item_id: "Potion of Greater Healing" });
+    const result = handleUseItem("use-item-user-1", { item_name: "Potion of Greater Healing" });
     expect(result.success).toBe(true);
     expect(result.data!.healed as number).toBeGreaterThanOrEqual(8); // min 4d4+4 = 8
     expect(result.data!.healed as number).toBeLessThanOrEqual(20); // max 4d4+4 = 20
   });
 
   test("using non-existent item returns error", () => {
-    const result = handleUseItem("use-item-user-1", { item_id: "Invisible Sword" });
+    const result = handleUseItem("use-item-user-1", { item_name: "Invisible Sword" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("not found in inventory");
   });

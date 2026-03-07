@@ -304,7 +304,7 @@ export const playerTools: PlayerToolDefinition[] = [
     inputSchema: {
       type: "object",
       properties: {
-        item_id: {
+        item_name: {
           type: "string",
           description:
             "The item name exactly as it appears in your inventory " +
@@ -319,7 +319,7 @@ export const playerTools: PlayerToolDefinition[] = [
             "(e.g., using a healing potion on an unconscious ally).",
         },
       },
-      required: ["item_id"],
+      required: ["item_name"],
       additionalProperties: false,
     },
     handler: "handleUseItem",

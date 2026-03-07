@@ -88,7 +88,7 @@ player.post("/cast", async (c) => {
 });
 
 player.post("/use-item", async (c) => {
-  const body = await c.req.json<{ item_id: string; target_id?: string }>();
+  const body = await c.req.json<{ item_name: string; target_id?: string }>();
   return respond(c, gm.handleUseItem(c.get("user").userId, body));
 });
 

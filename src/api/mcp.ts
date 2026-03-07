@@ -299,7 +299,7 @@ async function executeToolCall(
     case "cast":
       return gm.handleCast(userId, { spell_name: args.spell_name as string, target_id: args.target_id as string | undefined });
     case "use_item":
-      return gm.handleUseItem(userId, { item_id: args.item_id as string, target_id: args.target_id as string | undefined });
+      return gm.handleUseItem(userId, { item_name: args.item_name as string, target_id: args.target_id as string | undefined });
     case "dodge":
       return gm.handleDodge(userId);
     case "dash":

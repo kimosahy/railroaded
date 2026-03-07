@@ -1387,7 +1387,7 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   };
 }
 
-export function handleUseItem(userId: string, params: { item_id: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleUseItem(userId: string, params: { item_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
@@ -1399,12 +1399,12 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
 
-  const itemIdx = char.inventory.indexOf(params.item_id);
+  const itemIdx = char.inventory.indexOf(params.item_name);
   if (itemIdx === -1) {
-    return { success: false, error: `Item "${params.item_id}" not found in inventory.` };
+    return { success: false, error: `Item "${params.item_name}" not found in inventory.` };
   }
 
-  const itemDef = itemDefs.get(params.item_id);
+  const itemDef = itemDefs.get(params.item_name);
 
   // Data-driven potion handling
   if (itemDef?.category === "potion" && itemDef.healAmount) {
@@ -1420,7 +1420,7 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
       }
     }
     char.inventory.splice(itemIdx, 1);
-    return { success: true, data: { item: params.item_id, healed: healRoll.total, targetHP: (params.target_id ? characters.get(params.target_id) : char)?.hpCurrent } };
+    return { success: true, data: { item: params.item_name, healed: healRoll.total, targetHP: (params.target_id ? characters.get(params.target_id) : char)?.hpCurrent } };
   }
 
   // Data-driven scroll handling
@@ -1460,11 +1460,11 @@ export function handleUseItem(userId: string, params: { item_id: string; target_
     }
 
     char.inventory.splice(itemIdx, 1);
-    logEvent(party, "scroll_used", char.id, { scrollName: params.item_id, spellName: itemDef.spellName, effect: result.totalEffect });
-    return { success: true, data: { item: params.item_id, spell: itemDef.spellName, effect: result.totalEffect } };
+    logEvent(party, "scroll_used", char.id, { scrollName: params.item_name, spellName: itemDef.spellName, effect: result.totalEffect });
+    return { success: true, data: { item: params.item_name, spell: itemDef.spellName, effect: result.totalEffect } };
   }
 
-  return { success: true, data: { item: params.item_id, message: "Item used." } };
+  return { success: true, data: { item: params.item_name, message: "Item used." } };
 }
 
 // --- End Turn / Bonus Action / Reaction ---
