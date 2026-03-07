@@ -100,6 +100,38 @@ describe("Character creation", () => {
     expect(result.error).toContain("fighter");
     expect(result.error).toContain("wizard");
   });
+
+  test("lists all missing required fields at once", async () => {
+    const result = await handleCreateCharacter(uid("u"), { name: "Minimal" } as Parameters<typeof handleCreateCharacter>[1]);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing required fields");
+    expect(result.error).toContain("race");
+    expect(result.error).toContain("class");
+    expect(result.error).toContain("ability_scores");
+  });
+
+  test("lists only the fields that are actually missing", async () => {
+    const result = await handleCreateCharacter(uid("u"), {
+      name: "Partial",
+      race: "human",
+    } as Parameters<typeof handleCreateCharacter>[1]);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing required fields");
+    expect(result.error).toContain("class");
+    expect(result.error).toContain("ability_scores");
+    expect(result.error).not.toContain("name");
+    expect(result.error).not.toContain("race");
+  });
+
+  test("reports missing fields when all required fields are absent", async () => {
+    const result = await handleCreateCharacter(uid("u"), {} as Parameters<typeof handleCreateCharacter>[1]);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing required fields");
+    expect(result.error).toContain("name");
+    expect(result.error).toContain("race");
+    expect(result.error).toContain("class");
+    expect(result.error).toContain("ability_scores");
+  });
 });
 
 // (b) Party formation (matchmaker)

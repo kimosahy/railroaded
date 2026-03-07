@@ -390,6 +390,16 @@ export async function handleCreateCharacter(userId: string, params: {
     return { success: false, error: "You already have a character. One character per account." };
   }
 
+  // Validate all required fields at once
+  const requiredFields = ["name", "race", "class", "ability_scores"] as const;
+  const missing = requiredFields.filter((f) => {
+    const val = (params as Record<string, unknown>)[f];
+    return val === undefined || val === null || val === "";
+  });
+  if (missing.length > 0) {
+    return { success: false, error: `Missing required fields: ${missing.join(", ")}` };
+  }
+
   // Validate race and class
   if (!VALID_RACES.includes(params.race as Race)) {
     return { success: false, error: `Invalid race. Must be one of: ${VALID_RACES.join(", ")}` };
