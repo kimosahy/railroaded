@@ -320,6 +320,35 @@ describe("handleEndSession", () => {
     expect(party.events.length).toBeGreaterThan(0);
   });
 
+  test("rejects empty body (no summary)", async () => {
+    const { dmUserId } = await createTestParty();
+    const result = handleEndSession(dmUserId, {} as { summary: string });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("summary");
+  });
+
+  test("rejects empty string summary", async () => {
+    const { dmUserId } = await createTestParty();
+    const result = handleEndSession(dmUserId, { summary: "" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("summary");
+  });
+
+  test("rejects whitespace-only summary", async () => {
+    const { dmUserId } = await createTestParty();
+    const result = handleEndSession(dmUserId, { summary: "   " });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("summary");
+  });
+
+  test("session remains active after rejected end-session", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    handleEndSession(dmUserId, {} as { summary: string });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    expect(party.session!.isActive).toBe(true);
+  });
+
   test("XP awarded before end persists", async () => {
     const { playerUserIds, dmUserId } = await createTestParty();
     const char = getCharacterForUser(playerUserIds[0]!)!;

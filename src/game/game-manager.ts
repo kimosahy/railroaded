@@ -2702,6 +2702,10 @@ export function handleListItems(_userId: string, params: { category?: string }):
 }
 
 export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  if (!params.summary || typeof params.summary !== "string" || params.summary.trim() === "") {
+    return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session." };
+  }
+
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
