@@ -31,18 +31,18 @@ describe("avatar_url and description fields", () => {
     expect(result.character!.description).toBe("A grizzled veteran with a scar across his left eye.");
   });
 
-  test("character creation without avatar fails", async () => {
+  test("character creation without avatar succeeds with null avatarUrl", async () => {
     const result = await handleCreateCharacter("avatar-user-2", {
       name: "NoAvatarHero",
       race: "elf",
       class: "wizard",
       ability_scores: scores,
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Avatar is required");
+    expect(result.success).toBe(true);
+    expect(result.character!.avatarUrl).toBeNull();
   });
 
-  test("character creation with description but no avatar fails", async () => {
+  test("character creation with description but no avatar succeeds", async () => {
     const result = await handleCreateCharacter("avatar-user-3", {
       name: "DescOnlyHero",
       race: "dwarf",
@@ -50,8 +50,9 @@ describe("avatar_url and description fields", () => {
       ability_scores: scores,
       description: "A stout dwarf who hums hymns while swinging a warhammer.",
     });
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Avatar is required");
+    expect(result.success).toBe(true);
+    expect(result.character!.avatarUrl).toBeNull();
+    expect(result.character!.description).toBe("A stout dwarf who hums hymns while swinging a warhammer.");
   });
 
   test("fields persist on the in-memory character", () => {

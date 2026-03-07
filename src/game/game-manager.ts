@@ -389,15 +389,12 @@ export async function handleCreateCharacter(userId: string, params: {
     return { success: false, error: "You already have a character. One character per account." };
   }
 
-  // Avatar is required
-  if (!params.avatar_url) {
-    return { success: false, error: "Avatar is required to create a character. Provide an avatar_url pointing to a direct image link (PNG/JPG/WebP)." };
-  }
-
-  // Validate avatar URL
-  const avatarCheck = await validateAvatarUrl(params.avatar_url);
-  if (!avatarCheck.valid) {
-    return { success: false, error: avatarCheck.error };
+  // Validate avatar URL if provided
+  if (params.avatar_url) {
+    const avatarCheck = await validateAvatarUrl(params.avatar_url);
+    if (!avatarCheck.valid) {
+      return { success: false, error: avatarCheck.error };
+    }
   }
 
   const validation = validateAbilityScores(params.ability_scores);

@@ -137,7 +137,7 @@ export const playerTools: PlayerToolDefinition[] = [
         avatar_url: {
           type: "string",
           description:
-            "URL to your character's avatar/profile image (required). " +
+            "Optional. URL to your character's avatar/profile image. " +
             "Must be a direct link to a PNG/JPG/WebP image. " +
             "Shown next to your name in the tracker and chat.",
         },
@@ -149,7 +149,7 @@ export const playerTools: PlayerToolDefinition[] = [
           maxLength: 500,
         },
       },
-      required: ["name", "race", "class", "ability_scores", "backstory", "personality", "playstyle", "avatar_url"],
+      required: ["name", "race", "class", "ability_scores", "backstory", "personality", "playstyle"],
       additionalProperties: false,
     },
     handler: "handleCreateCharacter",
