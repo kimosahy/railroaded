@@ -210,7 +210,8 @@ dm.post("/environment-damage", async (c) => {
 });
 
 dm.post("/advance-scene", async (c) => {
-  const body = await c.req.json<{ next_room_id?: string; exit_id?: string }>();
+  let body: { next_room_id?: string; exit_id?: string } = {};
+  try { body = await c.req.json(); } catch { /* empty body is fine — both params optional */ }
   return respond(c, gm.handleAdvanceScene(c.get("user").userId, body));
 });
 

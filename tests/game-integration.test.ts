@@ -709,6 +709,12 @@ describe("G. Advance Scene", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Not a DM");
   });
+
+  test("advance scene for DM with no party returns proper error", () => {
+    const result = handleAdvanceScene("random-dm-no-party", {});
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Not a DM for any party.");
+  });
 });
 
 // ==================== H. Information Handlers ====================
