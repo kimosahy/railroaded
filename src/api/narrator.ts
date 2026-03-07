@@ -24,7 +24,7 @@ type AuthEnv = { Variables: { user: AuthUser } };
 const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
-  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token" }, 401);
+  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED" }, 401);
   c.set("user", user);
   await next();
 });
@@ -42,13 +42,13 @@ narrator.post("/narrate", async (c) => {
   const content = body.content;
 
   if (typeof sessionId !== "string" || sessionId.trim().length === 0) {
-    return c.json({ error: "session_id is required" }, 400);
+    return c.json({ error: "session_id is required", code: "BAD_REQUEST" }, 400);
   }
   if (typeof content !== "string" || content.trim().length === 0) {
-    return c.json({ error: "content is required" }, 400);
+    return c.json({ error: "content is required", code: "BAD_REQUEST" }, 400);
   }
   if (eventId !== undefined && typeof eventId !== "string") {
-    return c.json({ error: "event_id must be a string if provided" }, 400);
+    return c.json({ error: "event_id must be a string if provided", code: "BAD_REQUEST" }, 400);
   }
 
   // Validate session exists
@@ -57,7 +57,7 @@ narrator.post("/narrate", async (c) => {
     .where(eq(gameSessionsTable.id, sessionId.trim()));
 
   if (!session) {
-    return c.json({ error: "Session not found" }, 404);
+    return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
   }
 
   // Validate event exists if provided
@@ -67,7 +67,7 @@ narrator.post("/narrate", async (c) => {
       .where(eq(sessionEventsTable.id, eventId.trim()));
 
     if (!event) {
-      return c.json({ error: "Event not found" }, 404);
+      return c.json({ error: "Event not found", code: "NOT_FOUND" }, 404);
     }
   }
 

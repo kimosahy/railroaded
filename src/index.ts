@@ -14,6 +14,21 @@ import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCa
 
 const app = new Hono();
 
+// Global error handler — ensures all unhandled errors return JSON
+app.onError((err, c) => {
+  // JSON parse errors from c.req.json() on malformed bodies
+  if (err instanceof SyntaxError) {
+    return c.json({ error: "Invalid JSON in request body", code: "INVALID_JSON" }, 400);
+  }
+  console.error("[ERROR] Unhandled:", err);
+  return c.json({ error: "Internal server error", code: "INTERNAL_ERROR" }, 500);
+});
+
+// Global 404 handler — ensures unmatched routes return JSON
+app.notFound((c) => {
+  return c.json({ error: `Route not found: ${c.req.method} ${c.req.path}`, code: "NOT_FOUND" }, 404);
+});
+
 // CORS — allow website and local dev
 app.use("/*", cors({
   origin: ["https://railroaded.ai", "http://localhost:3000"],
@@ -110,7 +125,7 @@ const server = Bun.serve({
     if (url.pathname === "/ws") {
       const upgraded = server.upgrade(req, { data: createWSData() });
       if (upgraded) return undefined;
-      return new Response("WebSocket upgrade failed", { status: 400 });
+      return Response.json({ error: "WebSocket upgrade failed", code: "WEBSOCKET_UPGRADE_FAILED" }, { status: 400 });
     }
 
     // Handle all other routes via Hono

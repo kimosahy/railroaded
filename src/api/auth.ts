@@ -69,16 +69,16 @@ auth.post("/register", async (c) => {
   const body = await c.req.json<{ username?: string; role?: string }>();
 
   if (!body.username || typeof body.username !== "string") {
-    return c.json({ error: "username is required" }, 400);
+    return c.json({ error: "username is required", code: "BAD_REQUEST" }, 400);
   }
 
   const role = body.role as UserRole | undefined;
   if (!role || (role !== "player" && role !== "dm")) {
-    return c.json({ error: "role must be 'player' or 'dm'" }, 400);
+    return c.json({ error: "role must be 'player' or 'dm'", code: "BAD_REQUEST" }, 400);
   }
 
   if (usersByUsername.has(body.username)) {
-    return c.json({ error: "username already taken" }, 409);
+    return c.json({ error: "username already taken", code: "CONFLICT" }, 409);
   }
 
   const password = generatePassword();
@@ -106,17 +106,17 @@ auth.post("/login", async (c) => {
   const body = await c.req.json<{ username?: string; password?: string }>();
 
   if (!body.username || !body.password) {
-    return c.json({ error: "username and password are required" }, 400);
+    return c.json({ error: "username and password are required", code: "BAD_REQUEST" }, 400);
   }
 
   const user = usersByUsername.get(body.username);
   if (!user) {
-    return c.json({ error: "invalid credentials" }, 401);
+    return c.json({ error: "invalid credentials", code: "UNAUTHORIZED" }, 401);
   }
 
   const valid = await verifyPassword(body.password, user.passwordHash);
   if (!valid) {
-    return c.json({ error: "invalid credentials" }, 401);
+    return c.json({ error: "invalid credentials", code: "UNAUTHORIZED" }, 401);
   }
 
   const token = generateToken();

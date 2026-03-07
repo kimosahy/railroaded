@@ -182,7 +182,7 @@ spectator.get("/parties/:id", async (c) => {
       dmUserId: partiesTable.dmUserId, status: partiesTable.status,
     }).from(partiesTable).where(eq(partiesTable.id, partyId));
 
-    if (!dbParty) return c.json({ error: "Party not found" }, 404);
+    if (!dbParty) return c.json({ error: "Party not found", code: "NOT_FOUND" }, 404);
 
     const dbMembers = await db.select({
       id: charactersTable.id, name: charactersTable.name, class: charactersTable.class,
@@ -235,7 +235,7 @@ spectator.get("/parties/:id", async (c) => {
     });
   } catch (err) {
     console.error("[DB] Failed to fetch party from DB:", err);
-    return c.json({ error: "Party not found" }, 404);
+    return c.json({ error: "Party not found", code: "NOT_FOUND" }, 404);
   }
 });
 
@@ -362,7 +362,7 @@ spectator.get("/journals/:characterId", async (c) => {
       race: charactersTable.race, level: charactersTable.level, partyId: charactersTable.partyId,
     }).from(charactersTable).where(eq(charactersTable.id, characterId));
 
-    if (!dbChar) return c.json({ error: "Character not found" }, 404);
+    if (!dbChar) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
 
     // Try journal_entries first
     const journalRows = await db.select({
@@ -408,7 +408,7 @@ spectator.get("/journals/:characterId", async (c) => {
     });
   } catch (err) {
     console.error("[DB] Failed to fetch character journal:", err);
-    return c.json({ error: "Character not found" }, 404);
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
 });
 
@@ -630,7 +630,7 @@ spectator.get("/characters/:id", async (c) => {
   // DB fallback
   try {
     const [row] = await db.select().from(charactersTable).where(eq(charactersTable.id, characterId));
-    if (!row) return c.json({ error: "Character not found" }, 404);
+    if (!row) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
 
     return c.json({
       id: row.id,
@@ -654,7 +654,7 @@ spectator.get("/characters/:id", async (c) => {
     });
   } catch (err) {
     console.error("[DB] Failed to fetch character:", err);
-    return c.json({ error: "Character not found" }, 404);
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
 });
 
@@ -959,7 +959,7 @@ spectator.get("/campaigns/:id", async (c) => {
       partyId: campaignsTable.partyId,
     }).from(campaignsTable).where(eq(campaignsTable.id, campaignId));
 
-    if (!dbCamp) return c.json({ error: "Campaign not found" }, 404);
+    if (!dbCamp) return c.json({ error: "Campaign not found", code: "NOT_FOUND" }, 404);
 
     let partyName: string | null = null;
     let members: { name: string; class: string; race: string; level: number; xp: number; hp: number; hpMax: number }[] = [];
@@ -997,7 +997,7 @@ spectator.get("/campaigns/:id", async (c) => {
     });
   } catch (err) {
     console.error("[DB] Failed to fetch campaign from DB:", err);
-    return c.json({ error: "Campaign not found" }, 404);
+    return c.json({ error: "Campaign not found", code: "NOT_FOUND" }, 404);
   }
 });
 
@@ -1072,13 +1072,13 @@ spectator.post("/tavern", async (c) => {
   const content = body.content;
 
   if (typeof characterName !== "string" || characterName.trim().length === 0) {
-    return c.json({ error: "characterName is required and must be a non-empty string" }, 400);
+    return c.json({ error: "characterName is required and must be a non-empty string", code: "BAD_REQUEST" }, 400);
   }
   if (typeof title !== "string" || title.trim().length === 0) {
-    return c.json({ error: "title is required and must be a non-empty string" }, 400);
+    return c.json({ error: "title is required and must be a non-empty string", code: "BAD_REQUEST" }, 400);
   }
   if (typeof content !== "string" || content.trim().length === 0) {
-    return c.json({ error: "content is required and must be a non-empty string" }, 400);
+    return c.json({ error: "content is required and must be a non-empty string", code: "BAD_REQUEST" }, 400);
   }
 
   // Try to persist to DB by looking up character by name
@@ -1157,7 +1157,7 @@ spectator.get("/tavern/:id", async (c) => {
       .innerJoin(charactersTable, eq(tavernPostsTable.characterId, charactersTable.id))
       .where(eq(tavernPostsTable.id, postId));
 
-    if (!dbPost) return c.json({ error: "Tavern post not found" }, 404);
+    if (!dbPost) return c.json({ error: "Tavern post not found", code: "NOT_FOUND" }, 404);
 
     // Load replies from DB
     const dbReplies = await db.select({
@@ -1181,7 +1181,7 @@ spectator.get("/tavern/:id", async (c) => {
     });
   } catch (err) {
     console.error("[DB] Failed to fetch tavern post:", err);
-    return c.json({ error: "Tavern post not found" }, 404);
+    return c.json({ error: "Tavern post not found", code: "NOT_FOUND" }, 404);
   }
 });
 
@@ -1195,9 +1195,9 @@ spectator.post("/tavern/:id/reply", async (c) => {
     try {
       const [dbPost] = await db.select({ id: tavernPostsTable.id })
         .from(tavernPostsTable).where(eq(tavernPostsTable.id, postId));
-      if (!dbPost) return c.json({ error: "Tavern post not found" }, 404);
+      if (!dbPost) return c.json({ error: "Tavern post not found", code: "NOT_FOUND" }, 404);
     } catch {
-      return c.json({ error: "Tavern post not found" }, 404);
+      return c.json({ error: "Tavern post not found", code: "NOT_FOUND" }, 404);
     }
   }
 
@@ -1207,10 +1207,10 @@ spectator.post("/tavern/:id/reply", async (c) => {
   const content = body.content;
 
   if (typeof characterName !== "string" || characterName.trim().length === 0) {
-    return c.json({ error: "characterName is required and must be a non-empty string" }, 400);
+    return c.json({ error: "characterName is required and must be a non-empty string", code: "BAD_REQUEST" }, 400);
   }
   if (typeof content !== "string" || content.trim().length === 0) {
-    return c.json({ error: "content is required and must be a non-empty string" }, 400);
+    return c.json({ error: "content is required and must be a non-empty string", code: "BAD_REQUEST" }, 400);
   }
 
   // Try to persist to DB

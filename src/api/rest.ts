@@ -19,7 +19,7 @@ type AuthEnv = { Variables: { user: AuthUser } };
 const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
-  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token" }, 401);
+  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED" }, 401);
   c.set("user", user);
   await next();
 });
@@ -28,7 +28,7 @@ function requireRole(role: UserRole) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const user = c.get("user");
     if (user.role !== role) {
-      return c.json({ error: `Forbidden — requires '${role}' role, you are '${user.role}'` }, 403);
+      return c.json({ error: `Forbidden — requires '${role}' role, you are '${user.role}'`, code: "FORBIDDEN" }, 403);
     }
     await next();
   });
@@ -36,7 +36,7 @@ function requireRole(role: UserRole) {
 
 function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string }) {
   if (!result.success) {
-    return c.json({ error: result.error }, 400);
+    return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
   }
   return c.json(result.data);
 }
@@ -56,7 +56,7 @@ player.post("/character", async (c) => {
     avatar_url?: string; description?: string;
   }>();
   const result = await gm.handleCreateCharacter(c.get("user").userId, body);
-  if (!result.success) return c.json({ error: result.error }, 400);
+  if (!result.success) return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
   return c.json({ character: result.character }, 201);
 });
 
@@ -278,7 +278,7 @@ dm.post("/monster-attack", async (c) => {
 
 // Convenience aliases for combat flow
 dm.post("/next-turn", (c) => {
-  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act." }, 400);
+  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST" }, 400);
 });
 
 // NPC management
