@@ -14,6 +14,7 @@ export interface SpellDefinition {
   damageOrHealing: string | null; // dice notation, e.g. "1d8"
   abilityForDamage: "str" | "dex" | "con" | "int" | "wis" | "cha" | null;
   savingThrow: "str" | "dex" | "con" | "int" | "wis" | "cha" | null;
+  spellAttackType: "ranged" | "melee" | null; // ranged = spell attack roll vs AC
   isHealing: boolean;
   isConcentration: boolean;
   range: "self" | "touch" | "ranged";

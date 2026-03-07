@@ -3922,6 +3922,7 @@ interface YAMLSpell {
   damage_or_healing: string | null;
   ability_for_damage: string | null;
   saving_throw: string | null;
+  spell_attack_type: string | null;
   is_healing: boolean;
   is_concentration: boolean;
   range: string;
@@ -3982,6 +3983,7 @@ export function initGameData(dataDir?: string): void {
         damageOrHealing: s.damage_or_healing,
         abilityForDamage: ability,
         savingThrow: save,
+        spellAttackType: (s.spell_attack_type as "ranged" | "melee" | null) ?? null,
         isHealing: s.is_healing,
         isConcentration: s.is_concentration,
         range: s.range as "self" | "touch" | "ranged",
