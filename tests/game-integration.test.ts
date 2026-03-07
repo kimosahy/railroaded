@@ -588,6 +588,23 @@ describe("F. DM Checks and Saves", () => {
     expect(char.hpCurrent).toBeLessThan(hpBefore);
   });
 
+  test("handleDealEnvironmentDamage fails for non-DM user", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleDealEnvironmentDamage("random-user-no-party", { player_id: char.id, damage: 3, damage_type: "fire" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM");
+  });
+
+  test("handleDealEnvironmentDamage fails for character not in DM's party", async () => {
+    // Create a second party with a different DM
+    const other = await setupParty("envdmg-other");
+    const otherChar = getCharacterForUser(other.players[0])!;
+    // The original DM tries to damage a character from the other party
+    const result = handleDealEnvironmentDamage(dm, { player_id: otherChar.id, damage: 3, damage_type: "fire" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not in your party");
+  });
+
   test("handleRequestCheck fails for non-existent player", () => {
     const result = handleRequestCheck(dm, { player_id: "nonexistent", ability: "str", dc: 10 });
     expect(result.success).toBe(false);

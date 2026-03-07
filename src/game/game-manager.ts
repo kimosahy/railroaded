@@ -2256,8 +2256,13 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
 
   if (!playerId) return { success: false, error: "player_id or target_id is required." };
 
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
   const char = resolveCharacter(playerId);
   if (!char) return { success: false, error: `Player ${playerId} not found. Use character IDs from get_party_state (e.g. char-1).` };
+
+  if (char.partyId !== party.id) return { success: false, error: `Character ${playerId} is not in your party.` };
 
   const dmgRoll = roll(damageNotation);
   const { hp, droppedToZero } = applyDamage(
