@@ -632,6 +632,7 @@ export function handleGetParty(userId: string): { success: boolean; data?: Recor
     .map((mid) => characters.get(mid))
     .filter(Boolean)
     .map((c) => ({
+      id: c!.id,
       name: c!.name,
       class: c!.class,
       race: c!.race,

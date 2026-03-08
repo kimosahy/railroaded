@@ -779,6 +779,19 @@ describe("H. Information Handlers", () => {
     expect((result.data!.members as unknown[]).length).toBe(4);
   });
 
+  test("handleGetParty includes non-null id for every member", () => {
+    const result = handleGetParty(players[0]);
+    expect(result.success).toBe(true);
+    const members = result.data!.members as { id: string; name: string }[];
+    expect(members.length).toBeGreaterThan(0);
+    for (const m of members) {
+      expect(m.id).toBeDefined();
+      expect(m.id).not.toBeNull();
+      expect(typeof m.id).toBe("string");
+      expect(m.id.length).toBeGreaterThan(0);
+    }
+  });
+
   test("handleGetPartyState (DM) returns member details", () => {
     const result = handleGetPartyState(dm);
     expect(result.success).toBe(true);
