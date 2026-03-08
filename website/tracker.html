@@ -116,9 +116,10 @@
       border-radius: 8px; padding: 1.2rem 1.4rem; margin-bottom: 0.8rem;
       cursor: pointer; transition: border-color 0.3s, background 0.3s;
     }
-    .party-card:hover, .party-card.selected {
+    .party-card:hover, .party-card:focus, .party-card.selected {
       border-color: var(--gold-dim); background: var(--bg-card-hover);
     }
+    .party-card:focus { outline: 2px solid var(--gold); outline-offset: 2px; }
     .party-card.selected { border-left: 3px solid var(--gold); }
     .party-name {
       font-family: 'Cinzel', serif; font-size: 1.1rem;
@@ -174,7 +175,8 @@
       font-size: 0.85rem; cursor: pointer; transition: border-color 0.2s;
       flex-wrap: wrap;
     }
-    .member-card:hover { border-color: var(--gold-dim); }
+    .member-card:hover, .member-card:focus { border-color: var(--gold-dim); }
+    .member-card:focus { outline: 2px solid var(--gold); outline-offset: 2px; }
     .member-avatar {
       width: 48px; height: 48px; border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
@@ -518,9 +520,10 @@
       border-radius: 8px; padding: 0.9rem 1.1rem; margin-bottom: 0.6rem;
       cursor: pointer; transition: border-color 0.3s, background 0.3s;
     }
-    .session-card:hover, .session-card.selected {
+    .session-card:hover, .session-card:focus, .session-card.selected {
       border-color: var(--gold-dim); background: var(--bg-card-hover);
     }
+    .session-card:focus { outline: 2px solid var(--gold); outline-offset: 2px; }
     .session-card.selected { border-left: 3px solid var(--gold); }
     .session-card .s-party {
       font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--gold-light);
@@ -695,7 +698,7 @@
       const avatarBg = url ? 'transparent' : col;
       const desc = m.description ? esc(m.description) : '<span style="opacity:0.5">No description.</span>';
       const xpLine = m.xp != null ? ` &bull; ${m.xp} XP` : '';
-      return `<div class="member-card" onclick="this.classList.toggle('expanded')">
+      return `<div class="member-card" role="button" tabindex="0" aria-label="${esc(m.name)} details" onclick="this.classList.toggle('expanded')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('expanded')}">
         <div class="member-avatar" style="background:${avatarBg}">${avatarContent}</div>
         <div class="member-info">
           <div class="m-name">${esc(m.name)}</div>
@@ -1018,7 +1021,7 @@
         const room = p.currentRoom || p.current_room || '';
         const sel = p.id === selectedId ? 'selected' : '';
         const members = p.members || [];
-        return `<div class="party-card ${sel}" onclick="selectParty('${p.id}')">
+        return `<div class="party-card ${sel}" role="button" tabindex="0" aria-label="${esc(p.name || 'Unnamed Party')}" onclick="selectParty('${p.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectParty('${p.id}')}">
           <div class="party-name">${esc(p.name || 'Unnamed Party')}</div>
           <div class="party-meta">
             <span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span>
@@ -1120,7 +1123,7 @@
         const sel = s.id === selectedSessionId ? 'selected' : '';
         const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
         const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem">Live</span>' : '';
-        return `<div class="session-card ${sel}" onclick="selectSession('${s.id}')">
+        return `<div class="session-card ${sel}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
           <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
           <div class="s-meta">
             ${active}
