@@ -68,6 +68,20 @@ import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessi
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
+import type { AbilityName } from "../types.ts";
+
+const ABILITY_ALIASES: Record<string, AbilityName> = {
+  str: "str", strength: "str",
+  dex: "dex", dexterity: "dex",
+  con: "con", constitution: "con",
+  int: "int", intelligence: "int",
+  wis: "wis", wisdom: "wis",
+  cha: "cha", charisma: "cha",
+};
+
+function normalizeAbility(raw: string): AbilityName | null {
+  return ABILITY_ALIASES[raw.toLowerCase()] ?? null;
+}
 
 // --- In-memory state ---
 
@@ -2415,7 +2429,8 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
 
   if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
 
-  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const ability = normalizeAbility(params.ability);
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
   const profBonus = params.skill && char.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
     ? proficiencyBonus(char.level) : 0;
 
@@ -2428,7 +2443,7 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
     disadvantage: params.disadvantage,
   });
   logEvent(party, "ability_check", char.id, {
-    playerName: char.name, ability: params.ability, skill: params.skill,
+    playerName: char.name, ability, skill: params.skill,
     dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
   });
 
@@ -2457,7 +2472,8 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
 
   if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
 
-  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const ability = normalizeAbility(params.ability);
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
   const result = savingThrow({
     abilityScores: char.abilityScores,
     ability,
@@ -2466,7 +2482,7 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
     disadvantage: params.disadvantage,
   });
   logEvent(party, "saving_throw", char.id, {
-    playerName: char.name, ability: params.ability,
+    playerName: char.name, ability,
     dc: params.dc, roll: result.roll.total, success: result.success, margin: result.margin,
   });
 
@@ -2484,7 +2500,8 @@ export function handleRequestGroupCheck(userId: string, params: { ability: strin
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean) as GameCharacter[];
-  const ability = params.ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const ability = normalizeAbility(params.ability);
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
 
   // Roll individually so we can pass advantage/disadvantage per character
   const results = charList.map((c) => {
@@ -2546,8 +2563,10 @@ export function handleRequestContestedCheck(userId: string, params: {
   if (!char2) return { success: false, error: `Player ${params.player_id_2} not found. Use character IDs from get_party_state (e.g. char-1).` };
   if (char2.partyId !== party.id) return { success: false, error: `Character ${params.player_id_2} is not in your party.` };
 
-  const ability1 = params.ability_1 as "str" | "dex" | "con" | "int" | "wis" | "cha";
-  const ability2 = params.ability_2 as "str" | "dex" | "con" | "int" | "wis" | "cha";
+  const ability1 = normalizeAbility(params.ability_1);
+  if (!ability1) return { success: false, error: `Invalid ability '${params.ability_1}'. Use: str, dex, con, int, wis, cha.` };
+  const ability2 = normalizeAbility(params.ability_2);
+  if (!ability2) return { success: false, error: `Invalid ability '${params.ability_2}'. Use: str, dex, con, int, wis, cha.` };
 
   const profBonus1 = params.skill_1 && char1.proficiencies.some((p) => p.toLowerCase().includes(params.skill_1!.toLowerCase()))
     ? proficiencyBonus(char1.level) : 0;

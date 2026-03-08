@@ -686,6 +686,78 @@ describe("F. DM Checks and Saves", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("not in your party");
   });
+
+  // B021: long-form ability names should be normalized
+  test("handleRequestCheck accepts long-form ability name 'dexterity'", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestCheck(dm, { player_id: char.id, ability: "dexterity", dc: 14, skill: "stealth" });
+    expect(result.success).toBe(true);
+    expect(result.data!.roll).toBeDefined();
+    expect(typeof result.data!.success).toBe("boolean");
+  });
+
+  test("handleRequestCheck accepts all long-form ability names", () => {
+    const char = getCharacterForUser(players[0])!;
+    for (const name of ["strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma"]) {
+      const result = handleRequestCheck(dm, { player_id: char.id, ability: name, dc: 10 });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  test("handleRequestCheck rejects invalid ability name with 400", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestCheck(dm, { player_id: char.id, ability: "luck", dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
+
+  test("handleRequestSave accepts long-form ability name", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestSave(dm, { player_id: char.id, ability: "constitution", dc: 14 });
+    expect(result.success).toBe(true);
+    expect(result.data!.roll).toBeDefined();
+  });
+
+  test("handleRequestSave rejects invalid ability name", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestSave(dm, { player_id: char.id, ability: "fortitude", dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
+
+  test("handleRequestGroupCheck accepts long-form ability name", () => {
+    const result = handleRequestGroupCheck(dm, { ability: "wisdom", dc: 12 });
+    expect(result.success).toBe(true);
+    expect(result.data!.overallSuccess).toBeDefined();
+  });
+
+  test("handleRequestGroupCheck rejects invalid ability name", () => {
+    const result = handleRequestGroupCheck(dm, { ability: "reflex", dc: 12 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
+
+  test("handleRequestContestedCheck accepts long-form ability names", () => {
+    const char1 = getCharacterForUser(players[0])!;
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleRequestContestedCheck(dm, {
+      player_id_1: char1.id, ability_1: "strength",
+      player_id_2: char2.id, ability_2: "dexterity",
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.winner).toBeDefined();
+  });
+
+  test("handleRequestContestedCheck rejects invalid ability name", () => {
+    const char1 = getCharacterForUser(players[0])!;
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleRequestContestedCheck(dm, {
+      player_id_1: char1.id, ability_1: "power",
+      player_id_2: char2.id, ability_2: "str",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
 });
 
 // ==================== G. Advance Scene ====================
