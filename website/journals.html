@@ -445,7 +445,7 @@
         const res = await fetch(`${API}/spectator/sessions?limit=50&offset=0`);
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
-        const sessions = data.sessions || [];
+        const sessions = (data.sessions || []).filter(s => s.eventCount > 0);
         journalSessions = sessions;
 
         if (sessions.length === 0) {
