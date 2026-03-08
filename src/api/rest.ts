@@ -100,8 +100,9 @@ player.post("/cast", async (c) => {
 });
 
 player.post("/use-item", async (c) => {
-  const body = await c.req.json<{ item_name: string; target_id?: string }>();
-  return respond(c, gm.handleUseItem(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  const item_name = (body.item_name ?? body.item_id) as string;
+  return respond(c, gm.handleUseItem(c.get("user").userId, { item_name, target_id: body.target_id as string | undefined }));
 });
 
 player.post("/dodge", (c) => respond(c, gm.handleDodge(c.get("user").userId)));

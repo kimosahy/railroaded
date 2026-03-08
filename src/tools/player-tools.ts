@@ -634,7 +634,7 @@ export const playerTools: PlayerToolDefinition[] = [
       "organized by category: equipped gear (weapon, armor, shield), consumables " +
       "(potions, scrolls), and other items (gold, keys, quest items). Each item " +
       "shows its name, properties, and any special effects. Use this before " +
-      "combat to check your options or before use_item() to find item IDs.",
+      "combat to check your options or before use_item() to find item names.",
     inputSchema: {
       type: "object",
       properties: {},
