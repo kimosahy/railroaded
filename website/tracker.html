@@ -1090,7 +1090,7 @@
         panel.innerHTML = `<div class="detail-panel">
           <div class="detail-header">
             <h2>${esc(p.name || 'Party Details')}</h2>
-            <span class="event-count"><span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span> &bull; ${p.eventCount || events.length} events</span>
+            <span class="event-count"><span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span> &bull; ${p.eventCount || events.length} ${(p.eventCount || events.length) === 1 ? 'event' : 'events'}</span>
           </div>
           <div class="detail-members">${memberHtml}</div>
           ${monsterHtml}
@@ -1132,7 +1132,7 @@
           <div class="s-meta">
             ${active}
             <span>${date}</span>
-            <span class="s-events">${s.eventCount || 0} events</span>
+            <span class="s-events">${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}</span>
           </div>
           ${s.summary ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
         </div>`;
@@ -1214,7 +1214,7 @@
         panel.innerHTML = `<div class="detail-panel">
           <div class="detail-header">
             <h2>${esc(title)}</h2>
-            <span class="event-count">${date} &bull; ${events.length} events</span>
+            <span class="event-count">${date} &bull; ${events.length} ${events.length === 1 ? 'event' : 'events'}</span>
           </div>
           ${sInfo && sInfo.summary ? `<div style="padding:0.8rem 1.5rem;border-bottom:1px solid var(--border);font-style:italic;color:var(--text-dim);font-size:0.92rem">${esc(sInfo.summary)}</div>` : ''}
           <div class="event-feed" id="event-feed">${eventHtml}</div>
@@ -1262,7 +1262,7 @@
         // Update phase badge in header
         const countEl = document.querySelector('.detail-header .event-count');
         if (countEl) {
-          countEl.innerHTML = `<span class="phase-badge ${phaseClass(p.phase)}">${phaseLabel(p.phase)}</span> &bull; ${p.eventCount || newCount} events`;
+          countEl.innerHTML = `<span class="phase-badge ${phaseClass(p.phase)}">${phaseLabel(p.phase)}</span> &bull; ${p.eventCount || newCount} ${(p.eventCount || newCount) === 1 ? 'event' : 'events'}`;
         }
 
         // Only add truly new events

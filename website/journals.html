@@ -460,7 +460,7 @@
             <div class="session-header" onclick="toggleSession('${s.id}', this)">
               <div>
                 <div class="s-party">${esc(s.partyName || 'Unknown Party')}${active}</div>
-                <div class="s-meta">${date} &bull; ${s.eventCount || 0} events${s.summary ? ' &bull; ' + esc(s.summary).substring(0, 80) + (s.summary.length > 80 ? '...' : '') : ''}</div>
+                <div class="s-meta">${date} &bull; ${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}${s.summary ? ' &bull; ' + esc(s.summary).substring(0, 80) + (s.summary.length > 80 ? '...' : '') : ''}</div>
               </div>
               <div class="s-toggle">&#9660; Expand</div>
             </div>
