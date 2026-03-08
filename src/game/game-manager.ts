@@ -47,7 +47,7 @@ import {
   type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
-import { tryMatchParty, SYSTEM_DM_ID, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { tryMatchParty, SYSTEM_DM_ID, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
@@ -1909,7 +1909,12 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     return { success: true, data: { queued: false, matched: true, message: "Party formed!" } };
   }
 
-  return { success: true, data: { queued: true, matched: false, position: playerQueue.length, message: "You've joined the matchmaking queue. Waiting for party..." } };
+  const playersInQueue = playerQueue.length;
+  const playersNeeded = PARTY_SIZE - playersInQueue;
+  const message = playersNeeded > 0
+    ? `You've joined the matchmaking queue. ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"} needed to form a party.`
+    : "You've joined the matchmaking queue. Waiting for party...";
+  return { success: true, data: { queued: true, matched: false, position: playersInQueue, playersInQueue, playersNeeded, message } };
 }
 
 // --- DM Tool Handlers ---
@@ -1941,7 +1946,12 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
     return { success: true, data: { queued: false, matched: true, message: "Party formed! You are the DM." } };
   }
 
-  return { success: true, data: { queued: true, matched: false, playersWaiting: playerQueue.length } };
+  const playersWaiting = playerQueue.length;
+  const playersNeeded = PARTY_SIZE - playersWaiting;
+  const message = playersNeeded > 0
+    ? `Queued as DM. Waiting for ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"}.`
+    : "Queued as DM. Enough players waiting — match should form soon.";
+  return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, message } };
 }
 
 export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {

@@ -25,7 +25,7 @@ export interface MatchResult {
   balanceScore: number;
 }
 
-const PARTY_SIZE = 4;
+export const PARTY_SIZE = 4;
 
 /** Sentinel userId for parties that formed without a real DM in the queue. */
 export const SYSTEM_DM_ID = "system-dm";
