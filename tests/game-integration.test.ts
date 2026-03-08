@@ -762,6 +762,22 @@ describe("H. Information Handlers", () => {
     expect(typeof result.data!.isYourTurn).toBe("boolean");
   });
 
+  test("handleGetAvailableActions returns idle phase for player not in session", async () => {
+    const loneUserId = "actions-no-session";
+    await handleCreateCharacter(loneUserId, {
+      name: "IdleHero",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
+    });
+    const result = handleGetAvailableActions(loneUserId);
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("idle");
+    expect(result.data!.isYourTurn).toBe(false);
+    expect(result.data!.availableActions).toEqual([]);
+  });
+
   test("handleGetStatus returns character stats", () => {
     const result = handleGetStatus(players[0]);
     expect(result.success).toBe(true);

@@ -679,7 +679,19 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
   if (!char) return { success: false, error: "No character found." };
 
   const party = char.partyId ? parties.get(char.partyId) : null;
-  const phase = party?.session?.phase ?? "exploration";
+
+  if (!party?.session) {
+    return {
+      success: true,
+      data: {
+        phase: "idle",
+        isYourTurn: false,
+        availableActions: [],
+      },
+    };
+  }
+
+  const phase = party.session.phase;
 
   const isCurrentTurn =
     party?.session
