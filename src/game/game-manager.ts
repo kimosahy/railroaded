@@ -1071,6 +1071,9 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
   if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
 
+  // D&D 5e: attacks against unconscious targets have advantage, and melee hits auto-crit
+  const targetIsUnconscious = target.conditions.includes("unconscious");
+
   const result = resolveAttack({
     attackerAbilityMod: attack.to_hit - proficiencyBonus(1),
     proficiencyBonus: 0,
@@ -1079,9 +1082,81 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     damageType: attack.type,
     damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
     bonusToHit: attack.to_hit,
+    advantage: targetIsUnconscious,
+    autoCrit: targetIsUnconscious, // melee attack within 5ft of unconscious = auto-crit
   });
 
   if (result.hit) {
+    // D&D 5e: damage at 0 HP causes death save failures instead of HP loss
+    if (target.hpCurrent === 0 && target.conditions.includes("unconscious")) {
+      const deathResult = damageAtZeroHP(target.deathSaves, result.totalDamage, target.hpMax, result.critical);
+      target.deathSaves = deathResult.deathSaves;
+
+      if (deathResult.instantDeath) {
+        target.conditions = addCondition(target.conditions, "dead");
+        target.conditions = removeCondition(target.conditions, "unconscious");
+        target.isAlive = false;
+
+        broadcastToParty(party.id, {
+          type: "character_death",
+          characterId: target.id,
+          characterName: target.name,
+          attackerName: monster.name,
+          message: `${target.name} has died from ${monster.name}'s ${attack.name}!`,
+        });
+      } else if (deathResult.deathSaves.failures >= 3) {
+        target.conditions = addCondition(target.conditions, "dead");
+        target.conditions = removeCondition(target.conditions, "unconscious");
+        target.isAlive = false;
+
+        broadcastToParty(party.id, {
+          type: "character_death",
+          characterId: target.id,
+          characterName: target.name,
+          attackerName: monster.name,
+          message: `${target.name} has died from ${monster.name}'s ${attack.name}!`,
+        });
+      } else {
+        broadcastToParty(party.id, {
+          type: "death_save_failure",
+          characterId: target.id,
+          characterName: target.name,
+          attackerName: monster.name,
+          failures: deathResult.deathSaves.failures,
+          message: `${target.name} suffers ${result.critical ? 2 : 1} death save failure(s) from ${monster.name}'s ${attack.name}!`,
+        });
+      }
+
+      logEvent(party, "monster_attack", monster.id, {
+        monsterName: monster.name, targetName: target.name, attackName: attack.name,
+        hit: true, damage: result.totalDamage, damageType: result.damageType,
+        critical: result.critical, targetAtZeroHP: true,
+        deathSaveFailures: deathResult.deathSaves.failures,
+        instantDeath: deathResult.instantDeath,
+        dead: deathResult.instantDeath || deathResult.deathSaves.failures >= 3,
+      });
+
+      party.session = nextTurn(party.session);
+      const nextZeroCombatant = getCurrentCombatant(party.session);
+      resetTurnResources(party, nextZeroCombatant?.entityId ?? "");
+      notifyTurnChange(party);
+
+      return {
+        success: true,
+        data: {
+          hit: true, critical: result.critical, damage: result.totalDamage,
+          damageType: result.damageType, targetHP: 0,
+          targetAtZeroHP: true, deathSaveFailures: deathResult.deathSaves.failures,
+          instantDeath: deathResult.instantDeath,
+          dead: deathResult.instantDeath || deathResult.deathSaves.failures >= 3,
+          naturalRoll: result.naturalRoll,
+          attackName: attack.name, monsterName: monster.name, targetName: target.name,
+          rechargeResults,
+          nextTurn: nextZeroCombatant?.entityId ?? null,
+        },
+      };
+    }
+
     const { hp, droppedToZero } = applyDamage(
       { current: target.hpCurrent, max: target.hpMax, temp: 0 },
       result.totalDamage

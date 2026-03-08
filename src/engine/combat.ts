@@ -77,6 +77,7 @@ export function resolveAttack(params: {
   disadvantage?: boolean;
   bonusToHit?: number;
   bonusDamage?: number;
+  autoCrit?: boolean;
   randomFn?: (sides: number) => number;
 }): AttackResult {
   const {
@@ -90,6 +91,7 @@ export function resolveAttack(params: {
     disadvantage = false,
     bonusToHit = 0,
     bonusDamage = 0,
+    autoCrit = false,
     randomFn,
   } = params;
 
@@ -109,10 +111,12 @@ export function resolveAttack(params: {
   const totalAttack = naturalRoll + totalAttackMod;
 
   const fumble = naturalRoll === 1;
-  const critical = naturalRoll === 20;
+  // Natural 20 always crits; autoCrit forces crit on any hit (e.g. melee vs unconscious)
+  const natural20 = naturalRoll === 20;
 
   // Natural 1 always misses, natural 20 always hits
-  const hit = fumble ? false : critical ? true : totalAttack >= targetAC;
+  const hit = fumble ? false : natural20 ? true : totalAttack >= targetAC;
+  const critical = natural20 || (autoCrit && hit);
 
   let damage: DiceRollResult | null = null;
   let totalDamage = 0;

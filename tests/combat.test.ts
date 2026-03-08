@@ -186,6 +186,54 @@ describe("resolveAttack", () => {
     });
     expect(result.totalDamage).toBe(0);
   });
+
+  test("autoCrit forces critical hit on any hit (melee vs unconscious)", () => {
+    const result = resolveAttack({
+      attackerAbilityMod: 3,
+      proficiencyBonus: 2,
+      targetAC: 10,
+      damageDice: "1d8",
+      damageType: "slashing",
+      damageAbilityMod: 3,
+      autoCrit: true,
+      randomFn: makeRoller([12, 4, 6]), // attack: 12 (not nat 20), damage: 2d8 = 4+6
+    });
+    expect(result.hit).toBe(true);
+    expect(result.critical).toBe(true);
+    expect(result.damage!.rolls).toHaveLength(2); // doubled dice from auto-crit
+    expect(result.totalDamage).toBe(13); // 4+6+3
+  });
+
+  test("autoCrit does not force crit on miss", () => {
+    const result = resolveAttack({
+      attackerAbilityMod: 0,
+      proficiencyBonus: 0,
+      targetAC: 30,
+      damageDice: "1d8",
+      damageType: "slashing",
+      damageAbilityMod: 3,
+      autoCrit: true,
+      randomFn: makeRoller([5]), // 5 + 0 + 0 = 5 < 30
+    });
+    expect(result.hit).toBe(false);
+    expect(result.critical).toBe(false);
+  });
+
+  test("autoCrit does not override natural 1 fumble", () => {
+    const result = resolveAttack({
+      attackerAbilityMod: 10,
+      proficiencyBonus: 5,
+      targetAC: 5,
+      damageDice: "1d8",
+      damageType: "slashing",
+      damageAbilityMod: 3,
+      autoCrit: true,
+      randomFn: makeRoller([1]),
+    });
+    expect(result.hit).toBe(false);
+    expect(result.fumble).toBe(true);
+    expect(result.critical).toBe(false);
+  });
 });
 
 describe("meleeAttackParams", () => {
