@@ -953,9 +953,9 @@
     }
 
     function renderHeal(d) {
-      const name = d.casterName || d.characterName || 'Unknown';
+      const name = d.healerName || d.casterName || d.characterName || 'Unknown';
       const target = d.targetName || '';
-      const hp = d.healed || d.hpGained || '';
+      const hp = d.amount || d.healed || d.hpGained || '';
       return `<div class="ev ev-magic">
         <span class="magic-icon">&#128154;</span>
         <span><span class="name">${esc(name)}</span> heals ${target ? esc(target) : 'self'} for <span class="heal-val">+${hp} HP</span></span>
