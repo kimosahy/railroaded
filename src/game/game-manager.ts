@@ -2729,7 +2729,25 @@ export function handleGetPartyState(userId: string): { success: boolean; data?: 
     };
   }).filter(Boolean);
 
-  return { success: true, data: { members, phase: party.session?.phase } };
+  const data: Record<string, unknown> = { members, phase: party.session?.phase };
+
+  if (party.session && party.session.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (current) {
+      const name = current.type === "monster"
+        ? party.monsters.find((m) => m.id === current.entityId)?.name ?? current.entityId
+        : characters.get(current.entityId)?.name ?? current.entityId;
+      data.currentTurn = { name, type: current.type, entityId: current.entityId };
+    }
+    data.initiative = party.session.initiativeOrder.map((slot) => {
+      const slotName = slot.type === "monster"
+        ? party.monsters.find((m) => m.id === slot.entityId)?.name ?? slot.entityId
+        : characters.get(slot.entityId)?.name ?? slot.entityId;
+      return { entityId: slot.entityId, name: slotName, type: slot.type, initiative: slot.initiative };
+    });
+  }
+
+  return { success: true, data };
 }
 
 export function handleGetRoomState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {

@@ -894,6 +894,32 @@ describe("H. Information Handlers", () => {
     expect(result.success).toBe(false);
   });
 
+  test("handleGetPartyState includes combat state during combat", async () => {
+    const setup = await setupParty("party-state-combat");
+    const spawn = handleSpawnEncounter(setup.dm, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    expect(spawn.success).toBe(true);
+
+    const result = handleGetPartyState(setup.dm);
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("combat");
+    expect(result.data!.currentTurn).toBeDefined();
+    expect(result.data!.currentTurn).not.toBeNull();
+    const turn = result.data!.currentTurn as { name: string; type: string; entityId: string };
+    expect(turn.name).toBeDefined();
+    expect(turn.type).toMatch(/^(player|monster)$/);
+    expect(turn.entityId).toBeDefined();
+
+    expect(result.data!.initiative).toBeDefined();
+    const initiative = result.data!.initiative as { entityId: string; name: string; type: string; initiative: number }[];
+    expect(initiative.length).toBeGreaterThan(0);
+    for (const slot of initiative) {
+      expect(slot.entityId).toBeDefined();
+      expect(slot.name).toBeDefined();
+      expect(slot.type).toMatch(/^(player|monster)$/);
+      expect(typeof slot.initiative).toBe("number");
+    }
+  });
+
   test("handleGetRoomState (DM) returns room info or no dungeon", () => {
     const result = handleGetRoomState(dm);
     expect(result.success).toBe(true);
