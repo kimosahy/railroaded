@@ -247,6 +247,8 @@ describe("B. Bonus Actions", () => {
     if (!rogueChar.features.includes("Cunning Action")) {
       rogueChar.features.push("Cunning Action");
     }
+    // End rogue turn from the dash test (bonus action was consumed)
+    handleEndTurn(players[0]);
     const onTurn = advanceToCharacterTurn(rogueChar.id, players, dm);
     if (!onTurn) return;
     const result = handleBonusAction(players[0], { action: "hide" });
