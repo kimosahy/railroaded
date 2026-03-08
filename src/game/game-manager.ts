@@ -970,7 +970,11 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       const { hp, droppedToZero } = applyDamage({ current: t.hpCurrent, max: t.hpMax, temp: 0 }, dmg);
       t.hpCurrent = hp.current;
 
-      if (droppedToZero) {
+      let actuallyDropped = droppedToZero;
+      if (droppedToZero && checkRelentlessEndurance(t)) {
+        actuallyDropped = false;
+      }
+      if (actuallyDropped) {
         t.timesKnockedOut++;
         t.conditions = handleDropToZero(t.conditions);
         t.deathSaves = resetDeathSaves();
@@ -981,7 +985,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
           message: `${t.name} has fallen unconscious!`,
         });
       }
-      results.push({ name: t.name, saved: save.success, saveRoll: save.roll.total, damage: dmg, droppedToZero });
+      results.push({ name: t.name, saved: save.success, saveRoll: save.roll.total, damage: dmg, droppedToZero: actuallyDropped });
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -1023,7 +1027,11 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     const { hp, droppedToZero } = applyDamage({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, dmg);
     target.hpCurrent = hp.current;
 
-    if (droppedToZero) {
+    let saveActuallyDropped = droppedToZero;
+    if (droppedToZero && checkRelentlessEndurance(target)) {
+      saveActuallyDropped = false;
+    }
+    if (saveActuallyDropped) {
       target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
@@ -1038,7 +1046,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     logEvent(party, "monster_attack", monster.id, {
       monsterName: monster.name, targetName: target.name, attackName: attack.name,
       saveBased: true, saveDC: attack.save_dc, saveAbility: attack.save_ability,
-      saved: save.success, damage: dmg, droppedToZero,
+      saved: save.success, damage: dmg, droppedToZero: saveActuallyDropped,
     });
 
     party.session = nextTurn(party.session);
@@ -1052,7 +1060,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         saveBased: true, saved: save.success, saveRoll: save.roll.total,
         saveDC: attack.save_dc, saveAbility: attack.save_ability,
         damage: dmg, damageType: attack.type, targetHP: target.hpCurrent,
-        droppedToZero, attackName: attack.name, monsterName: monster.name,
+        droppedToZero: saveActuallyDropped, attackName: attack.name, monsterName: monster.name,
         targetName: target.name, rechargeResults,
         nextTurn: nextSaveCombatant?.entityId ?? null,
       },
@@ -1080,7 +1088,11 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     );
     target.hpCurrent = hp.current;
 
-    if (droppedToZero) {
+    let hitActuallyDropped = droppedToZero;
+    if (droppedToZero && checkRelentlessEndurance(target)) {
+      hitActuallyDropped = false;
+    }
+    if (hitActuallyDropped) {
       target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
@@ -1108,7 +1120,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     logEvent(party, "monster_attack", monster.id, {
       monsterName: monster.name, targetName: target.name, attackName: attack.name,
       hit: true, damage: result.totalDamage, damageType: result.damageType,
-      critical: result.critical, droppedToZero,
+      critical: result.critical, droppedToZero: hitActuallyDropped,
     });
 
     party.session = nextTurn(party.session);
@@ -1121,7 +1133,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       data: {
         hit: true, critical: result.critical, damage: result.totalDamage,
         damageType: result.damageType, targetHP: target.hpCurrent,
-        droppedToZero, naturalRoll: result.naturalRoll,
+        droppedToZero: hitActuallyDropped, naturalRoll: result.naturalRoll,
         attackName: attack.name, monsterName: monster.name, targetName: target.name,
         rechargeResults,
         nextTurn: nextHitCombatant?.entityId ?? null,
@@ -1562,6 +1574,7 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   char.hpCurrent = result.hpAfter;
   char.hitDice = { ...char.hitDice, current: result.hitDiceTotal };
   char.spellSlots = result.newSpellSlots;
+  char.relentlessEnduranceUsed = false;
   // Clear conditions (unconscious, stable, etc.) but preserve "dead" — though we already block dead above
   char.conditions = char.conditions.filter((c) => c === "dead");
 
@@ -2743,7 +2756,11 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
   );
   char.hpCurrent = hp.current;
 
-  if (droppedToZero) {
+  let envActuallyDropped = droppedToZero;
+  if (droppedToZero && checkRelentlessEndurance(char)) {
+    envActuallyDropped = false;
+  }
+  if (envActuallyDropped) {
     char.timesKnockedOut++;
     char.conditions = handleDropToZero(char.conditions);
     char.deathSaves = resetDeathSaves();
@@ -2775,7 +2792,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
     success: true,
     data: {
       player: char.name, damage: dmgRoll.total, type: damageType,
-      hpRemaining: char.hpCurrent, droppedToZero,
+      hpRemaining: char.hpCurrent, droppedToZero: envActuallyDropped,
     },
   };
 }
