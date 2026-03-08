@@ -1086,6 +1086,7 @@
     async function selectParty(id) {
       selectedId = id;
       selectedSessionId = null;
+      sessionEventCount = 0;
       narratorSessionId = null; // live party — use global narrations
       loadNarrations();
       renderParties(partiesCache);
@@ -1215,7 +1216,11 @@
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
         sessionsCache = data.sessions || [];
+        // Preserve scroll position across re-renders
+        const scrollEl = document.querySelector('.party-list');
+        const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
         renderSessions(sessionsCache, false);
+        if (scrollEl) scrollEl.scrollTop = scrollTop;
       } catch (e) {
         sessionsCache = [];
         renderSessions([], false);
@@ -1275,6 +1280,9 @@
           <div class="event-feed" id="event-feed">${eventHtml}</div>
         </div>`;
 
+        // Track event count for incremental session refresh
+        sessionEventCount = events.length;
+
       } catch (err) {
         panel.innerHTML = `<div class="detail-panel">
           <div class="detail-header"><h2>Error</h2></div>
@@ -1290,7 +1298,11 @@
         const data = await res.json();
         partiesCache = Array.isArray(data) ? data : (data.parties || []);
         for (const p of partiesCache) updateAvatarMap(p.members);
+        // Preserve scroll position across re-renders
+        const scrollEl = document.querySelector('.party-list');
+        const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
         renderParties(partiesCache);
+        if (scrollEl) scrollEl.scrollTop = scrollTop;
       } catch (e) {
         partiesCache = [];
         renderParties([]);
@@ -1332,6 +1344,44 @@
         const newHtml = newEvents.slice().reverse().map(renderEvent).join('');
         feed.insertAdjacentHTML('afterbegin', newHtml);
         liveEventCount = newCount;
+      } catch (err) { /* silent */ }
+    }
+
+    // Incremental refresh for selected session events
+    let sessionEventCount = 0;
+    async function refreshSelectedSession() {
+      if (!selectedSessionId) return;
+      try {
+        const res = await fetch(`${API}/spectator/sessions/${selectedSessionId}/events?limit=500`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const events = data.events || [];
+        const newCount = events.length;
+
+        // Update event count in header
+        const countEl = document.querySelector('.detail-header .event-count');
+        if (countEl) {
+          const sInfo = sessionsCache.find(s => s.id === selectedSessionId);
+          const date = sInfo && sInfo.startedAt ? new Date(sInfo.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+          countEl.innerHTML = `${date} &bull; ${newCount} ${newCount === 1 ? 'event' : 'events'}`;
+        }
+
+        // Only add truly new events
+        if (newCount <= sessionEventCount) return;
+        const newEvents = events.slice(sessionEventCount);
+        if (newEvents.length === 0) return;
+
+        const feed = document.getElementById('event-feed');
+        if (!feed) return;
+
+        // Prepend new events at the top (newest first)
+        const newHtml = newEvents.slice().reverse().map(renderEvent).join('');
+        feed.insertAdjacentHTML('afterbegin', newHtml);
+        sessionEventCount = newCount;
+
+        // Update session event count in the sessions list too
+        const sInfo = sessionsCache.find(s => s.id === selectedSessionId);
+        if (sInfo) sInfo.eventCount = newCount;
       } catch (err) { /* silent */ }
     }
 
@@ -1476,7 +1526,9 @@
     loadSessions();
     setInterval(() => {
       loadParties();
+      loadSessions();
       refreshSelectedParty();
+      refreshSelectedSession();
       loadNarrations(narratorSessionId);
     }, 10000);
   </script>
