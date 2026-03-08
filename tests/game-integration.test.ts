@@ -871,6 +871,20 @@ describe("I. Communication", () => {
     expect(result.data!.message).toBe("Hello team!");
   });
 
+  test("handlePartyChat fails without party membership", async () => {
+    const loneUserId = "comms-chat-loner";
+    await handleCreateCharacter(loneUserId, {
+      name: "ChatLoner",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: scores,
+      avatar_url: "https://example.com/test-avatar.png",
+    });
+    const result = handlePartyChat(loneUserId, { message: "hello?" });
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("Not in a party.");
+  });
+
   test("handleWhisper succeeds", () => {
     const char2 = getCharacterForUser(players[1])!;
     const result = handleWhisper(players[0], { player_id: char2.id, message: "Secret" });

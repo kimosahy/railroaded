@@ -1318,6 +1318,7 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   if (!char) return { success: false, error: "No character found." };
 
   const party = getPartyForCharacter(char.id);
+  if (!party) return { success: false, error: "Not in a party." };
   logEvent(party, "chat", char.id, { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message });
 
   return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
