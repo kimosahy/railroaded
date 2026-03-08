@@ -1156,6 +1156,11 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   // Update spell slots
   char.spellSlots = result.remainingSlots;
 
+  // Track saving throw result for save-based spells
+  let targetSaved: boolean | undefined;
+  let saveRoll: number | undefined;
+  let saveDC: number | undefined;
+
   // Apply effect to target if applicable
   if (spell.isHealing && params.target_id && result.totalEffect) {
     // Find target character
@@ -1181,60 +1186,93 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     if (party) {
       const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
       if (target) {
-        const { monster, killed } = damageMonster(target, result.totalEffect);
-        const idx = party.monsters.findIndex((m) => m.id === target.id);
-        if (idx !== -1) party.monsters[idx] = monster;
+        let actualDamage = result.totalEffect;
 
-        // Track lifetime stats
-        char.totalDamageDealt += result.totalEffect;
-
-        if (killed) {
-          char.monstersKilled++;
-          rollMonsterLoot(party, monster);
-
-          // Remove from initiative
-          if (party.session) {
-            party.session = removeCombatant(party.session, target.id);
+        // Roll saving throw for save-based spells
+        if (spell.savingThrow) {
+          const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+          const save = savingThrow({
+            abilityScores: target.abilityScores,
+            ability: spell.savingThrow,
+            dc,
+          });
+          targetSaved = save.success;
+          saveRoll = save.roll.total;
+          saveDC = dc;
+          if (save.success) {
+            // Cantrips: 0 damage on save; leveled spells: half damage
+            actualDamage = spell.level === 0 ? 0 : Math.floor(result.totalEffect / 2);
           }
+        }
 
-          // Check if combat should end
-          if (party.session && shouldCombatEnd(party.session)) {
-            const xp = calculateEncounterXP(party.monsters);
-            const xpEach = Math.floor(xp / party.members.length);
-            const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
-            for (const mid of party.members) {
-              const m = characters.get(mid);
-              if (m) {
-                m.xp += xpEach;
-                const lu = checkLevelUp(m);
-                if (lu) levelUps.push({ name: m.name, ...lu });
+        if (actualDamage > 0) {
+          const { monster, killed } = damageMonster(target, actualDamage);
+          const idx = party.monsters.findIndex((m) => m.id === target.id);
+          if (idx !== -1) party.monsters[idx] = monster;
+
+          // Track lifetime stats
+          char.totalDamageDealt += actualDamage;
+
+          if (killed) {
+            char.monstersKilled++;
+            rollMonsterLoot(party, monster);
+
+            // Remove from initiative
+            if (party.session) {
+              party.session = removeCombatant(party.session, target.id);
+            }
+
+            // Check if combat should end
+            if (party.session && shouldCombatEnd(party.session)) {
+              const xp = calculateEncounterXP(party.monsters);
+              const xpEach = Math.floor(xp / party.members.length);
+              const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
+              for (const mid of party.members) {
+                const m = characters.get(mid);
+                if (m) {
+                  m.xp += xpEach;
+                  const lu = checkLevelUp(m);
+                  if (lu) levelUps.push({ name: m.name, ...lu });
+                }
               }
+              party.session = exitCombat(party.session);
+              logEvent(party, "combat_end", null, { xpAwarded: xp });
+              for (const lu of levelUps) {
+                logEvent(party, "level_up", null, lu);
+                broadcastToParty(party.id, { type: "level_up", ...lu });
+              }
+              snapshotCharacters(party);
             }
-            party.session = exitCombat(party.session);
-            logEvent(party, "combat_end", null, { xpAwarded: xp });
-            for (const lu of levelUps) {
-              logEvent(party, "level_up", null, lu);
-              broadcastToParty(party.id, { type: "level_up", ...lu });
-            }
-            snapshotCharacters(party);
           }
         }
       }
     }
   }
 
+  const effectAfterSave = targetSaved !== undefined
+    ? (targetSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
+    : result.totalEffect;
+
   logEvent(party, "spell_cast", char.id, {
     casterName: char.name, spellName: params.spell_name,
-    targetName: params.target_id, effect: result.totalEffect,
+    targetName: params.target_id, effect: effectAfterSave,
+    ...(targetSaved !== undefined && { targetSaved, saveRoll, saveDC }),
   });
+
+  const responseData: Record<string, unknown> = {
+    spell: params.spell_name,
+    effect: effectAfterSave,
+    remainingSlots: result.remainingSlots,
+  };
+  if (targetSaved !== undefined) {
+    responseData.targetSaved = targetSaved;
+    responseData.saveDC = saveDC;
+    responseData.saveRoll = saveRoll;
+  }
 
   return {
     success: true,
-    data: {
-      spell: params.spell_name,
-      effect: result.totalEffect,
-      remainingSlots: result.remainingSlots,
-    },
+    data: responseData,
   };
 }
 
@@ -1612,6 +1650,10 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
 
       // Apply healing/damage effects
+      let bonusSaved: boolean | undefined;
+      let bonusSaveRoll: number | undefined;
+      let bonusSaveDC: number | undefined;
+
       if (spell.isHealing && params.target_id && result.totalEffect) {
         const target = characters.get(params.target_id);
         if (target) {
@@ -1624,20 +1666,50 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       } else if (!spell.isHealing && params.target_id && result.totalEffect) {
         const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
         if (target) {
-          const { monster } = damageMonster(target, result.totalEffect);
-          const idx = party.monsters.findIndex((m) => m.id === target.id);
-          if (idx !== -1) party.monsters[idx] = monster;
+          let actualDamage = result.totalEffect;
+
+          if (spell.savingThrow) {
+            const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+            const save = savingThrow({
+              abilityScores: target.abilityScores,
+              ability: spell.savingThrow,
+              dc,
+            });
+            bonusSaved = save.success;
+            bonusSaveRoll = save.roll.total;
+            bonusSaveDC = dc;
+            if (save.success) {
+              actualDamage = spell.level === 0 ? 0 : Math.floor(result.totalEffect / 2);
+            }
+          }
+
+          if (actualDamage > 0) {
+            const { monster } = damageMonster(target, actualDamage);
+            const idx = party.monsters.findIndex((m) => m.id === target.id);
+            if (idx !== -1) party.monsters[idx] = monster;
+          }
         }
       }
 
+      const bonusEffect = bonusSaved !== undefined
+        ? (bonusSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
+        : result.totalEffect;
+
       logEvent(party, "bonus_action", char.id, {
-        action: "cast", spellName: params.spell_name, effect: result.totalEffect,
+        action: "cast", spellName: params.spell_name, effect: bonusEffect,
+        ...(bonusSaved !== undefined && { targetSaved: bonusSaved, saveRoll: bonusSaveRoll, saveDC: bonusSaveDC }),
       });
 
-      return {
-        success: true,
-        data: { action: "cast", spell: params.spell_name, effect: result.totalEffect, remainingSlots: result.remainingSlots },
+      const bonusData: Record<string, unknown> = {
+        action: "cast", spell: params.spell_name, effect: bonusEffect, remainingSlots: result.remainingSlots,
       };
+      if (bonusSaved !== undefined) {
+        bonusData.targetSaved = bonusSaved;
+        bonusData.saveDC = bonusSaveDC;
+        bonusData.saveRoll = bonusSaveRoll;
+      }
+
+      return { success: true, data: bonusData };
     }
 
     case "dash":
