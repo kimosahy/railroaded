@@ -535,6 +535,14 @@
     .session-card .s-meta .s-events {
       font-family: 'Cinzel', serif; color: var(--gold-dim);
     }
+    .session-card.empty-session {
+      opacity: 0.55; border-style: dashed;
+    }
+    .session-card.empty-session .s-events {
+      font-style: italic;
+    }
+    @keyframes pulse-dim { 0%,100% { opacity: 0.55; } 50% { opacity: 0.8; } }
+    .session-card.empty-session.live { animation: pulse-dim 2.5s ease-in-out infinite; }
     .session-card .s-summary {
       font-size: 0.82rem; color: var(--text-dim); margin-top: 0.3rem;
       font-style: italic; display: -webkit-box;
@@ -1123,16 +1131,27 @@
         return;
       }
 
-      const html = sessions.map(s => {
+      // Filter out inactive sessions with 0 events (empty/dead sessions)
+      const visible = sessions.filter(s => s.isActive || (s.eventCount || 0) > 0);
+      if (visible.length === 0 && !append) {
+        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">No session history yet.</div>';
+        return;
+      }
+      const html = visible.map(s => {
         const sel = s.id === selectedSessionId ? 'selected' : '';
         const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
         const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem">Live</span>' : '';
-        return `<div class="session-card ${sel}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
+        const isEmpty = (s.eventCount || 0) === 0;
+        const emptyClass = isEmpty ? `empty-session${s.isActive ? ' live' : ''}` : '';
+        const eventsLabel = isEmpty
+          ? 'Session starting\u2026'
+          : `${s.eventCount} ${s.eventCount === 1 ? 'event' : 'events'}`;
+        return `<div class="session-card ${sel} ${emptyClass}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session${isEmpty ? ' — session starting' : ''}" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
           <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
           <div class="s-meta">
             ${active}
             <span>${date}</span>
-            <span class="s-events">${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}</span>
+            <span class="s-events">${eventsLabel}</span>
           </div>
           ${s.summary ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
         </div>`;
