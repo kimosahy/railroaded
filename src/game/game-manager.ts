@@ -1976,8 +1976,17 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   if (!party) return { success: false, error: "Not a DM for any party." };
   if (!party.session) return { success: false, error: "No active session." };
 
+  // Normalize flat format to array format
+  let monsterList = params.monsters;
+  if (!monsterList && (params as any).monster_type) {
+    monsterList = [{ template_name: (params as any).monster_type, count: (params as any).count ?? 1 }];
+  }
+  if (!monsterList || !Array.isArray(monsterList) || monsterList.length === 0) {
+    return { success: false, error: "Expected 'monsters' array (e.g., [{template_name: 'goblin', count: 2}]) or flat format {monster_type: 'goblin', count: 2}" };
+  }
+
   // Look up monster templates (case-insensitive, fall back to "name" field from agents)
-  const toSpawn = params.monsters.map((m) => {
+  const toSpawn = monsterList.map((m) => {
     const rawName = m.template_name ?? (m as any).type ?? (m as Record<string, unknown>).name as string ?? "unknown";
     // Try exact match first, then case-insensitive
     let template = monsterTemplates.get(rawName);

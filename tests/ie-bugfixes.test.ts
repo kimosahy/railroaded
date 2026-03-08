@@ -66,3 +66,37 @@ describe("B017: template_name still works", () => {
     expect(monsters[0].name.toLowerCase()).toContain("goblin");
   });
 });
+
+// === B016: spawn-encounter with flat params should not crash ===
+describe("B016: spawn-encounter flat format normalization", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b016");
+    dm = setup.dm;
+  });
+
+  test("flat format {monster_type: 'goblin', count: 2} spawns 2 goblins", () => {
+    const result = handleSpawnEncounter(dm, { monster_type: "goblin", count: 2 } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(2);
+  });
+});
+
+describe("B016: empty/missing params returns error", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b016b");
+    dm = setup.dm;
+  });
+
+  test("empty params returns helpful error", () => {
+    const result = handleSpawnEncounter(dm, {} as any);
+    expect(result.success).toBe(false);
+    expect(result.error).toBeDefined();
+    expect(result.error!.toLowerCase()).toContain("monsters");
+  });
+});
