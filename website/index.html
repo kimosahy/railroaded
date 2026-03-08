@@ -873,31 +873,15 @@
 
     async function loadStats() {
       try {
-        const [leaderboardRes, sessionsRes, narrationsRes] = await Promise.allSettled([
-          fetch(`${API_BASE}/spectator/leaderboard`),
-          fetch(`${API_BASE}/spectator/sessions?limit=1000&offset=0`),
-          fetch(`${API_BASE}/spectator/narrations?limit=1000`)
-        ]);
-
-        if (leaderboardRes.status === 'fulfilled' && leaderboardRes.value.ok) {
-          const lb = await leaderboardRes.value.json();
-          document.getElementById('stat-parties').textContent = lb.totalParties ?? 0;
-          document.getElementById('stat-characters').textContent = lb.totalCharacters ?? 0;
-          const highestLevel = lb.leaderboards?.highestLevel || [];
-          document.getElementById('stat-highest').textContent = highestLevel.length > 0 ? (highestLevel[0].level || 1) : 0;
-        }
-
-        if (sessionsRes.status === 'fulfilled' && sessionsRes.value.ok) {
-          const sd = await sessionsRes.value.json();
-          const sessions = sd.sessions || [];
-          document.getElementById('stat-sessions').textContent = sessions.length || 0;
-          const totalEvents = sessions.reduce((sum, s) => sum + (s.eventCount || 0), 0);
-          document.getElementById('stat-events').textContent = totalEvents;
-        }
-
-        if (narrationsRes.status === 'fulfilled' && narrationsRes.value.ok) {
-          const nd = await narrationsRes.value.json();
-          document.getElementById('stat-narrations').textContent = (nd.narrations || []).length || 0;
+        const res = await fetch(`${API_BASE}/spectator/stats`);
+        if (res.ok) {
+          const s = await res.json();
+          document.getElementById('stat-sessions').textContent = s.totalSessions ?? 0;
+          document.getElementById('stat-characters').textContent = s.totalCharacters ?? 0;
+          document.getElementById('stat-events').textContent = s.totalEvents ?? 0;
+          document.getElementById('stat-narrations').textContent = s.totalNarrations ?? 0;
+          document.getElementById('stat-highest').textContent = s.highestLevel ?? 0;
+          document.getElementById('stat-parties').textContent = s.totalParties ?? 0;
         }
       } catch (e) {
         console.log('Stats fetch failed:', e.message);

@@ -23,7 +23,7 @@ import {
   tavernReplies as tavernRepliesTable,
   dmStats as dmStatsTable,
 } from "../db/schema.ts";
-import { eq, desc, count, asc, isNotNull } from "drizzle-orm";
+import { eq, desc, count, asc, isNotNull, max } from "drizzle-orm";
 
 // --- Tavern Board in-memory storage ---
 
@@ -476,11 +476,15 @@ spectator.get("/leaderboard", async (c) => {
       }
     }
     dbTotalCharacters = charMap.size;
+  } catch (err) {
+    console.error("[DB] Failed to fetch DB characters for leaderboard:", err);
+  }
 
+  try {
     const [partyCountRow] = await db.select({ total: count() }).from(partiesTable);
     dbTotalParties = Math.max(dbTotalParties, Number(partyCountRow?.total ?? 0));
   } catch (err) {
-    console.error("[DB] Failed to fetch DB characters for leaderboard:", err);
+    console.error("[DB] Failed to fetch DB party count for leaderboard:", err);
   }
 
   const allChars = [...charMap.values()];
@@ -656,6 +660,59 @@ spectator.get("/characters/:id", async (c) => {
     console.error("[DB] Failed to fetch character:", err);
     return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
+});
+
+// --- Homepage Stats ---
+
+// GET /spectator/stats — aggregate counts for the homepage "World So Far" section.
+// Each query is isolated so one table failure doesn't zero out all stats.
+spectator.get("/stats", async (c) => {
+  let totalSessions = 0;
+  let totalCharacters = 0;
+  let totalEvents = 0;
+  let totalNarrations = 0;
+  let highestLevel = 0;
+  let totalParties = 0;
+
+  const queries = [
+    async () => {
+      const [row] = await db.select({ total: count() }).from(gameSessionsTable);
+      totalSessions = Number(row?.total ?? 0);
+    },
+    async () => {
+      const [row] = await db.select({ total: count() }).from(charactersTable);
+      totalCharacters = Number(row?.total ?? 0);
+    },
+    async () => {
+      const [row] = await db.select({ total: count() }).from(sessionEventsTable);
+      totalEvents = Number(row?.total ?? 0);
+    },
+    async () => {
+      const [row] = await db.select({ total: count() }).from(narrationsTable);
+      totalNarrations = Number(row?.total ?? 0);
+    },
+    async () => {
+      const [row] = await db.select({ maxLevel: max(charactersTable.level) }).from(charactersTable);
+      highestLevel = Number(row?.maxLevel ?? 0);
+    },
+    async () => {
+      const [row] = await db.select({ total: count() }).from(partiesTable);
+      totalParties = Number(row?.total ?? 0);
+    },
+  ];
+
+  await Promise.all(queries.map((q) => q().catch((err) => {
+    console.error("[DB] Stats query failed:", err);
+  })));
+
+  return c.json({
+    totalSessions,
+    totalCharacters,
+    totalEvents,
+    totalNarrations,
+    highestLevel,
+    totalParties,
+  });
 });
 
 // --- Session History ---
