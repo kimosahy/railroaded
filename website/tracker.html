@@ -1324,9 +1324,10 @@
       img.src = NARRATOR_FALLBACK_AVATAR;
     })();
 
-    function renderNarratorPanel(narrations) {
+    function renderNarratorPanel(narrations, opts) {
       const panel = document.getElementById('narrator-panel');
       if (!panel) return;
+      const isFallback = opts && opts.fallback;
 
       const header = `<div class="narrator-header">
         ${narratorAvatarHtml()}
@@ -1346,15 +1347,23 @@
         return;
       }
 
+      const contextLabel = isFallback
+        ? '<div class="narration-context">No narrations for this session. Latest from other adventures:</div>'
+        : '';
+
       const entries = narrations.map(n => {
         const ago = narratorTimeAgo(new Date(n.createdAt));
+        const partyLabel = isFallback && n.partyName
+          ? `<div class="narration-party">${esc(n.partyName)}</div>`
+          : '';
         return `<div class="narration-entry">
+          ${partyLabel}
           <div class="narration-prose">${esc(n.content)}</div>
           <div class="narration-time">${ago}</div>
         </div>`;
       }).join('');
 
-      panel.innerHTML = `${header}<div class="narrator-body">${entries}</div>`;
+      panel.innerHTML = `${header}<div class="narrator-body">${contextLabel}${entries}</div>`;
     }
 
     function narratorTimeAgo(date) {
@@ -1370,19 +1379,35 @@
 
     async function loadNarrations(sessionId) {
       try {
-        const url = sessionId
-          ? `${API}/spectator/narrations/${sessionId}`
-          : `${API}/spectator/narrations?limit=20`;
-        const res = await fetch(url);
+        // Try session-specific narrations first
+        if (sessionId) {
+          const res = await fetch(`${API}/spectator/narrations/${sessionId}`);
+          if (res.ok) {
+            const data = await res.json();
+            const narrations = data.narrations || [];
+            if (narrations.length > 0) {
+              renderNarratorPanel(narrations);
+              lastNarrationIds = new Set(narrations.map(n => n.id));
+              return;
+            }
+          }
+          // Session has no narrations — fall back to global feed
+          const fallbackRes = await fetch(`${API}/spectator/narrations?limit=20`);
+          if (fallbackRes.ok) {
+            const fallbackData = await fallbackRes.json();
+            const fallbackNarrations = (fallbackData.narrations || []).slice().reverse();
+            renderNarratorPanel(fallbackNarrations, { fallback: true });
+            lastNarrationIds = new Set(fallbackNarrations.map(n => n.id));
+            return;
+          }
+        }
+
+        // Global feed (no session selected)
+        const res = await fetch(`${API}/spectator/narrations?limit=20`);
         if (!res.ok) throw new Error('fetch failed');
         const data = await res.json();
-        const narrations = data.narrations || [];
-
-        // For global feed (newest first from API), reverse to show chronological
-        // For session-specific (already chronological from API), keep as-is
-        const ordered = sessionId ? narrations : narrations.slice().reverse();
-
-        renderNarratorPanel(ordered);
+        const narrations = (data.narrations || []).slice().reverse();
+        renderNarratorPanel(narrations);
         lastNarrationIds = new Set(narrations.map(n => n.id));
       } catch (e) {
         // On first load, show empty state; on refresh failures, keep existing content

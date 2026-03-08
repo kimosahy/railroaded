@@ -106,6 +106,23 @@
   margin-top: 0.3rem;
 }
 
+/* --- Fallback context label --- */
+.narration-context {
+  font-style: italic;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  padding: 0.4rem 0.9rem 0.5rem;
+  line-height: 1.5;
+}
+.narration-party {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  color: var(--gold-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.2rem;
+}
+
 /* --- Empty state --- */
 .narrator-empty {
   padding: 2rem 1rem;
