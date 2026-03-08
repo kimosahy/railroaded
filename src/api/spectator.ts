@@ -23,7 +23,7 @@ import {
   tavernReplies as tavernRepliesTable,
   dmStats as dmStatsTable,
 } from "../db/schema.ts";
-import { eq, desc, count, asc, isNotNull, max } from "drizzle-orm";
+import { eq, desc, count, asc, isNotNull, max, and } from "drizzle-orm";
 
 // --- Tavern Board in-memory storage ---
 
@@ -857,7 +857,28 @@ spectator.get("/narrations/:sessionId", async (c) => {
       .orderBy(narrationsTable.createdAt);
 
     if (rows.length === 0) {
-      return c.json({ narrations: [], sessionId });
+      // Fall back to narration-type session events (DM narrate tool)
+      const eventRows = await db.select({
+        id: sessionEventsTable.id,
+        data: sessionEventsTable.data,
+        createdAt: sessionEventsTable.createdAt,
+      })
+        .from(sessionEventsTable)
+        .where(and(
+          eq(sessionEventsTable.sessionId, sessionId),
+          eq(sessionEventsTable.type, "narration"),
+        ))
+        .orderBy(sessionEventsTable.createdAt);
+
+      return c.json({
+        sessionId,
+        narrations: eventRows.map((r) => ({
+          id: r.id,
+          eventId: r.id,
+          content: (r.data as Record<string, unknown>).text as string || "",
+          createdAt: r.createdAt.toISOString(),
+        })),
+      });
     }
 
     return c.json({

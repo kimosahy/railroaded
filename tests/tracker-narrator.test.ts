@@ -4,6 +4,7 @@ import { join } from "path";
 
 const trackerHtml = readFileSync(join(__dirname, "../website/tracker.html"), "utf-8");
 const narratorCss = readFileSync(join(__dirname, "../website/narrator.css"), "utf-8");
+const spectatorTs = readFileSync(join(__dirname, "../src/api/spectator.ts"), "utf-8");
 
 describe("tracker narrator sidebar", () => {
   test("loadNarrations fetches session-specific narrations when sessionId is provided", () => {
@@ -57,5 +58,30 @@ describe("tracker narrator sidebar", () => {
   test("narrator.css has styles for fallback context label", () => {
     expect(narratorCss).toContain(".narration-context");
     expect(narratorCss).toContain(".narration-party");
+  });
+});
+
+describe("spectator narrations endpoint fallback (ie-ux-016)", () => {
+  test("session narrations endpoint falls back to session_events when narrations table is empty", () => {
+    // The /spectator/narrations/:sessionId endpoint should query session_events
+    // for narration-type events when the narrations table returns no rows
+    expect(spectatorTs).toContain('eq(sessionEventsTable.type, "narration")');
+  });
+
+  test("fallback extracts text field from session event data", () => {
+    // DM narrate tool stores narration text in data.text
+    expect(spectatorTs).toMatch(/r\.data.*\.text/);
+  });
+
+  test("fallback returns same response shape as narrations table query", () => {
+    // Both paths should return { sessionId, narrations: [{ id, eventId, content, createdAt }] }
+    const endpointCode = spectatorTs.slice(
+      spectatorTs.indexOf("narrations/:sessionId"),
+      spectatorTs.indexOf("// ---", spectatorTs.indexOf("narrations/:sessionId"))
+    );
+    // The fallback path maps to { id, eventId, content, createdAt }
+    expect(endpointCode).toContain("eventId: r.id");
+    expect(endpointCode).toContain("content:");
+    expect(endpointCode).toContain("createdAt: r.createdAt.toISOString()");
   });
 });
