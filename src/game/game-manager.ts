@@ -100,6 +100,7 @@ interface GameCharacter extends CharacterSheet {
   criticalHits: number;
   timesKnockedOut: number;
   goldEarned: number;
+  relentlessEnduranceUsed: boolean;
 }
 
 interface GameParty {
@@ -365,6 +366,23 @@ function requireConscious(char: GameCharacter): string | null {
   return null;
 }
 
+/**
+ * Check if Relentless Endurance should trigger after dropping to 0 HP.
+ * Half-orc racial: once per long rest, drop to 1 HP instead of 0.
+ * Returns true if the feature triggered (caller should skip unconscious handling).
+ */
+function checkRelentlessEndurance(char: GameCharacter): boolean {
+  if (
+    char.features.includes("Relentless Endurance") &&
+    !char.relentlessEnduranceUsed
+  ) {
+    char.hpCurrent = 1;
+    char.relentlessEnduranceUsed = true;
+    return true;
+  }
+  return false;
+}
+
 // --- Avatar URL Validation ---
 
 export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; error?: string }> {
@@ -477,6 +495,7 @@ export async function handleCreateCharacter(userId: string, params: {
     criticalHits: 0,
     timesKnockedOut: 0,
     goldEarned: 0,
+    relentlessEnduranceUsed: false,
   };
 
   characters.set(id, character);
@@ -4548,6 +4567,14 @@ export async function loadPersistedState(): Promise<number> {
           conditions: (row.conditions as string[]) ?? [],
           deathSaves: (row.deathSaves as DeathSaves) ?? { successes: 0, failures: 0 },
           dbCharId: row.id,
+          monstersKilled: 0,
+          dungeonsCleared: 0,
+          sessionsPlayed: 0,
+          totalDamageDealt: 0,
+          criticalHits: 0,
+          timesKnockedOut: 0,
+          goldEarned: 0,
+          relentlessEnduranceUsed: false,
         };
 
         characters.set(charId, char);
@@ -4681,6 +4708,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         criticalHits: row.criticalHits ?? 0,
         timesKnockedOut: row.timesKnockedOut ?? 0,
         goldEarned: row.goldEarned ?? 0,
+        relentlessEnduranceUsed: false,
       };
 
       characters.set(charId, char);
