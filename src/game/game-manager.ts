@@ -1978,7 +1978,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
 
   // Look up monster templates (case-insensitive, fall back to "name" field from agents)
   const toSpawn = params.monsters.map((m) => {
-    const rawName = m.template_name ?? (m as Record<string, unknown>).name as string ?? "unknown";
+    const rawName = m.template_name ?? (m as any).type ?? (m as Record<string, unknown>).name as string ?? "unknown";
     // Try exact match first, then case-insensitive
     let template = monsterTemplates.get(rawName);
     let resolvedName = rawName;
