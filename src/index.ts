@@ -84,14 +84,15 @@ app.get("/skill/dm", (c) => {
 // Auth routes (POST /register, POST /login)
 app.route("/", auth);
 
+// Spectator endpoints (public, no auth) — mount before REST so /api/v1/spectate bypasses auth
+app.route("/api/v1/spectate", spectator);
+app.route("/spectator", spectator);
+
 // REST API (all under /api/v1/)
 app.route("/api/v1", rest);
 
 // MCP server (POST /mcp)
 app.route("/", mcp);
-
-// Spectator endpoints (public, no auth)
-app.route("/spectator", spectator);
 
 // Narrator endpoints (authenticated)
 app.route("/narrator", narrator);
