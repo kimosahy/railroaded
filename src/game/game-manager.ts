@@ -624,7 +624,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
       type: room.type,
       features: room.features,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.isAlive ? "alive" : "dead" })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.isAlive ? "alive" : "dead", conditions: m.conditions })),
       partyMembers: party.members
         .map((mid) => characters.get(mid))
         .filter(Boolean)
@@ -898,6 +898,11 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
   if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
 
+  // Sleeping monsters cannot attack (unconscious from Sleep spell)
+  if (monster.conditions.includes("asleep")) {
+    return { success: false, error: `${monster.name} is asleep and cannot attack. End its turn.` };
+  }
+
   // Recharge check at start of monster's turn — roll d6 for each spent ability
   const rechargeResults: { name: string; rolled: number; recharged: boolean }[] = [];
   for (const atk of monster.attacks) {
@@ -1170,6 +1175,38 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 
   // Update spell slots
   char.spellSlots = result.remainingSlots;
+
+  // --- Sleep spell: HP-pool mechanic, does NOT deal damage ---
+  if (spell.name === "Sleep" && result.totalEffect && party) {
+    let hpPool = result.totalEffect;
+    const eligible = party.monsters
+      .filter((m) => m.isAlive && !m.conditions.includes("asleep"))
+      .sort((a, b) => a.hpCurrent - b.hpCurrent);
+
+    const affectedMonsters: string[] = [];
+    for (const monster of eligible) {
+      if (hpPool >= monster.hpCurrent) {
+        hpPool -= monster.hpCurrent;
+        monster.conditions.push("asleep");
+        affectedMonsters.push(monster.name);
+      }
+    }
+
+    logEvent(party, "spell_cast", char.id, {
+      casterName: char.name, spellName: "Sleep",
+      hpPool: result.totalEffect, affectedMonsters,
+    });
+
+    return {
+      success: true,
+      data: {
+        spell: "Sleep",
+        hpPool: result.totalEffect,
+        affectedMonsters,
+        remainingSlots: result.remainingSlots,
+      },
+    };
+  }
 
   // Track saving throw result for save-based spells
   let targetSaved: boolean | undefined;
@@ -2825,7 +2862,7 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
     data: {
       room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions })),
       suggestedEncounter,
       lootTable,
     },

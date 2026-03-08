@@ -127,21 +127,28 @@ export function rollEncounterInitiative(
 /**
  * Apply damage to a monster instance.
  * Returns updated monster and whether it was killed.
+ * Wakes sleeping monsters (damage breaks Sleep per 5e rules).
  */
 export function damageMonster(
   monster: MonsterInstance,
   damage: number
-): { monster: MonsterInstance; killed: boolean } {
+): { monster: MonsterInstance; killed: boolean; wokeUp: boolean } {
+  const wokeUp = monster.conditions.includes("asleep");
+  const conditions = wokeUp
+    ? monster.conditions.filter((c) => c !== "asleep")
+    : [...monster.conditions];
   const newHP = Math.max(0, monster.hpCurrent - damage);
   const killed = newHP <= 0;
 
   return {
     monster: {
       ...monster,
+      conditions,
       hpCurrent: newHP,
       isAlive: !killed,
     },
     killed,
+    wokeUp,
   };
 }
 
