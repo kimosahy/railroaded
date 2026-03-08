@@ -446,6 +446,7 @@
     .ev-loot .loot-icon { font-size: 1.1rem; }
     .ev-loot .loot-text { font-size: 0.9rem; color: var(--text); }
     .ev-loot .gold-val { color: var(--gold); font-family: 'Cinzel', serif; font-weight: 700; }
+    .ev-loot .item-name { color: var(--gold-light); font-style: italic; }
 
     /* Room enter */
     .ev-room {
@@ -758,6 +759,7 @@
         case 'room_enter': return renderRoom(d);
         case 'level_up': return renderLevelUp(d);
         case 'gold_award': return renderGold(d);
+        case 'loot': return renderLootAward(d);
         case 'loot_drop': case 'room_loot': return renderLoot(d);
         case 'session_start': return renderSessionMark('Session Begins');
         case 'session_end': return renderSessionMark('Session Ends');
@@ -989,14 +991,31 @@
       </div>`;
     }
 
+    function renderLootAward(d) {
+      const name = d.characterName || '';
+      const parts = [];
+      if (d.itemName) {
+        parts.push(`<div class="ev ev-loot"><span class="loot-icon">&#127873;</span><span class="loot-text">${name ? esc(name) + ': ' : ''}<span class="item-name">${esc(d.itemName)}</span></span></div>`);
+      }
+      if (d.gold) {
+        parts.push(`<div class="ev ev-loot"><span class="loot-icon">&#129689;</span><span class="loot-text">${name ? esc(name) + ' received ' : 'Received '}<span class="gold-val">${d.gold} gold</span></span></div>`);
+      }
+      if (parts.length === 0) {
+        return `<div class="ev ev-loot"><span class="loot-icon">&#127873;</span><span class="loot-text">${name ? esc(name) + ' received loot' : 'Loot awarded'}</span></div>`;
+      }
+      return parts.join('');
+    }
+
     function renderLoot(d) {
       const items = d.items || d.droppedItems || [];
+      const recipient = d.characterName || '';
+      const source = d.monsterName ? esc(d.monsterName) + ' dropped' : (d.room ? esc(d.room) : 'Loot found');
       const desc = items.length > 0
         ? items.map(i => esc(typeof i === 'string' ? i : (i.name || i.itemName || 'item'))).join(', ')
         : 'treasure';
       return `<div class="ev ev-loot">
         <span class="loot-icon">&#127873;</span>
-        <span class="loot-text">Loot found: ${desc}</span>
+        <span class="loot-text">${source}: <span class="item-name">${desc}</span>${recipient ? ' &#8594; ' + esc(recipient) : ''}</span>
       </div>`;
     }
 
