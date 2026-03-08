@@ -862,23 +862,38 @@ describe("G. Advance Scene", () => {
     expect(spawn.success).toBe(true);
   });
 
-  test("advance scene exits combat", () => {
+  test("advance scene exits combat but reports no movement without room_id", () => {
     const result = handleAdvanceScene(dm, {});
     expect(result.success).toBe(true);
-    expect(result.data!.advanced).toBe(true);
+    expect(result.data!.advanced).toBe(false);
+    expect(result.data!.message).toContain("next_room_id");
     const party = getPartyForUser(players[0])!;
     expect(party.session!.phase).toBe("exploration");
   });
 
+  test("advance scene with valid room_id moves the party", () => {
+    // First get available exits
+    const probe = handleAdvanceScene(dm, {});
+    expect(probe.success).toBe(true);
+    const exits = probe.data!.exits as { name: string; id: string }[];
+    expect(exits.length).toBeGreaterThan(0);
+    const targetId = exits[0].id;
+
+    // Now advance with the room id
+    const result = handleAdvanceScene(dm, { next_room_id: targetId });
+    expect(result.success).toBe(true);
+    expect(result.data!.advanced).toBe(true);
+    expect(result.data!.room).toBeTruthy();
+
+    // Verify party is now in the new room
+    const party = getPartyForUser(players[0])!;
+    expect(party.dungeonState!.currentRoomId).toBe(targetId);
+  });
+
   test("advance scene with invalid room returns error about not connected", () => {
     const result = handleAdvanceScene(dm, { next_room_id: "nonexistent-room" });
-    // Dungeon may be loaded (random template), so it should fail with "not connected"
-    if (!result.success) {
-      expect(result.error).toContain("not connected");
-    } else {
-      // If no dungeon, it succeeds with just phase info
-      expect(result.data!.advanced).toBe(true);
-    }
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not connected");
   });
 
   test("advance scene for non-DM fails", () => {

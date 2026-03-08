@@ -2808,9 +2808,10 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
     return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
   }
 
-  // No room specified — just advance the scene (exit combat, return available exits)
+  // No room specified — return available exits so DM can choose
   const exits = party.dungeonState ? getAvailableExits(party.dungeonState).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })) : [];
-  return { success: true, data: { advanced: true, phase: party.session?.phase, exits } };
+  const currentRoom = party.dungeonState ? getCurrentRoom(party.dungeonState) : null;
+  return { success: true, data: { advanced: false, room: currentRoom?.name, phase: party.session?.phase, exits, message: "No next_room_id provided. Call advance_scene with a next_room_id from the exits list to move the party." } };
 }
 
 export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
