@@ -1268,6 +1268,8 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     responseData.targetSaved = targetSaved;
     responseData.saveDC = saveDC;
     responseData.saveRoll = saveRoll;
+    responseData.fullDamage = result.totalEffect;
+    responseData.damageHalved = targetSaved && spell.level > 0;
   }
 
   return {
@@ -1548,6 +1550,11 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
     });
     if (!result.success) return { success: false, error: result.error };
 
+    // Track saving throw result for save-based scroll spells
+    let scrollSaved: boolean | undefined;
+    let scrollSaveRoll: number | undefined;
+    let scrollSaveDC: number | undefined;
+
     // Apply spell effect to target
     if (spell.isHealing && params.target_id && result.totalEffect) {
       const target = characters.get(params.target_id);
@@ -1563,15 +1570,49 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
     } else if (!spell.isHealing && params.target_id && result.totalEffect && party) {
       const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
       if (target) {
-        const { monster } = damageMonster(target, result.totalEffect);
-        const idx = party.monsters.findIndex((m) => m.id === target.id);
-        if (idx !== -1) party.monsters[idx] = monster;
+        let actualDamage = result.totalEffect;
+
+        if (spell.savingThrow) {
+          const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+          const save = savingThrow({
+            abilityScores: target.abilityScores,
+            ability: spell.savingThrow,
+            dc,
+          });
+          scrollSaved = save.success;
+          scrollSaveRoll = save.roll.total;
+          scrollSaveDC = dc;
+          if (save.success) {
+            actualDamage = spell.level === 0 ? 0 : Math.floor(result.totalEffect / 2);
+          }
+        }
+
+        if (actualDamage > 0) {
+          const { monster } = damageMonster(target, actualDamage);
+          const idx = party.monsters.findIndex((m) => m.id === target.id);
+          if (idx !== -1) party.monsters[idx] = monster;
+        }
       }
     }
 
+    const scrollEffect = scrollSaved !== undefined
+      ? (scrollSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
+      : result.totalEffect;
+
     char.inventory.splice(itemIdx, 1);
-    logEvent(party, "scroll_used", char.id, { scrollName: params.item_name, spellName: itemDef.spellName, effect: result.totalEffect });
-    return { success: true, data: { item: params.item_name, spell: itemDef.spellName, effect: result.totalEffect } };
+    logEvent(party, "scroll_used", char.id, {
+      scrollName: params.item_name, spellName: itemDef.spellName, effect: scrollEffect,
+      ...(scrollSaved !== undefined && { targetSaved: scrollSaved, saveRoll: scrollSaveRoll, saveDC: scrollSaveDC }),
+    });
+    const scrollData: Record<string, unknown> = { item: params.item_name, spell: itemDef.spellName, effect: scrollEffect };
+    if (scrollSaved !== undefined) {
+      scrollData.targetSaved = scrollSaved;
+      scrollData.saveDC = scrollSaveDC;
+      scrollData.saveRoll = scrollSaveRoll;
+      scrollData.fullDamage = result.totalEffect;
+      scrollData.damageHalved = scrollSaved && spell.level > 0;
+    }
+    return { success: true, data: scrollData };
   }
 
   return { success: true, data: { item: params.item_name, message: "Item used." } };
@@ -1707,6 +1748,8 @@ export function handleBonusAction(userId: string, params: { action: string; spel
         bonusData.targetSaved = bonusSaved;
         bonusData.saveDC = bonusSaveDC;
         bonusData.saveRoll = bonusSaveRoll;
+        bonusData.fullDamage = result.totalEffect;
+        bonusData.damageHalved = bonusSaved && spell.level > 0;
       }
 
       return { success: true, data: bonusData };
@@ -1803,14 +1846,68 @@ export function handleReaction(userId: string, params: { action: string; spell_n
       char.spellSlots = result.remainingSlots;
       setTurnResources(party, char.id, { ...resources, reactionUsed: true });
 
+      // Apply save-based damage effects for reaction spells targeting monsters
+      let reactionSaved: boolean | undefined;
+      let reactionSaveRoll: number | undefined;
+      let reactionSaveDC: number | undefined;
+
+      if (!spell.isHealing && params.target_id && result.totalEffect) {
+        const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
+        if (target) {
+          let actualDamage = result.totalEffect;
+
+          if (spell.savingThrow) {
+            const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+            const save = savingThrow({
+              abilityScores: target.abilityScores,
+              ability: spell.savingThrow,
+              dc,
+            });
+            reactionSaved = save.success;
+            reactionSaveRoll = save.roll.total;
+            reactionSaveDC = dc;
+            if (save.success) {
+              actualDamage = spell.level === 0 ? 0 : Math.floor(result.totalEffect / 2);
+            }
+          }
+
+          if (actualDamage > 0) {
+            const { monster, killed } = damageMonster(target, actualDamage);
+            const idx = party.monsters.findIndex((m) => m.id === target.id);
+            if (idx !== -1) party.monsters[idx] = monster;
+            char.totalDamageDealt += actualDamage;
+            if (killed) {
+              char.monstersKilled++;
+              rollMonsterLoot(party, monster);
+              if (party.session) {
+                party.session = removeCombatant(party.session, target.id);
+              }
+            }
+          }
+        }
+      }
+
+      const reactionEffect = reactionSaved !== undefined
+        ? (reactionSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
+        : result.totalEffect;
+
       logEvent(party, "reaction", char.id, {
-        action: "cast", spellName: params.spell_name, effect: result.totalEffect,
+        action: "cast", spellName: params.spell_name, effect: reactionEffect,
+        ...(reactionSaved !== undefined && { targetSaved: reactionSaved, saveRoll: reactionSaveRoll, saveDC: reactionSaveDC }),
       });
 
-      return {
-        success: true,
-        data: { action: "cast", spell: params.spell_name, effect: result.totalEffect, remainingSlots: result.remainingSlots },
+      const reactionData: Record<string, unknown> = {
+        action: "cast", spell: params.spell_name, effect: reactionEffect, remainingSlots: result.remainingSlots,
       };
+      if (reactionSaved !== undefined) {
+        reactionData.targetSaved = reactionSaved;
+        reactionData.saveDC = reactionSaveDC;
+        reactionData.saveRoll = reactionSaveRoll;
+        reactionData.fullDamage = result.totalEffect;
+        reactionData.damageHalved = reactionSaved && spell.level > 0;
+      }
+
+      return { success: true, data: reactionData };
     }
 
     case "opportunity_attack": {
