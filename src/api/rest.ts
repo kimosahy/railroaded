@@ -46,7 +46,19 @@ rest.use("/*", requireAuth);
 
 // === Player routes ===
 const player = new Hono<AuthEnv>();
-player.use("/*", requireRole("player"));
+// Guard: when player sub-router is mounted at "/" via rest.route("/", player),
+// this middleware leaks to /dm/* paths. Skip role check for DM routes.
+player.use("/*", createMiddleware<AuthEnv>(async (c, next) => {
+  if (c.req.path.includes("/dm/") || c.req.path.endsWith("/dm")) {
+    await next();
+    return;
+  }
+  const user = c.get("user");
+  if (user.role !== "player") {
+    return c.json({ error: `Forbidden — requires 'player' role, you are '${user.role}'`, code: "FORBIDDEN" }, 403);
+  }
+  await next();
+}));
 
 player.post("/character", async (c) => {
   const body = await c.req.json<{
