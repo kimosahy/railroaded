@@ -569,10 +569,19 @@ export function getPartyForUser(userId: string): GameParty | null {
 }
 
 /**
- * Resolve a player_id parameter — accepts char-X (character ID) or user-X (user ID).
+ * Resolve a player_id parameter — accepts char-X (character ID), user-X (user ID), or character name.
  */
 function resolveCharacter(playerId: string): GameCharacter | null {
-  return characters.get(playerId) ?? characters.get(charactersByUser.get(playerId) ?? "") ?? null;
+  // Try by character ID or user ID first
+  const byId = characters.get(playerId) ?? characters.get(charactersByUser.get(playerId) ?? "");
+  if (byId) return byId;
+
+  // Fallback: match by character name (case-insensitive)
+  const lower = playerId.toLowerCase();
+  for (const char of characters.values()) {
+    if (char.name.toLowerCase() === lower) return char;
+  }
+  return null;
 }
 
 // --- Player Tool Handlers ---

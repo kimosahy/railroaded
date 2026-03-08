@@ -926,6 +926,21 @@ describe("I. Communication", () => {
     expect(result.error).toBe("You cannot whisper to yourself.");
   });
 
+  test("handleWhisper resolves target by character name", () => {
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleWhisper(players[0], { player_id: char2.name, message: "Hey by name" });
+    expect(result.success).toBe(true);
+    expect(result.data!.to).toBe(char2.name);
+    expect(result.data!.message).toBe("Hey by name");
+  });
+
+  test("handleWhisper resolves target by name case-insensitively", () => {
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleWhisper(players[0], { player_id: char2.name.toUpperCase(), message: "case test" });
+    expect(result.success).toBe(true);
+    expect(result.data!.to).toBe(char2.name);
+  });
+
   test("handleNarrate (DM) succeeds", () => {
     const result = handleNarrate(dm, { text: "The dungeon grows dark." });
     expect(result.success).toBe(true);
