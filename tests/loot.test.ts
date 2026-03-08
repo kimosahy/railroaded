@@ -136,6 +136,43 @@ describe("handleAwardLoot validation", () => {
     expect(result.success).toBe(true);
     expect(result.data!.item).toBe("Potion of Healing");
   });
+
+  test("accepts gold-only awards without item_name", () => {
+    const char = getCharacterForUser("loot-test-user-1")!;
+    const goldBefore = char.gold;
+    const result = handleAwardLoot("dm-1", {
+      player_id: char.id,
+      gold: 50,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.gold).toBe(50);
+    expect(result.data!.new_gold_total).toBe(goldBefore + 50);
+    expect(result.data!.item).toBeUndefined();
+  });
+
+  test("accepts item + gold together", () => {
+    const char = getCharacterForUser("loot-test-user-1")!;
+    const goldBefore = char.gold;
+    const result = handleAwardLoot("dm-1", {
+      player_id: char.id,
+      item_name: "Dagger",
+      gold: 25,
+    });
+    expect(result.success).toBe(true);
+    expect(result.data!.item).toBe("Dagger");
+    expect(result.data!.gold).toBe(25);
+    expect(result.data!.new_gold_total).toBe(goldBefore + 25);
+    expect(char.inventory).toContain("Dagger");
+  });
+
+  test("rejects when neither item_name nor gold provided", () => {
+    const char = getCharacterForUser("loot-test-user-1")!;
+    const result = handleAwardLoot("dm-1", {
+      player_id: char.id,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Must provide item_name, gold, or both");
+  });
 });
 
 // --- handleUseItem data-driven ---

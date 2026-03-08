@@ -626,18 +626,15 @@ export const dmTools: readonly ToolDefinition[] = [
   {
     name: "award_loot",
     description:
-      "Give a specific item to a player character. The item must exist in the server's " +
-      "item data files (weapons, armor, potions, scrolls, magic items). The server adds " +
-      "it to the player's inventory. Use this after combat, when searching rooms, or as " +
-      "quest rewards. For random loot, check the room's loot table via get_room_state() " +
-      "and pick appropriate items. Players cannot equip items automatically — they use " +
-      "their own tools to manage equipment.",
+      "Give an item, gold, or both to a player character. Items must exist in the server's " +
+      "item data files (weapons, armor, potions, scrolls, magic items). Use this after combat, " +
+      "when searching rooms, or as quest rewards. At least one of item_name or gold must be provided.",
     inputSchema: {
       type: "object",
       properties: {
         player_id: {
           ...playerIdProperty,
-          description: "The ID of the player receiving the item.",
+          description: "The ID of the player receiving the loot.",
         },
         item_name: {
           type: "string",
@@ -645,8 +642,13 @@ export const dmTools: readonly ToolDefinition[] = [
             "The name of the item to award, from the server's item data files " +
             "(e.g., 'Potion of Healing', 'Longsword', 'Chain Mail', 'Scroll of Magic Missile').",
         },
+        gold: {
+          type: "integer",
+          description: "Amount of gold to award alongside or instead of an item.",
+          minimum: 1,
+        },
       },
-      required: ["player_id", "item_name"],
+      required: ["player_id"],
     },
     handler: "handleAwardLoot",
   },

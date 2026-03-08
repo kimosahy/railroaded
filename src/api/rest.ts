@@ -239,8 +239,10 @@ dm.get("/items", (c) => {
 dm.post("/award-loot", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const player_id = (body.player_id ?? body.recipient) as string;
-  const item_name = (body.item_name ?? body.item_id ?? body.name) as string;
-  return respond(c, gm.handleAwardLoot(c.get("user").userId, { player_id, item_name }));
+  const rawItemName = body.item_name ?? body.item_id ?? body.name;
+  const item_name = rawItemName ? (rawItemName as string) : undefined;
+  const gold = body.gold as number | undefined;
+  return respond(c, gm.handleAwardLoot(c.get("user").userId, { player_id, item_name, gold }));
 });
 
 dm.post("/loot-room", async (c) => {
