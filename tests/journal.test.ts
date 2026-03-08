@@ -15,6 +15,13 @@ describe("summarizeSession", () => {
     expect(result).toBe("[Narration] A dark cave looms.");
   });
 
+  test("narration event with undefined text renders as undefined (B030 regression)", () => {
+    // This documents the bug: if event.data.text is undefined, the journal shows "[Narration] undefined"
+    // The fix is upstream in REST endpoint (rest.ts) which normalizes 'message' → 'text'
+    const result = summarizeSession([makeEvent("narration", null, { text: undefined as unknown as string })]);
+    expect(result).toBe("[Narration] undefined");
+  });
+
   test("combat_start event", () => {
     const result = summarizeSession([makeEvent("combat_start", null, {})]);
     expect(result).toBe("[Combat] Encounter began!");

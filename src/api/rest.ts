@@ -166,8 +166,10 @@ dm.use("/*", requireRole("dm"));
 dm.get("/actions", (c) => respond(c, gm.handleGetDmActions(c.get("user").userId)));
 
 dm.post("/narrate", async (c) => {
-  const body = await c.req.json<{ text: string; style?: string }>();
-  return respond(c, gm.handleNarrate(c.get("user").userId, body));
+  const body = await c.req.json<{ text?: string; message?: string; style?: string }>();
+  const text = body.text ?? body.message;
+  if (!text) return respond(c, { success: false, error: "Missing 'text' (or 'message') field in narration body." });
+  return respond(c, gm.handleNarrate(c.get("user").userId, { text, style: body.style }));
 });
 
 dm.post("/narrate-to", async (c) => {

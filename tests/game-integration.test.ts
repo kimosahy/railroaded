@@ -1134,6 +1134,21 @@ describe("I. Communication", () => {
     expect(result.data!.text).toBe("The dungeon grows dark.");
   });
 
+  test("handleNarrate stores text in event log (not undefined)", () => {
+    const narrationText = "B030_CANARY: Two hobgoblins emerge from the shadows.";
+    const result = handleNarrate(dm, { text: narrationText });
+    expect(result.success).toBe(true);
+
+    // Access party via a player (DM has no character, so getPartyForUser(dm) is null)
+    const party = getPartyForUser(players[0])!;
+    const narrationEvents = party.events.filter((e) => e.type === "narration");
+    const lastNarration = narrationEvents[narrationEvents.length - 1];
+    expect(lastNarration).toBeDefined();
+    expect(lastNarration.data.text).toBe(narrationText);
+    expect(lastNarration.data.text).not.toBe("undefined");
+    expect(lastNarration.data.text).not.toBeUndefined();
+  });
+
   test("handleNarrateTo (DM) succeeds", () => {
     const char = getCharacterForUser(players[0])!;
     const result = handleNarrateTo(dm, { player_id: char.id, text: "You hear a whisper." });
