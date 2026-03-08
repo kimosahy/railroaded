@@ -8,6 +8,7 @@ import {
   handleSpawnEncounter,
   handleNarrate,
   handleNarrateTo,
+  handleCast,
   getPartyForUser,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
@@ -244,5 +245,78 @@ describe("B013: status endpoint shows spells for spellcasters", () => {
         expect(spell.castingTime).toBeDefined();
       }
     }
+  });
+});
+
+// === B012: Spell names should accept snake_case and case-insensitive input ===
+describe("B012: spell name normalization accepts snake_case and mixed case", () => {
+  test("setup wizard for casting tests", async () => {
+    await handleCreateCharacter("b012-wiz", {
+      name: "CaseWizard",
+      race: "elf",
+      class: "wizard" as any,
+      ability_scores: { str: 8, dex: 14, con: 12, int: 16, wis: 10, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    // Need a party + session for casting to work
+    for (let i = 1; i <= 3; i++) {
+      await handleCreateCharacter(`b012-p${i}`, {
+        name: `B012Hero${i}`,
+        race: "human",
+        class: "fighter" as any,
+        ability_scores: scores,
+        avatar_url: "https://example.com/test.png",
+      });
+      handleQueueForParty(`b012-p${i}`);
+    }
+    handleQueueForParty("b012-wiz");
+    handleDMQueueForParty("b012-dm");
+    expect(getPartyForUser("b012-wiz")).not.toBeNull();
+  });
+
+  test("Title Case works (existing behavior)", () => {
+    const result = handleCast("b012-wiz", { spell_name: "Fire Bolt" });
+    // Should not fail with "Unknown spell"
+    expect(result.error ?? "").not.toContain("Unknown spell");
+  });
+
+  test("snake_case spell name is accepted", () => {
+    const result = handleCast("b012-wiz", { spell_name: "fire_bolt" });
+    expect(result.error ?? "").not.toContain("Unknown spell");
+  });
+
+  test("lowercase spell name is accepted", () => {
+    const result = handleCast("b012-wiz", { spell_name: "fire bolt" });
+    expect(result.error ?? "").not.toContain("Unknown spell");
+  });
+
+  test("UPPER CASE spell name is accepted", () => {
+    const result = handleCast("b012-wiz", { spell_name: "FIRE BOLT" });
+    expect(result.error ?? "").not.toContain("Unknown spell");
+  });
+
+  test("multi-word snake_case (sacred_flame) is accepted", async () => {
+    await handleCreateCharacter("b012-clr", {
+      name: "CaseCleric",
+      race: "human",
+      class: "cleric" as any,
+      ability_scores: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    for (let i = 4; i <= 6; i++) {
+      await handleCreateCharacter(`b012-p${i}`, {
+        name: `B012Hero${i}`,
+        race: "human",
+        class: "fighter" as any,
+        ability_scores: scores,
+        avatar_url: "https://example.com/test.png",
+      });
+      handleQueueForParty(`b012-p${i}`);
+    }
+    handleQueueForParty("b012-clr");
+    handleDMQueueForParty("b012-dm2");
+
+    const result = handleCast("b012-clr", { spell_name: "sacred_flame" });
+    expect(result.error ?? "").not.toContain("Unknown spell");
   });
 });

@@ -224,6 +224,19 @@ function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; 
 // Spell definitions loaded from YAML (simplified for in-memory)
 const spellDefs = new Map<string, SpellDefinition>();
 
+/** Look up a spell by name, tolerating snake_case and case differences. */
+function findSpell(name: string): SpellDefinition | undefined {
+  // Try exact match first
+  const exact = spellDefs.get(name);
+  if (exact) return exact;
+  // Normalize: replace underscores with spaces, lowercase compare
+  const normalized = name.replace(/_/g, " ").toLowerCase();
+  for (const [key, spell] of spellDefs) {
+    if (key.toLowerCase() === normalized) return spell;
+  }
+  return undefined;
+}
+
 // Item definitions loaded from items.yaml
 export interface ItemDef {
   name: string;
@@ -1094,7 +1107,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   if (!char) return { success: false, error: "No character found." };
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
-  const spell = spellDefs.get(params.spell_name);
+  const spell = findSpell(params.spell_name);
   if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
 
   // Validate casting time — bonus_action/reaction spells must use those tools
@@ -1475,7 +1488,7 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
   // Data-driven scroll handling
   if (itemDef?.category === "scroll" && itemDef.spellName) {
-    const spell = spellDefs.get(itemDef.spellName);
+    const spell = findSpell(itemDef.spellName);
     if (!spell) return { success: false, error: `Scroll references unknown spell: ${itemDef.spellName}` };
 
     // Cast the spell without consuming spell slots
@@ -1572,7 +1585,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
   switch (params.action) {
     case "cast": {
       if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
-      const spell = spellDefs.get(params.spell_name);
+      const spell = findSpell(params.spell_name);
       if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
       if (spell.castingTime !== "bonus_action") {
         return { success: false, error: `${spell.name} is not a bonus action spell.` };
@@ -1692,7 +1705,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
   switch (params.action) {
     case "cast": {
       if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
-      const spell = spellDefs.get(params.spell_name);
+      const spell = findSpell(params.spell_name);
       if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
       if (spell.castingTime !== "reaction") {
         return { success: false, error: `${spell.name} is not a reaction spell.` };
