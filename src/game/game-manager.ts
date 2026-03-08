@@ -115,6 +115,7 @@ interface GameParty {
   triggeredEncounters: Set<string>;                   // roomIds already triggered
   templateLootTables: Map<string, TemplateLootTable>; // roomId → loot table
   lootedRooms: Set<string>;                           // roomIds already looted
+  groundItems: { itemName: string; quantity: number }[]; // items on the ground from monster drops
   campaignId: string | null;    // in-memory campaign ID
   dbPartyId: string | null;     // UUID from parties table
   dbSessionId: string | null;   // UUID from game_sessions table
@@ -4040,6 +4041,7 @@ function formParty(match: MatchResult): void {
     triggeredEncounters: new Set(),
     templateLootTables: new Map(),
     lootedRooms: new Set(),
+    groundItems: [],
     campaignId: null,
     dbPartyId: null,
     dbSessionId: null,
