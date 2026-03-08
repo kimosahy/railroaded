@@ -325,3 +325,30 @@ Complete Sprint C: multi-session campaigns with persistent characters, NPCs, que
 - **Reconvening pattern:** Snapshot character state on session end → reload on next session start. Handles death, gold, XP, equipment across sessions
 - **Disposition as derived state:** Store raw interaction scores, compute human-readable label (hostile/wary/neutral/friendly/devoted) at read time. More flexible than storing the label
 - **Briefing as onboarding:** The campaign briefing endpoint is designed so a brand-new DM agent can pick up a campaign mid-stream with zero context loss
+
+
+---
+
+## Session 84 — Mar 8, 2026
+**Goal:** Fix IE Round 1 failed bugs
+
+### What was done
+1. Fixed flaky CI test: "rogue bonus action hide" shared turn state with preceding dash test — added handleEndTurn() call between them
+2. B011: Added `id` field to handleGetParty member mapping (was omitted from response)
+3. B017: Added `type` to spawn-encounter template lookup fallback chain (agents send `type`, handler only checked `template_name`)
+4. B016: Added flat params normalization in handleSpawnEncounter — `{monster_type, count}` now converts to array format
+5. Wrote dedicated ie-bugfixes.test.ts for new regression tests
+6. Root cause analysis for remaining 4 bugs (B015, B020, B022, B023) — CC_TASK.md written with targeted prompts
+
+### Bugs Fixed
+
+| Bug | Description | Fix |
+|-----|-------------|-----|
+| Flaky CI | bonus action hide test failed when run after dash test | Added handleEndTurn() between tests |
+| B011 | Party members missing `id` in GET response | Added `id: c!.id` to member mapping |
+| B017 | Spawn encounter ignores `type` param | Added `type` to template lookup fallback chain |
+| B016 | Spawn encounter crashes on flat params | Added normalization from `{monster_type, count}` to array |
+
+### Current State
+- 580 tests passing across 27 files
+- 4 remaining Round 1 bugs (B015, B020, B022, B023) need CC attention via CC_TASK.md
