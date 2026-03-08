@@ -131,8 +131,8 @@ describe("getAllowedActions", () => {
     expect(actions).not.toContain("dodge");
   });
 
-  test("combat unconscious on turn returns death_save, end_turn, get_status, get_available_actions", () => {
-    const actions = getAllowedActions("combat", true, ["unconscious"]);
+  test("combat unconscious at 0 HP on turn returns death_save, end_turn, get_status, get_available_actions", () => {
+    const actions = getAllowedActions("combat", true, ["unconscious"], 0);
     expect(actions).toContain("death_save");
     expect(actions).toContain("end_turn");
     expect(actions).toContain("get_status");
@@ -141,13 +141,21 @@ describe("getAllowedActions", () => {
     expect(actions).not.toContain("reaction");
   });
 
-  test("combat unconscious off turn returns get_status, get_available_actions only", () => {
-    const actions = getAllowedActions("combat", false, ["unconscious"]);
+  test("combat unconscious at 0 HP off turn returns get_status, get_available_actions only", () => {
+    const actions = getAllowedActions("combat", false, ["unconscious"], 0);
     expect(actions).toContain("get_status");
     expect(actions).toContain("get_available_actions");
     expect(actions).not.toContain("death_save");
     expect(actions).not.toContain("attack");
     expect(actions).not.toContain("reaction");
+  });
+
+  test("combat unconscious with HP > 0 returns normal combat actions, not death_save (B038)", () => {
+    const actions = getAllowedActions("combat", true, ["unconscious"], 6);
+    expect(actions).toContain("attack");
+    expect(actions).toContain("cast");
+    expect(actions).toContain("end_turn");
+    expect(actions).not.toContain("death_save");
   });
 
   test("combat dead returns only get_status, get_available_actions", () => {

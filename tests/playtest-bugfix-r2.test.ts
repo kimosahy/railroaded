@@ -157,7 +157,7 @@ describe("getAllowedActions respects conditions (BUG 2)", () => {
     expect(actions).toContain("attack");
     expect(actions).toContain("cast");
     expect(actions).toContain("end_turn");
-    expect(actions).toContain("death_save");
+    expect(actions).not.toContain("death_save");
   });
 
   test("conditions default to empty array (backwards compat)", () => {

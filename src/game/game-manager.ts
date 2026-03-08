@@ -762,7 +762,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
       ? getCurrentCombatant(party.session)?.entityId === char.id
       : false;
 
-  const actions = getAllowedActions(phase, isCurrentTurn, char.conditions);
+  const actions = getAllowedActions(phase, isCurrentTurn, char.conditions, char.hp);
 
   const turnResourceState = party?.session && phase === "combat"
     ? getTurnResources(party, char.id)

@@ -95,14 +95,15 @@ function getTickMs(phase: SessionPhase): number {
 export function getAllowedActions(
   phase: SessionPhase,
   isCurrentTurn: boolean,
-  conditions: string[] = []
+  conditions: string[] = [],
+  hp?: number
 ): string[] {
   // Dead characters can only check status
   if (conditions.includes("dead")) {
     return ["get_status", "get_available_actions"];
   }
-  // Unconscious characters can only make death saves (on their turn) or check status
-  if (conditions.includes("unconscious")) {
+  // Unconscious at 0 HP: death saves on their turn. Otherwise just status.
+  if (conditions.includes("unconscious") && (hp === undefined || hp <= 0)) {
     return isCurrentTurn
       ? ["death_save", "end_turn", "get_status", "get_available_actions"]
       : ["get_status", "get_available_actions"];
@@ -120,7 +121,7 @@ export function getAllowedActions(
         return [
           "attack", "cast", "dodge", "dash", "disengage",
           "help", "hide", "use_item", "move",
-          "bonus_action", "end_turn", "death_save",
+          "bonus_action", "end_turn",
           "party_chat", "get_status", "get_available_actions",
         ];
       }
