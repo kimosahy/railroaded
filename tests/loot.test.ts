@@ -173,6 +173,25 @@ describe("handleAwardLoot validation", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Must provide item_name, gold, or both");
   });
+
+  test("gold without player_id does not crash (delegates to party-wide gold)", () => {
+    // Without a party set up, this returns an error — but NOT a 500 crash
+    const result = handleAwardLoot("dm-1", { gold: 50 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not a DM for any party");
+  });
+
+  test("item without player_id returns clear error", () => {
+    const result = handleAwardLoot("dm-1", { item_name: "Dagger" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("player_id is required when awarding items");
+  });
+
+  test("item + gold without player_id returns clear error", () => {
+    const result = handleAwardLoot("dm-1", { item_name: "Dagger", gold: 25 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("player_id is required when awarding items");
+  });
 });
 
 // --- handleUseItem data-driven ---

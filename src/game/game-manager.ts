@@ -2834,12 +2834,22 @@ export function handleAwardGold(userId: string, params: { player_id?: string; am
   return { success: true, data: { total_amount: params.amount, gold_each: goldEach, results } };
 }
 
-export function handleAwardLoot(userId: string, params: { player_id: string; item_name?: string; gold?: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAwardLoot(userId: string, params: { player_id?: string; item_name?: string; gold?: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   if (!params.item_name && !params.gold) {
     return { success: false, error: "Must provide item_name, gold, or both." };
   }
 
-  const char = resolveCharacter(params.player_id);
+  // Items require a specific player_id
+  if (params.item_name && !params.player_id) {
+    return { success: false, error: "player_id is required when awarding items. Use character IDs from get_party_state (e.g. char-1)." };
+  }
+
+  // Gold-only without player_id: split among party
+  if (!params.player_id && params.gold) {
+    return handleAwardGold(userId, { amount: params.gold });
+  }
+
+  const char = resolveCharacter(params.player_id!);
   if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
 
   const result: Record<string, unknown> = { player: char.name };
