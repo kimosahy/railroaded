@@ -600,6 +600,23 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 
+  // Build available spells list for spellcasters, grouped by level
+  const availableSpells: Record<string, { name: string; castingTime: string; effect: string; isConcentration: boolean; range: string }[]> = {};
+  if (char.class === "cleric" || char.class === "wizard") {
+    for (const spell of spellDefs.values()) {
+      if (!spell.classes.includes(char.class)) continue;
+      const key = spell.level === 0 ? "cantrips" : `level_${spell.level}`;
+      if (!availableSpells[key]) availableSpells[key] = [];
+      availableSpells[key].push({
+        name: spell.name,
+        castingTime: spell.castingTime,
+        effect: spell.effect,
+        isConcentration: spell.isConcentration,
+        range: spell.range,
+      });
+    }
+  }
+
   return {
     success: true,
     data: {
@@ -613,6 +630,7 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
       ac: char.ac,
       abilityScores: char.abilityScores,
       spellSlots: char.spellSlots,
+      spells: Object.keys(availableSpells).length > 0 ? availableSpells : null,
       conditions: char.conditions,
       deathSaves: char.deathSaves,
       equipment: char.equipment,

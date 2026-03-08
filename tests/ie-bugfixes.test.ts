@@ -2,6 +2,7 @@ import { describe, test, expect } from "bun:test";
 import {
   handleCreateCharacter,
   handleGetAvailableActions,
+  handleGetStatus,
   handleQueueForParty,
   handleDMQueueForParty,
   handleSpawnEncounter,
@@ -176,5 +177,72 @@ describe("FT002: actions endpoint idle state", () => {
     expect((result.data!.availableActions as string[]).length).toBeGreaterThan(0);
     expect(result.data!.availableActions).not.toContain("queue");
     expect(result.data!.availableActions).not.toContain("create_character");
+  });
+});
+
+// === B013: Status endpoint should show known/prepared spells for spellcasters ===
+describe("B013: status endpoint shows spells for spellcasters", () => {
+  test("cleric gets spells grouped by level with cantrips", async () => {
+    await handleCreateCharacter("b013-cleric", {
+      name: "SpellCleric",
+      race: "human",
+      class: "cleric" as any,
+      ability_scores: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    const result = handleGetStatus("b013-cleric");
+    expect(result.success).toBe(true);
+    expect(result.data!.spells).not.toBeNull();
+    const spells = result.data!.spells as Record<string, { name: string }[]>;
+    expect(spells.cantrips).toBeDefined();
+    expect(spells.cantrips.length).toBeGreaterThan(0);
+    expect(spells.level_1).toBeDefined();
+    expect(spells.level_1.length).toBeGreaterThan(0);
+    // Every spell should have name and effect
+    for (const spell of spells.cantrips) {
+      expect(spell.name).toBeDefined();
+    }
+  });
+
+  test("wizard gets spells grouped by level with cantrips", async () => {
+    await handleCreateCharacter("b013-wizard", {
+      name: "SpellWizard",
+      race: "elf",
+      class: "wizard" as any,
+      ability_scores: { str: 8, dex: 14, con: 12, int: 16, wis: 10, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    const result = handleGetStatus("b013-wizard");
+    expect(result.success).toBe(true);
+    expect(result.data!.spells).not.toBeNull();
+    const spells = result.data!.spells as Record<string, { name: string }[]>;
+    expect(spells.cantrips).toBeDefined();
+    expect(spells.cantrips.length).toBeGreaterThan(0);
+    expect(spells.level_1).toBeDefined();
+    expect(spells.level_1.length).toBeGreaterThan(0);
+  });
+
+  test("fighter gets null spells", async () => {
+    await handleCreateCharacter("b013-fighter", {
+      name: "NoSpellFighter",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 },
+      avatar_url: "https://example.com/test.png",
+    });
+    const result = handleGetStatus("b013-fighter");
+    expect(result.success).toBe(true);
+    expect(result.data!.spells).toBeNull();
+  });
+
+  test("spell entries include effect and castingTime", async () => {
+    const result = handleGetStatus("b013-cleric");
+    const spells = result.data!.spells as Record<string, { name: string; effect: string; castingTime: string }[]>;
+    for (const level of Object.keys(spells)) {
+      for (const spell of spells[level]) {
+        expect(spell.effect).toBeDefined();
+        expect(spell.castingTime).toBeDefined();
+      }
+    }
   });
 });
