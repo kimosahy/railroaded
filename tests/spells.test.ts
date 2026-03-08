@@ -64,7 +64,7 @@ const magicMissile: SpellDefinition = {
   level: 1,
   castingTime: "action",
   effect: "3 darts of 1d4+1 force damage",
-  damageOrHealing: "1d4",
+  damageOrHealing: "3d4+3",
   abilityForDamage: null,
   savingThrow: null,
   spellAttackType: null,
@@ -184,6 +184,40 @@ describe("castSpell", () => {
     expect(result.success).toBe(true);
     expect(result.totalEffect).toBe(8);
     expect(result.remainingSlots.level_1.current).toBe(0);
+  });
+
+  test("Magic Missile deals 3d4+3 damage (3 darts of 1d4+1)", () => {
+    const slots: SpellSlots = {
+      level_1: { current: 2, max: 2 },
+      level_2: { current: 0, max: 0 },
+    };
+    // Each dart rolls 1d4: roller returns 2, 3, 4 → 2+3+4 = 9, +3 (flat bonus) = 12
+    const result = castSpell({
+      spell: magicMissile,
+      casterAbilityScores: wizardScores,
+      casterClass: "wizard",
+      spellSlots: slots,
+      randomFn: makeRoller([2, 3, 4]),
+    });
+    expect(result.success).toBe(true);
+    expect(result.totalEffect).toBe(12); // 2+3+4+3 = 12
+    expect(result.remainingSlots.level_1.current).toBe(1);
+  });
+
+  test("Magic Missile minimum damage is 6 (three 1s + 3)", () => {
+    const slots: SpellSlots = {
+      level_1: { current: 1, max: 2 },
+      level_2: { current: 0, max: 0 },
+    };
+    const result = castSpell({
+      spell: magicMissile,
+      casterAbilityScores: wizardScores,
+      casterClass: "wizard",
+      spellSlots: slots,
+      randomFn: makeRoller([1]),
+    });
+    expect(result.success).toBe(true);
+    expect(result.totalEffect).toBe(6); // 1+1+1+3 = 6
   });
 
   test("fails when no spell slots", () => {

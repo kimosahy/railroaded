@@ -112,7 +112,7 @@
   level: 1
   casting_time: action
   effect: "Auto-hit, 3 darts of 1d4+1 force damage"
-  damage_or_healing: "1d4"
+  damage_or_healing: "3d4+3"
   ability_for_damage: null
   saving_throw: null
   spell_attack_type: null
