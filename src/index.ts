@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config.ts";
-import auth, { loadPersistedUsers } from "./api/auth.ts";
+import auth, { loadPersistedUsers, loadPersistedSessions } from "./api/auth.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
@@ -103,6 +103,8 @@ app.route("/", openapi);
 // Load persisted state from DB
 const userCount = await loadPersistedUsers();
 if (userCount > 0) console.log(`  Loaded ${userCount} users from DB`);
+const authSessionCount = await loadPersistedSessions();
+if (authSessionCount > 0) console.log(`  Loaded ${authSessionCount} auth sessions from DB`);
 const charCount = await loadPersistedCharacters();
 if (charCount > 0) console.log(`  Loaded ${charCount} characters from DB`);
 const sessionCount = await loadPersistedState();

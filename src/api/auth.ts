@@ -7,8 +7,9 @@
 
 import { Hono } from "hono";
 import type { UserRole } from "../types.ts";
+import { eq, lt } from "drizzle-orm";
 import { db } from "../db/connection.ts";
-import { users as usersTable } from "../db/schema.ts";
+import { users as usersTable, sessions as sessionsTable } from "../db/schema.ts";
 
 // --- In-memory stores ---
 
@@ -28,6 +29,7 @@ interface StoredSession {
 const usersByUsername = new Map<string, StoredUser>();
 const usersById = new Map<string, StoredUser>();
 const sessionsByToken = new Map<string, StoredSession>();
+const sessionRenewalTimestamps = new Map<string, number>();
 
 let userIdCounter = 1;
 
@@ -124,6 +126,15 @@ auth.post("/login", async (c) => {
 
   sessionsByToken.set(token, { userId: user.id, expiresAt });
 
+  // Persist session to DB (fire-and-forget)
+  if (user.dbUserId) {
+    db.insert(sessionsTable).values({
+      userId: user.dbUserId,
+      token,
+      expiresAt,
+    }).catch((err) => console.error("[DB] Failed to persist session:", err));
+  }
+
   return c.json({
     token,
     expiresAt: expiresAt.toISOString(),
@@ -165,11 +176,24 @@ export async function getAuthUser(
   // Check expiry
   if (session.expiresAt < new Date()) {
     sessionsByToken.delete(raw);
+    // Delete expired session from DB (fire-and-forget)
+    db.delete(sessionsTable).where(eq(sessionsTable.token, raw))
+      .catch((err) => console.error("[DB] Failed to delete expired session:", err));
     return null;
   }
 
   // Renew on activity
   session.expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+
+  // Update DB if >1 min since last renewal (throttle)
+  const lastRenewal = sessionRenewalTimestamps.get(raw);
+  const now = Date.now();
+  if (!lastRenewal || now - lastRenewal > 60_000) {
+    sessionRenewalTimestamps.set(raw, now);
+    db.update(sessionsTable).set({ expiresAt: session.expiresAt })
+      .where(eq(sessionsTable.token, raw))
+      .catch((err) => console.error("[DB] Failed to renew session:", err));
+  }
 
   const user = usersById.get(session.userId);
   if (!user) return null;
@@ -199,4 +223,38 @@ export async function loadPersistedUsers(): Promise<number> {
     console.error("[DB] Failed to load persisted users:", err);
     return 0;
   }
+}
+
+export async function loadPersistedSessions(): Promise<number> {
+  try {
+    const now = new Date();
+
+    // Delete expired sessions
+    await db.delete(sessionsTable).where(lt(sessionsTable.expiresAt, now));
+
+    // Load remaining valid sessions
+    const rows = await db.select().from(sessionsTable);
+    let loaded = 0;
+    for (const row of rows) {
+      // Find in-memory user by dbUserId
+      const userId = findUserIdByDbId(row.userId);
+      if (!userId) continue; // user not loaded — skip
+
+      sessionsByToken.set(row.token, {
+        userId,
+        expiresAt: row.expiresAt,
+      });
+      loaded++;
+    }
+    return loaded;
+  } catch (err) {
+    console.error("[DB] Failed to load persisted sessions:", err);
+    return 0;
+  }
+}
+
+/** Exposed for testing — clears in-memory session maps */
+export function _clearSessionsForTest(): void {
+  sessionsByToken.clear();
+  sessionRenewalTimestamps.clear();
 }
