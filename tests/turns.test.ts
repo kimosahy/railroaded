@@ -84,11 +84,11 @@ describe("nextRound", () => {
 });
 
 describe("getAllowedActions", () => {
-  test("exploration returns look, move, search, etc.", () => {
+  test("exploration returns look, move, use_item, etc.", () => {
     const actions = getAllowedActions("exploration", true);
     expect(actions).toContain("look");
     expect(actions).toContain("move");
-    expect(actions).toContain("search");
+    expect(actions).not.toContain("search");
     expect(actions).toContain("use_item");
     expect(actions).toContain("party_chat");
     expect(actions).toContain("whisper");

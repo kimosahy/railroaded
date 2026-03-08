@@ -111,7 +111,7 @@ export function getAllowedActions(
   switch (phase) {
     case "exploration":
       return [
-        "look", "move", "search", "use_item",
+        "look", "move", "use_item",
         "party_chat", "whisper", "get_status", "get_party",
         "get_inventory", "get_available_actions", "short_rest", "long_rest",
       ];
