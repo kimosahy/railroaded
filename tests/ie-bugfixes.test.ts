@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   handleCreateCharacter,
+  handleGetAvailableActions,
   handleQueueForParty,
   handleDMQueueForParty,
   handleSpawnEncounter,
@@ -98,5 +99,41 @@ describe("B016: empty/missing params returns error", () => {
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
     expect(result.error!.toLowerCase()).toContain("monsters");
+  });
+});
+
+// === FT002: Actions endpoint distinguishes 'idle' from 'in session' ===
+describe("FT002: actions endpoint idle state", () => {
+  test("no character returns idle with create_character action", () => {
+    const result = handleGetAvailableActions("ft002-no-char");
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("idle");
+    expect(result.data!.isYourTurn).toBe(false);
+    expect(result.data!.availableActions).toEqual(["create_character"]);
+  });
+
+  test("character exists but no session returns idle with queue/status/inventory", async () => {
+    await handleCreateCharacter("ft002-idle", {
+      name: "IdleWarden",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: scores,
+      avatar_url: "https://example.com/test.png",
+    });
+    const result = handleGetAvailableActions("ft002-idle");
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("idle");
+    expect(result.data!.isYourTurn).toBe(false);
+    expect(result.data!.availableActions).toEqual(["queue", "get_status", "get_inventory"]);
+  });
+
+  test("in-session player gets exploration actions, not idle", async () => {
+    const setup = await setupParty("ft002-session");
+    const result = handleGetAvailableActions(setup.players[0]);
+    expect(result.success).toBe(true);
+    expect(result.data!.phase).toBe("exploration");
+    expect((result.data!.availableActions as string[]).length).toBeGreaterThan(0);
+    expect(result.data!.availableActions).not.toContain("queue");
+    expect(result.data!.availableActions).not.toContain("create_character");
   });
 });

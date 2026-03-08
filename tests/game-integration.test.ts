@@ -775,7 +775,7 @@ describe("H. Information Handlers", () => {
     expect(result.success).toBe(true);
     expect(result.data!.phase).toBe("idle");
     expect(result.data!.isYourTurn).toBe(false);
-    expect(result.data!.availableActions).toEqual([]);
+    expect(result.data!.availableActions).toEqual(["queue", "get_status", "get_inventory"]);
   });
 
   test("handleGetStatus returns character stats", () => {
@@ -844,8 +844,11 @@ describe("H. Information Handlers", () => {
     expect(result.data!.inventory).toBeDefined();
   });
 
-  test("all info handlers fail for unknown user", () => {
-    expect(handleGetAvailableActions("unknown-info").success).toBe(false);
+  test("all info handlers fail for unknown user (except actions which returns idle)", () => {
+    const actionsResult = handleGetAvailableActions("unknown-info");
+    expect(actionsResult.success).toBe(true);
+    expect(actionsResult.data!.phase).toBe("idle");
+    expect(actionsResult.data!.availableActions).toEqual(["create_character"]);
     expect(handleGetStatus("unknown-info").success).toBe(false);
     expect(handleGetParty("unknown-info").success).toBe(false);
     expect(handleGetInventory("unknown-info").success).toBe(false);

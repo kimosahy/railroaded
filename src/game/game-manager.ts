@@ -676,7 +676,16 @@ export function handleGetInventory(userId: string): { success: boolean; data?: R
 
 export function handleGetAvailableActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) {
+    return {
+      success: true,
+      data: {
+        phase: "idle",
+        isYourTurn: false,
+        availableActions: ["create_character"],
+      },
+    };
+  }
 
   const party = char.partyId ? parties.get(char.partyId) : null;
 
@@ -686,7 +695,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
       data: {
         phase: "idle",
         isYourTurn: false,
-        availableActions: [],
+        availableActions: ["queue", "get_status", "get_inventory"],
       },
     };
   }
