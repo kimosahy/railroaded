@@ -352,3 +352,22 @@ Complete Sprint C: multi-session campaigns with persistent characters, NPCs, que
 ### Current State
 - 580 tests passing across 27 files
 - 4 remaining Round 1 bugs (B015, B020, B022, B023) need CC attention via CC_TASK.md
+
+## Session 107 — Mar 8, 2026 (Session Persistence to DB)
+
+**Goal:** Fix auth sessions dying on every deploy, breaking IE loop playtests.
+
+**What was done:**
+1. Identified that auth sessions (`sessionsByToken` Map) were in-memory only — every deploy killed all active tokens
+2. `sessions_auth` DB table already existed in schema but wasn't wired up
+3. CC implemented: persist on login, load on restart, throttled renewal (1 min debounce), expired cleanup
+4. 711 tests pass, 0 fail. Deployed to Render.
+
+**Bugs fixed:**
+| Bug | Description | Fix |
+|---|---|---|
+| Session loss on deploy | In-memory tokens die on server restart | Persist to sessions_auth table, load on startup |
+
+**Current state:** 711 pass, 0 fail, 2 todo. IE loop running with session persistence active.
+
+**Concepts learned:** Fire-and-forget DB writes with `.catch(console.error)` for non-blocking persistence. Throttled renewal to avoid DB hammering on every request.
