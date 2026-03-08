@@ -204,6 +204,9 @@
     .hp-mid { background: #d4a017; }
     .hp-low { background: var(--red-glow); }
 
+    .monster-dead { opacity: 0.45; }
+    .monster-dead .m-name { text-decoration: line-through; }
+
     /* --- EVENT FEED --- */
     .event-feed {
       max-height: 70vh; overflow-y: auto; padding: 0.8rem;
@@ -1077,13 +1080,14 @@
         if (monsters.length > 0) {
           monsterHtml = `<div class="detail-members" style="border-color:var(--red)">
             ${monsters.map(m => {
+              const dead = m.hpCurrent <= 0;
               const pct = hpPercent(m.hpCurrent, m.hpMax);
-              return `<div class="member-card" style="border-color:var(--red)">
-                <div class="member-avatar" style="background:var(--red-glow)">&#128126;</div>
+              return `<div class="member-card ${dead ? 'monster-dead' : ''}" style="border-color:var(--red)">
+                <div class="member-avatar" style="background:var(--red-glow)">${dead ? '&#128128;' : '&#128126;'}</div>
                 <div class="member-info">
                   <div class="m-name" style="color:var(--red-glow)">${esc(m.name)}</div>
                   <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
-                  <div class="m-detail">${m.hpCurrent}/${m.hpMax} HP &bull; AC ${m.ac}</div>
+                  <div class="m-detail">${dead ? 'Defeated' : `${m.hpCurrent}/${m.hpMax} HP`} &bull; AC ${m.ac}</div>
                 </div>
               </div>`;
             }).join('')}
