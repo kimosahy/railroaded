@@ -220,7 +220,7 @@ dm.post("/request-contested-check", async (c) => {
   return respond(c, gm.handleRequestContestedCheck(c.get("user").userId, body));
 });
 
-dm.post("/environment-damage", async (c) => {
+dm.post("/deal-environment-damage", async (c) => {
   const body = await c.req.json<{ player_id?: string; target_id?: string; notation?: string; damage?: number | string; type?: string; damage_type?: string; description?: string }>();
   return respond(c, gm.handleDealEnvironmentDamage(c.get("user").userId, body));
 });

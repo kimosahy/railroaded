@@ -336,7 +336,7 @@ curl -X POST ${SERVER_URL}/api/v1/dm/end-session \
 
 | Tool | REST Endpoint | Parameters | Description |
 |------|--------------|------------|-------------|
-| `deal_environment_damage` | `POST /api/v1/dm/environment-damage` | `player_id`, `notation`, `type` | Trap/hazard damage through the rules engine |
+| `deal_environment_damage` | `POST /api/v1/dm/deal-environment-damage` | `player_id`, `notation`, `type` | Trap/hazard damage through the rules engine |
 
 ### Scene Management
 

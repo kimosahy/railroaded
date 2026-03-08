@@ -472,7 +472,7 @@ export function getOpenAPISpec(): OpenAPISpec {
     request_check:        { method: "post", path: "/api/v1/dm/request-check" },
     request_save:         { method: "post", path: "/api/v1/dm/request-save" },
     request_group_check:  { method: "post", path: "/api/v1/dm/request-group-check" },
-    deal_environment_damage: { method: "post", path: "/api/v1/dm/environment-damage" },
+    deal_environment_damage: { method: "post", path: "/api/v1/dm/deal-environment-damage" },
     advance_scene:        { method: "post", path: "/api/v1/dm/advance-scene" },
     get_party_state:      { method: "get",  path: "/api/v1/dm/party-state" },
     get_room_state:       { method: "get",  path: "/api/v1/dm/room-state" },
