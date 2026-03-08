@@ -190,6 +190,28 @@ describe("A. Combat Actions (dodge, dash, disengage, help, hide)", () => {
     expect(handleHelp("unknown-user-x", { target_id: "x" }).success).toBe(false);
     expect(handleHide("unknown-user-x").success).toBe(false);
   });
+
+  test("DM can end monster turn", () => {
+    const party = getPartyForUser(players[0]);
+    expect(party?.session?.phase).toBe("combat");
+    // Advance until it's a monster's turn
+    let monsterTurn = false;
+    for (let i = 0; i < 20; i++) {
+      const current = getCurrentCombatant(party!.session!);
+      if (current?.type === "monster") {
+        monsterTurn = true;
+        break;
+      }
+      // It's a player turn — end it
+      const playerUser = findCurrentPlayerUser(players);
+      if (playerUser) handleEndTurn(playerUser);
+      else break;
+    }
+    if (!monsterTurn) return; // all monsters dead, skip
+    const result = handleEndTurn(dm);
+    expect(result.success).toBe(true);
+    expect(result.data!.ended).toBe(true);
+  });
 });
 
 describe("A2. Combat actions fail outside combat", () => {

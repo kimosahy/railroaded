@@ -1636,7 +1636,33 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
 export function handleEndTurn(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+
+  // DM path: DMs can end monster turns (they control monsters in combat)
+  if (!char) {
+    const dmParty = findDMParty(userId);
+    if (!dmParty) return { success: false, error: "No character found." };
+    if (!dmParty.session || dmParty.session.phase !== "combat") {
+      return { success: false, error: "Not in combat." };
+    }
+    const current = getCurrentCombatant(dmParty.session);
+    if (!current || current.type !== "monster") {
+      return { success: false, error: "It's not a monster's turn." };
+    }
+    dmParty.session = nextTurn(dmParty.session);
+    const nextCombatant = getCurrentCombatant(dmParty.session);
+    resetTurnResources(dmParty, nextCombatant?.entityId ?? "");
+    notifyTurnChange(dmParty);
+    return {
+      success: true,
+      data: {
+        ended: true,
+        nextTurn: nextCombatant?.entityId ?? null,
+        nextType: nextCombatant?.type ?? null,
+      },
+    };
+  }
+
+  // Player path: players can end their own turn
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
