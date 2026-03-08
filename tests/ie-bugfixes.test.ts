@@ -102,6 +102,47 @@ describe("B016: empty/missing params returns error", () => {
   });
 });
 
+// === B011: spawn-encounter with custom monster objects (no count field) should not produce empty combat ===
+describe("B011: spawn-encounter with custom monster objects", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b011");
+    dm = setup.dm;
+  });
+
+  test("custom object with name but no count spawns 1 monster", () => {
+    const result = handleSpawnEncounter(dm, {
+      monsters: [{ name: "Skeleton", hp: 13, ac: 13, attacks: [{ name: "Shortsword", to_hit: 4, damage: "1d6+2", type: "slashing" }] }],
+    } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(1);
+    expect(monsters[0].name.toLowerCase()).toContain("skeleton");
+  });
+});
+
+describe("B011: spawn-encounter template_name without count defaults to 1", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b011b");
+    dm = setup.dm;
+  });
+
+  test("template_name without count spawns 1 monster", () => {
+    const result = handleSpawnEncounter(dm, {
+      monsters: [{ template_name: "goblin" }],
+    } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(1);
+    expect(monsters[0].name.toLowerCase()).toContain("goblin");
+  });
+});
+
 // === FT002: Actions endpoint distinguishes 'idle' from 'in session' ===
 describe("FT002: actions endpoint idle state", () => {
   test("no character returns idle with create_character action", () => {

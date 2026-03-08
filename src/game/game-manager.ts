@@ -2044,7 +2044,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
       // Create a default monster if template not loaded
       return {
         templateName: resolvedName,
-        count: m.count,
+        count: m.count ?? 1,
         template: {
           hpMax: 10, ac: 12,
           abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
@@ -2054,7 +2054,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
         },
       };
     }
-    return { templateName: resolvedName, count: m.count, template };
+    return { templateName: resolvedName, count: m.count ?? 1, template };
   });
 
   // Compute everything first
