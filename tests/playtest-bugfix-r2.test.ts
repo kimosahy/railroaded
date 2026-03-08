@@ -124,15 +124,15 @@ describe("healing clears unconscious and resets death saves (BUG 1)", () => {
 // --- BUG 2: Unconscious characters see full combat actions ---
 
 describe("getAllowedActions respects conditions (BUG 2)", () => {
-  test("unconscious character on their turn only sees death_save + status", () => {
+  test("unconscious character on their turn sees death_save, end_turn + status", () => {
     const actions = getAllowedActions("combat", true, ["unconscious", "prone"]);
     expect(actions).toContain("death_save");
+    expect(actions).toContain("end_turn");
     expect(actions).toContain("get_status");
     expect(actions).toContain("get_available_actions");
     expect(actions).not.toContain("attack");
     expect(actions).not.toContain("cast");
     expect(actions).not.toContain("move");
-    expect(actions).not.toContain("end_turn");
   });
 
   test("unconscious character NOT on their turn only sees status", () => {

@@ -131,9 +131,10 @@ describe("getAllowedActions", () => {
     expect(actions).not.toContain("dodge");
   });
 
-  test("combat unconscious on turn returns death_save, get_status, get_available_actions", () => {
+  test("combat unconscious on turn returns death_save, end_turn, get_status, get_available_actions", () => {
     const actions = getAllowedActions("combat", true, ["unconscious"]);
     expect(actions).toContain("death_save");
+    expect(actions).toContain("end_turn");
     expect(actions).toContain("get_status");
     expect(actions).toContain("get_available_actions");
     expect(actions).not.toContain("attack");

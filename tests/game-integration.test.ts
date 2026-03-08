@@ -516,6 +516,72 @@ describe("D. Death Saves", () => {
   });
 });
 
+// ==================== D2. Unconscious end-turn (B041) ====================
+
+describe("D2. Unconscious character can end turn (B041)", () => {
+  let players: string[];
+  let dm: string;
+
+  test("setup: create party and spawn encounter", async () => {
+    const setup = await setupParty("b041");
+    players = setup.players;
+    dm = setup.dm;
+    const spawn = handleSpawnEncounter(dm, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    expect(spawn.success).toBe(true);
+  });
+
+  test("unconscious character can end turn after death save", () => {
+    const char = getCharacterForUser(players[0])!;
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 0, failures: 0 };
+
+    // Advance to this character's turn
+    const onTurn = advanceToCharacterTurn(char.id, players, dm);
+    if (!onTurn) return;
+
+    // Make a death save
+    const saveResult = handleDeathSave(players[0]);
+    expect(saveResult.success).toBe(true);
+
+    // End turn should succeed despite being unconscious
+    const endResult = handleEndTurn(players[0]);
+    expect(endResult.success).toBe(true);
+    expect(endResult.data!.ended).toBe(true);
+    expect(endResult.data!.nextTurn).not.toBeNull();
+  });
+
+  test("turn advances to next combatant after unconscious end-turn", () => {
+    const char = getCharacterForUser(players[0])!;
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 0, failures: 0 };
+
+    // Advance to this character's turn
+    const onTurn = advanceToCharacterTurn(char.id, players, dm);
+    if (!onTurn) return;
+
+    const party = getPartyForCharacter(char.id)!;
+    const currentBefore = getCurrentCombatant(party.session!);
+    expect(currentBefore!.entityId).toBe(char.id);
+
+    // End turn
+    const endResult = handleEndTurn(players[0]);
+    expect(endResult.success).toBe(true);
+
+    // Current combatant should have changed
+    const currentAfter = getCurrentCombatant(party.session!);
+    expect(currentAfter!.entityId).not.toBe(char.id);
+  });
+
+  test("dead character cannot end turn", () => {
+    const char = getCharacterForUser(players[1])!;
+    char.conditions = ["dead"];
+    const result = handleEndTurn(players[1]);
+    expect(result.success).toBe(false);
+  });
+});
+
 // ==================== E. Rest Mechanics ====================
 
 describe("E. Rest Mechanics", () => {

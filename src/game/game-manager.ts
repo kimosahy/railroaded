@@ -1669,7 +1669,9 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
   }
 
   // Player path: players can end their own turn
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  // Note: unconscious characters must be able to end turn (after death saves)
+  // to avoid soft-locking initiative. Only dead characters are blocked.
+  if (char.conditions.includes("dead")) return { success: false, error: "Dead characters cannot act." };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {

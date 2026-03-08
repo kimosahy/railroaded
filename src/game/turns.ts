@@ -104,7 +104,7 @@ export function getAllowedActions(
   // Unconscious characters can only make death saves (on their turn) or check status
   if (conditions.includes("unconscious")) {
     return isCurrentTurn
-      ? ["death_save", "get_status", "get_available_actions"]
+      ? ["death_save", "end_turn", "get_status", "get_available_actions"]
       : ["get_status", "get_available_actions"];
   }
 
