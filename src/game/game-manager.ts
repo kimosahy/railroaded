@@ -648,6 +648,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
         .map((mid) => characters.get(mid))
         .filter(Boolean)
         .map((c) => ({ name: c!.name, class: c!.class, condition: c!.conditions.length > 0 ? c!.conditions.join(", ") : "healthy" })),
+      ...(party.groundItems.length > 0 ? { groundItems: party.groundItems.map((i) => ({ itemName: i.itemName, quantity: i.quantity })) } : {}),
     },
   };
 }
@@ -3149,6 +3150,51 @@ export function handleLootRoom(userId: string, params: { player_id: string }): {
   };
 }
 
+export function handlePickupItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party) return { success: false, error: "Not in a party." };
+
+  const groundIdx = party.groundItems.findIndex((g) => g.itemName.toLowerCase() === params.item_name.toLowerCase());
+  if (groundIdx === -1) {
+    const available = party.groundItems.map((g) => `${g.itemName}${g.quantity > 1 ? ` x${g.quantity}` : ""}`).join(", ");
+    return { success: false, error: `Item "${params.item_name}" not found on the ground.${available ? ` Available: ${available}` : " Nothing on the ground to pick up."}` };
+  }
+
+  const ground = party.groundItems[groundIdx]!;
+  const pickedName = ground.itemName; // preserve original case
+  char.inventory.push(pickedName);
+
+  if (ground.quantity <= 1) {
+    party.groundItems.splice(groundIdx, 1);
+  } else {
+    ground.quantity--;
+  }
+
+  logEvent(party, "pickup", char.id, {
+    characterName: char.name,
+    itemName: pickedName,
+  });
+
+  broadcastToParty(party.id, {
+    type: "pickup",
+    characterName: char.name,
+    itemName: pickedName,
+    message: `${char.name} picked up ${pickedName}.`,
+  });
+
+  return {
+    success: true,
+    data: {
+      picked_up: pickedName,
+      remaining_on_ground: party.groundItems.map((g) => ({ itemName: g.itemName, quantity: g.quantity })),
+    },
+  };
+}
+
 export function handleEquipItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
@@ -4064,6 +4110,16 @@ function rollMonsterLoot(party: GameParty, monster: MonsterInstance): void {
 
   const lootResult = rollLootTable(monster.lootTable);
   if (lootResult.items.length === 0) return;
+
+  // Add items to ground for pickup
+  for (const drop of lootResult.items) {
+    const existing = party.groundItems.find((g) => g.itemName === drop.itemName);
+    if (existing) {
+      existing.quantity += drop.quantity;
+    } else {
+      party.groundItems.push({ itemName: drop.itemName, quantity: drop.quantity });
+    }
+  }
 
   logEvent(party, "loot_drop", null, {
     monsterName: monster.name,

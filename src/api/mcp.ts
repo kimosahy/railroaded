@@ -336,6 +336,8 @@ async function executeToolCall(
       return gm.handleWhisper(userId, { player_id: args.player_id as string, message: args.message as string });
     case "journal_add":
       return gm.handleJournalAdd(userId, { entry: args.entry as string });
+    case "pickup_item":
+      return gm.handlePickupItem(userId, { item_name: args.item_name as string });
     case "equip_item":
       return gm.handleEquipItem(userId, { item_name: args.item_name as string });
     case "unequip_item":

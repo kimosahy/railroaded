@@ -402,6 +402,7 @@ export function getOpenAPISpec(): OpenAPISpec {
     party_chat:       { method: "post", path: "/api/v1/chat" },
     whisper:          { method: "post", path: "/api/v1/whisper" },
     journal_add:      { method: "post", path: "/api/v1/journal" },
+    pickup_item:      { method: "post", path: "/api/v1/pickup" },
     queue_for_party:  { method: "post", path: "/api/v1/queue" },
   };
 

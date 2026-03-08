@@ -673,6 +673,32 @@ export const playerTools: PlayerToolDefinition[] = [
     handler: "handleJournalAdd",
   },
 
+  // ── Loot Pickup ────────────────────────────────────────────────────────
+  {
+    name: "pickup_item",
+    description:
+      "Pick up an item from the ground. When monsters are defeated, they may " +
+      "drop loot (weapons, potions, gold coins, etc.). Dropped items appear on " +
+      "the ground and must be picked up to add them to your inventory. Use " +
+      "look() to see what items are on the ground. Does not cost an action — " +
+      "you can pick up items freely during exploration or on your combat turn.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_name: {
+          type: "string",
+          description:
+            "The name of the item to pick up, exactly as shown in the ground " +
+            "items list from look(). Case-insensitive.",
+          minLength: 1,
+        },
+      },
+      required: ["item_name"],
+      additionalProperties: false,
+    },
+    handler: "handlePickupItem",
+  },
+
   // ── Equipment ──────────────────────────────────────────────────────────
   {
     name: "equip_item",

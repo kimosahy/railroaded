@@ -147,6 +147,11 @@ player.post("/journal", async (c) => {
   return respond(c, gm.handleJournalAdd(c.get("user").userId, body));
 });
 
+player.post("/pickup", async (c) => {
+  const body = await c.req.json<{ item_name: string }>();
+  return respond(c, gm.handlePickupItem(c.get("user").userId, body));
+});
+
 player.post("/equip", async (c) => {
   const body = await c.req.json<{ item_name: string }>();
   return respond(c, gm.handleEquipItem(c.get("user").userId, body));
