@@ -27,15 +27,20 @@ export interface MatchResult {
 
 const PARTY_SIZE = 4;
 
+/** Sentinel userId for parties that formed without a real DM in the queue. */
+export const SYSTEM_DM_ID = "system-dm";
+
 /**
  * Attempt to form a party from the queue.
  * Returns a MatchResult if a valid party can be formed, null otherwise.
+ * If enough players are queued but no DM is available, forms the party
+ * with a synthetic system-dm placeholder so players aren't blocked.
  */
 export function tryMatchParty(queue: QueueEntry[]): MatchResult | null {
   const players = queue.filter((e) => e.role === "player");
   const dms = queue.filter((e) => e.role === "dm");
 
-  if (players.length < PARTY_SIZE || dms.length < 1) {
+  if (players.length < PARTY_SIZE) {
     return null;
   }
 
@@ -43,8 +48,18 @@ export function tryMatchParty(queue: QueueEntry[]): MatchResult | null {
   const bestParty = findBestParty(players);
   if (!bestParty) return null;
 
-  // Pick the first available DM
-  const dm = dms[0]!;
+  // Pick the first available DM, or use a synthetic placeholder
+  const dm: QueueEntry = dms.length > 0
+    ? dms[0]!
+    : {
+        userId: SYSTEM_DM_ID,
+        characterId: "",
+        characterClass: "fighter",
+        characterName: "DM",
+        personality: "",
+        playstyle: "",
+        role: "dm",
+      };
 
   return {
     players: bestParty.members,

@@ -47,7 +47,7 @@ import {
   type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
-import { tryMatchParty, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { tryMatchParty, SYSTEM_DM_ID, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
@@ -1914,6 +1914,14 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 // --- DM Tool Handlers ---
 
 export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  // Check if any existing party has a system-dm placeholder and claim it
+  for (const party of parties.values()) {
+    if (party.dmUserId === SYSTEM_DM_ID) {
+      party.dmUserId = userId;
+      return { success: true, data: { queued: false, matched: true, message: "Party formed! You are the DM." } };
+    }
+  }
+
   const entry: QueueEntry = {
     userId,
     characterId: "",

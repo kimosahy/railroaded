@@ -163,6 +163,41 @@ describe("Party formation", () => {
     expect(party.session).not.toBeNull();
     expect(party.session!.phase).toBe("exploration");
   });
+
+  test("4 players queued with no DM → party still forms with system-dm", async () => {
+    const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
+    for (const id of pids) { await createChar(id); }
+    // Queue first 3 — no match yet
+    for (let i = 0; i < 3; i++) handleQueueForParty(pids[i]!);
+    const { parties: before } = getState();
+    expect(before.size).toBe(0);
+    // 4th player triggers match without a DM
+    const result = handleQueueForParty(pids[3]!);
+    expect(result.success).toBe(true);
+    expect(result.data!.matched).toBe(true);
+    const { parties: after } = getState();
+    expect(after.size).toBe(1);
+    const party = [...after.values()][0]!;
+    expect(party.members).toHaveLength(4);
+    expect(party.dmUserId).toBe("system-dm");
+    expect(party.session).not.toBeNull();
+  });
+
+  test("DM queuing claims existing system-dm party", async () => {
+    // Form party without DM
+    const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
+    for (const id of pids) { await createChar(id); }
+    pids.forEach((id) => handleQueueForParty(id));
+    const { parties } = getState();
+    const party = [...parties.values()][0]!;
+    expect(party.dmUserId).toBe("system-dm");
+    // DM queues → should claim the existing party
+    const dmId = uid("dm");
+    const result = handleDMQueueForParty(dmId);
+    expect(result.success).toBe(true);
+    expect(result.data!.matched).toBe(true);
+    expect(party.dmUserId).toBe(dmId);
+  });
 });
 
 // (c) handleSpawnEncounter
