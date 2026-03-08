@@ -1784,8 +1784,13 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       if (spell.isHealing && params.target_id && result.totalEffect) {
         const target = characters.get(params.target_id);
         if (target) {
+          const wasDying = target.hpCurrent === 0;
           const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
           target.hpCurrent = hp.current;
+          if (wasDying && target.hpCurrent > 0) {
+            target.conditions = handleRegainFromZero(target.conditions, true);
+            target.deathSaves = resetDeathSaves();
+          }
           logEvent(party, "heal", char.id, {
             healerName: char.name, targetName: target.name, amount: result.totalEffect, bonusAction: true,
           });
@@ -1876,9 +1881,14 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       if (!char.features.includes("Second Wind")) {
         return { success: false, error: "Only Fighters with Second Wind can use this ability." };
       }
+      const wasDying = char.hpCurrent === 0;
       const healRoll = roll(`1d10+${char.level}`);
       const hp = applyHealing({ current: char.hpCurrent, max: char.hpMax, temp: 0 }, healRoll.total);
       char.hpCurrent = hp.current;
+      if (wasDying && char.hpCurrent > 0) {
+        char.conditions = handleRegainFromZero(char.conditions, true);
+        char.deathSaves = resetDeathSaves();
+      }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total });
       return {

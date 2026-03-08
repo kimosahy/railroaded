@@ -17,6 +17,7 @@ import {
   handleAwardXp,
   handleAttack,
   handleMove,
+  handleBonusAction,
   handleCreateCustomMonster,
   getCharacterForUser,
   getPartyForUser,
@@ -377,5 +378,72 @@ describe("XP leveling (Round 3 Bug 2)", () => {
 
     // Clean up
     char.xp = 0;
+  });
+});
+
+// --- B036: Bonus action healing (Healing Word) clears unconscious/prone ---
+
+describe("B036: bonus_action healing clears unconscious and resets death saves", () => {
+  const dmUser = "b036-dm";
+  const players = ["b036-p1", "b036-p2", "b036-p3", "b036-p4"];
+
+  test("setup: form party with cleric", async () => {
+    // p1 = cleric (healer), p2-p4 = fighters (targets)
+    await handleCreateCharacter(players[0], {
+      name: "B036Cleric",
+      race: "human",
+      class: "cleric",
+      ability_scores: { str: 10, dex: 10, con: 14, int: 10, wis: 16, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    for (let i = 1; i < 4; i++) {
+      await handleCreateCharacter(players[i], {
+        name: `B036Fighter${i}`,
+        race: "human",
+        class: "fighter" as any,
+        ability_scores: scores,
+        avatar_url: "https://example.com/test.png",
+      });
+      handleQueueForParty(players[i]);
+    }
+    handleQueueForParty(players[0]);
+    handleDMQueueForParty(dmUser);
+    expect(getPartyForUser(players[0])).not.toBeNull();
+  });
+
+  test("setup: start combat", () => {
+    const result = handleSpawnEncounter(dmUser, { monsters: [{ type: "goblin", count: 1 }] });
+    expect(result.success).toBe(true);
+  });
+
+  test("Healing Word via bonus_action on dying character clears unconscious/prone and resets death saves", () => {
+    const cleric = getCharacterForUser(players[0])!;
+    const target = getCharacterForUser(players[1])!;
+
+    // Simulate target knocked to 0 HP
+    target.hpCurrent = 0;
+    target.conditions = handleDropToZero(target.conditions);
+    target.deathSaves = { successes: 1, failures: 2 };
+
+    expect(target.conditions).toContain("unconscious");
+    expect(target.conditions).toContain("prone");
+
+    // Cast Healing Word as bonus action
+    const result = handleBonusAction(players[0], {
+      action: "cast",
+      spell_name: "Healing Word",
+      target_id: target.id,
+    });
+
+    if (result.success) {
+      // Target should be healed above 0
+      expect(target.hpCurrent).toBeGreaterThan(0);
+      // Conditions MUST be cleared — this was the B036 bug
+      expect(target.conditions).not.toContain("unconscious");
+      expect(target.conditions).not.toContain("prone");
+      // Death saves MUST be reset
+      expect(target.deathSaves.successes).toBe(0);
+      expect(target.deathSaves.failures).toBe(0);
+    }
   });
 });
