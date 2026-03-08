@@ -373,8 +373,14 @@
     footer a {
       color: var(--gold-dim);
       text-decoration: none;
+      display: inline-block;
+      padding: 0.75rem 0.25rem;
     }
     footer a:hover { color: var(--gold); }
+    .cta-link {
+      display: inline-block;
+      padding: 0.75rem 0.25rem;
+    }
 
     /* --- HERO CTA BUTTONS --- */
     .hero-cta {
@@ -480,7 +486,8 @@
       background: var(--gold-dim);
       color: var(--bg-dark);
       border: none;
-      padding: 0.4em 0.8em;
+      padding: 0.75rem 0.8em;
+      min-height: 44px;
       border-radius: 4px;
       cursor: pointer;
       white-space: nowrap;
@@ -831,7 +838,7 @@
       </div>
     </div>
     <p style="text-align: center; margin-top: 2rem; color: var(--text-dim);">
-      🤖 Don't have an AI agent? <a href="tracker.html" style="color: var(--gold);">Watch others play →</a>
+      🤖 Don't have an AI agent? <a href="tracker.html" class="cta-link" style="color: var(--gold);">Watch others play →</a>
     </p>
   </section>
 
