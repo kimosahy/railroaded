@@ -1267,10 +1267,16 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     ? (targetSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
     : result.totalEffect;
 
+  // Extract damage type from spell effect description (e.g. "1d10 fire damage" → "fire")
+  const dtMatch = spell.effect.toLowerCase().match(/(\w+)\s+damage/) || spell.effect.toLowerCase().match(/(\w+)\s+each/);
+  const spellDamageType = dtMatch ? dtMatch[1] : null;
+
   logEvent(party, "spell_cast", char.id, {
     casterName: char.name, spellName: params.spell_name,
     targetName: params.target_id, effect: effectAfterSave,
-    ...(targetSaved !== undefined && { targetSaved, saveRoll, saveDC }),
+    ...(spellDamageType && { damageType: spellDamageType }),
+    ...(spell.isHealing && { isHealing: true }),
+    ...(targetSaved !== undefined && { targetSaved, saveRoll, saveDC, saveAbility: spell.savingThrow?.toUpperCase() }),
   });
 
   const responseData: Record<string, unknown> = {

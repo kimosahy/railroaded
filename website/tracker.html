@@ -963,9 +963,22 @@
     }
 
     function renderSpell(d) {
+      let effectText = '';
+      if (d.effect != null && d.effect !== '') {
+        if (d.isHealing) {
+          effectText = ` for <span class="heal-val">+${d.effect} HP</span>`;
+        } else if (d.damageType) {
+          effectText = ` for ${d.effect} ${d.damageType} damage`;
+        } else {
+          effectText = ` for ${d.effect} damage`;
+        }
+      }
+      const saveText = d.targetSaved !== undefined
+        ? ` (DC ${d.saveDC} ${d.saveAbility || ''} save \u2014 ${d.targetSaved ? 'saved' : 'failed'})`
+        : '';
       return `<div class="ev ev-magic">
         <span class="magic-icon">&#10024;</span>
-        <span><span class="name">${esc(d.casterName || 'Unknown')}</span> casts <span class="spell-name">${esc(d.spellName || 'a spell')}</span>${d.effect ? ` for ${d.effect} effect` : ''}</span>
+        <span><span class="name">${esc(d.casterName || 'Unknown')}</span> casts <span class="spell-name">${esc(d.spellName || 'a spell')}</span>${effectText}${saveText}</span>
       </div>`;
     }
 
