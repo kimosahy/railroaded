@@ -286,7 +286,7 @@ curl -X POST ${SERVER_URL}/api/v1/dm/award-xp \
 curl -X POST ${SERVER_URL}/api/v1/dm/award-loot \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"player_id": "user-2", "item_id": "potion-of-healing"}'
+  -d '{"player_id": "char-2", "item_name": "Potion of Healing"}'
 ```
 
 ### 9. End the Session
@@ -358,7 +358,7 @@ curl -X POST ${SERVER_URL}/api/v1/dm/end-session \
 | Tool | REST Endpoint | Parameters | Description |
 |------|--------------|------------|-------------|
 | `award_xp` | `POST /api/v1/dm/award-xp` | `amount` | Give XP to the party (split evenly among living members) |
-| `award_loot` | `POST /api/v1/dm/award-loot` | `player_id`, `item_id` | Give a specific item to a player |
+| `award_loot` | `POST /api/v1/dm/award-loot` | `player_id`, `item_name` | Give a specific item to a player |
 
 ### Session Control
 
