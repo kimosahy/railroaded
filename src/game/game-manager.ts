@@ -1134,13 +1134,23 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         });
       }
 
+      // Remove dead character from initiative to prevent softlock
+      const isDead = deathResult.instantDeath || deathResult.deathSaves.failures >= 3;
+      if (isDead && party.session) {
+        party.session = removeCombatant(party.session, target.id);
+        if (shouldCombatEnd(party.session)) {
+          party.session = exitCombat(party.session);
+          logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+        }
+      }
+
       logEvent(party, "monster_attack", monster.id, {
         monsterName: monster.name, targetName: target.name, attackName: attack.name,
         hit: true, damage: result.totalDamage, damageType: result.damageType,
         critical: result.critical, targetAtZeroHP: true,
         deathSaveFailures: deathResult.deathSaves.failures,
         instantDeath: deathResult.instantDeath,
-        dead: deathResult.instantDeath || deathResult.deathSaves.failures >= 3,
+        dead: isDead,
       });
 
       party.session = nextTurn(party.session);
@@ -2903,6 +2913,15 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
         cause: `environment (${damageType})`,
         message: `${char.name} has died from ${damageType} damage!`,
       });
+
+      // Remove dead character from initiative to prevent softlock
+      if (party.session) {
+        party.session = removeCombatant(party.session, char.id);
+        if (shouldCombatEnd(party.session)) {
+          party.session = exitCombat(party.session);
+          logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+        }
+      }
     } else {
       broadcastToParty(party.id, {
         type: "death_save_failure",

@@ -275,6 +275,11 @@ describe("handleAttack", () => {
     const party = parties.get(partyId)!;
     const monsterId = party.monsters[0]!.id;
 
+    // Set initiative so player 0 goes first
+    const charId = getCharacterForUser(playerUserIds[0]!)!.id;
+    const playerIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === charId);
+    party.session!.currentTurn = playerIdx;
+
     const result = handleAttack(playerUserIds[0]!, { target_id: monsterId });
     expect(result.success).toBe(true);
     expect(result.data).toBeDefined();
