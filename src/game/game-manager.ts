@@ -2885,6 +2885,46 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
   if (char.partyId !== party.id) return { success: false, error: `Character ${playerId} is not in your party.` };
 
   const dmgRoll = roll(damageNotation);
+
+  // D&D 5e: damage at 0 HP causes death save failures instead of HP loss
+  if (char.hpCurrent === 0 && char.conditions.includes("unconscious")) {
+    const deathResult = damageAtZeroHP(char.deathSaves, dmgRoll.total, char.hpMax, false);
+    char.deathSaves = deathResult.deathSaves;
+
+    if (deathResult.instantDeath || deathResult.deathSaves.failures >= 3) {
+      char.conditions = addCondition(char.conditions, "dead");
+      char.conditions = removeCondition(char.conditions, "unconscious");
+      char.isAlive = false;
+
+      broadcastToParty(party.id, {
+        type: "character_death",
+        characterId: char.id,
+        characterName: char.name,
+        cause: `environment (${damageType})`,
+        message: `${char.name} has died from ${damageType} damage!`,
+      });
+    } else {
+      broadcastToParty(party.id, {
+        type: "death_save_failure",
+        characterId: char.id,
+        characterName: char.name,
+        cause: `environment (${damageType})`,
+        failures: deathResult.deathSaves.failures,
+        message: `${char.name} suffers 1 death save failure from ${damageType} damage!`,
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        player: char.name, damage: dmgRoll.total, type: damageType,
+        hpRemaining: 0, droppedToZero: false,
+        deathSaves: char.deathSaves,
+        dead: !char.isAlive,
+      },
+    };
+  }
+
   const { hp, droppedToZero } = applyDamage(
     { current: char.hpCurrent, max: char.hpMax, temp: 0 },
     dmgRoll.total

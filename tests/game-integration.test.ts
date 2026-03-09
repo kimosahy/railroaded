@@ -710,6 +710,54 @@ describe("F. DM Checks and Saves", () => {
     expect(result.error).toContain("not in your party");
   });
 
+  test("handleDealEnvironmentDamage adds death save failure when character is at 0 HP", async () => {
+    const setup = await setupParty("envdmg-deathsave");
+    const char = getCharacterForUser(setup.players[0])!;
+    // Drop character to 0 HP
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 0, failures: 0 };
+
+    const result = handleDealEnvironmentDamage(setup.dm, { player_id: char.id, damage: 3, damage_type: "fire" });
+    expect(result.success).toBe(true);
+    expect(result.data!.hpRemaining).toBe(0);
+    expect(result.data!.deathSaves).toBeDefined();
+    expect((result.data!.deathSaves as { failures: number }).failures).toBe(1);
+    expect(char.deathSaves.failures).toBe(1);
+  });
+
+  test("handleDealEnvironmentDamage kills character at 0 HP with 2 existing failures", async () => {
+    const setup = await setupParty("envdmg-death");
+    const char = getCharacterForUser(setup.players[0])!;
+    // Character at 0 HP with 2 death save failures already
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 1, failures: 2 };
+
+    const result = handleDealEnvironmentDamage(setup.dm, { player_id: char.id, damage: 3, damage_type: "fire" });
+    expect(result.success).toBe(true);
+    expect(result.data!.dead).toBe(true);
+    expect(char.deathSaves.failures).toBe(3);
+    expect(char.conditions).toContain("dead");
+    expect(char.conditions).not.toContain("unconscious");
+    expect(char.isAlive).toBe(false);
+  });
+
+  test("handleDealEnvironmentDamage causes instant death if damage >= max HP at 0 HP", async () => {
+    const setup = await setupParty("envdmg-massive");
+    const char = getCharacterForUser(setup.players[0])!;
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 0, failures: 0 };
+
+    // Deal damage >= max HP for instant death
+    const result = handleDealEnvironmentDamage(setup.dm, { player_id: char.id, damage: char.hpMax, damage_type: "necrotic" });
+    expect(result.success).toBe(true);
+    expect(result.data!.dead).toBe(true);
+    expect(char.conditions).toContain("dead");
+    expect(char.isAlive).toBe(false);
+  });
+
   test("handleRequestCheck fails for non-existent player", () => {
     const result = handleRequestCheck(dm, { player_id: "nonexistent", ability: "str", dc: 10 });
     expect(result.success).toBe(false);
