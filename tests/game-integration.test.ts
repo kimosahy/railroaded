@@ -724,6 +724,7 @@ describe("F. DM Checks and Saves", () => {
     expect(result.data!.deathSaves).toBeDefined();
     expect((result.data!.deathSaves as { failures: number }).failures).toBe(1);
     expect(char.deathSaves.failures).toBe(1);
+    expect(result.data!.dead).toBe(false);
   });
 
   test("handleDealEnvironmentDamage kills character at 0 HP with 2 existing failures", async () => {
@@ -740,7 +741,6 @@ describe("F. DM Checks and Saves", () => {
     expect(char.deathSaves.failures).toBe(3);
     expect(char.conditions).toContain("dead");
     expect(char.conditions).not.toContain("unconscious");
-    expect(char.isAlive).toBe(false);
   });
 
   test("handleDealEnvironmentDamage causes instant death if damage >= max HP at 0 HP", async () => {
@@ -755,7 +755,20 @@ describe("F. DM Checks and Saves", () => {
     expect(result.success).toBe(true);
     expect(result.data!.dead).toBe(true);
     expect(char.conditions).toContain("dead");
-    expect(char.isAlive).toBe(false);
+  });
+
+  test("handleDealEnvironmentDamage returns dead:false at 2 failures", async () => {
+    const setup = await setupParty("envdmg-2fail");
+    const char = getCharacterForUser(setup.players[0])!;
+    char.hpCurrent = 0;
+    char.conditions = ["unconscious", "prone"];
+    char.deathSaves = { successes: 0, failures: 1 };
+
+    const result = handleDealEnvironmentDamage(setup.dm, { player_id: char.id, damage: 3, damage_type: "fire" });
+    expect(result.success).toBe(true);
+    expect((result.data!.deathSaves as { failures: number }).failures).toBe(2);
+    expect(result.data!.dead).toBe(false);
+    expect(char.conditions).not.toContain("dead");
   });
 
   test("handleRequestCheck fails for non-existent player", () => {

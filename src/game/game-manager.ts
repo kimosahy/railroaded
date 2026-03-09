@@ -2920,7 +2920,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
         player: char.name, damage: dmgRoll.total, type: damageType,
         hpRemaining: 0, droppedToZero: false,
         deathSaves: char.deathSaves,
-        dead: !char.isAlive,
+        dead: deathResult.instantDeath || deathResult.deathSaves.failures >= 3,
       },
     };
   }
