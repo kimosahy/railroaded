@@ -1330,6 +1330,12 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   let saveRoll: number | undefined;
   let saveDC: number | undefined;
 
+  // Track target state for response
+  let targetKilled: boolean | undefined;
+  let targetCurrentHP: number | undefined;
+  let spellHit: boolean | undefined;
+  let spellAttackNaturalRoll: number | undefined;
+
   // Apply effect to target if applicable
   if (spell.isHealing && params.target_id && result.totalEffect) {
     // Find target character
@@ -1357,6 +1363,19 @@ export function handleCast(userId: string, params: { spell_name: string; target_
       if (target) {
         let actualDamage = result.totalEffect;
 
+        // Roll spell attack for spells with spellAttackType (e.g. Fire Bolt, Ray of Frost)
+        if (spell.spellAttackType) {
+          const profBonus = proficiencyBonus(char.level);
+          const attackBonus = spellAttackBonus(char.abilityScores, char.class, profBonus);
+          const attackRoll = roll("1d20");
+          spellAttackNaturalRoll = attackRoll.total;
+          const totalRoll = attackRoll.total + attackBonus;
+          spellHit = attackRoll.total === 20 || (attackRoll.total !== 1 && totalRoll >= target.ac);
+          if (!spellHit) {
+            actualDamage = 0;
+          }
+        }
+
         // Roll saving throw for save-based spells
         if (spell.savingThrow) {
           const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
@@ -1378,6 +1397,9 @@ export function handleCast(userId: string, params: { spell_name: string; target_
           const { monster, killed } = damageMonster(target, actualDamage);
           const idx = party.monsters.findIndex((m) => m.id === target.id);
           if (idx !== -1) party.monsters[idx] = monster;
+
+          targetKilled = killed;
+          targetCurrentHP = monster.hpCurrent;
 
           // Track lifetime stats
           char.totalDamageDealt += actualDamage;
@@ -1413,6 +1435,10 @@ export function handleCast(userId: string, params: { spell_name: string; target_
               snapshotCharacters(party);
             }
           }
+        } else {
+          // Spell missed or target saved fully — report target HP without damage
+          targetKilled = false;
+          targetCurrentHP = target.hpCurrent;
         }
       }
     }
@@ -1422,29 +1448,42 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     ? (targetSaved ? (spell.level === 0 ? 0 : Math.floor(result.totalEffect! / 2)) : result.totalEffect)
     : result.totalEffect;
 
+  // For spell attacks that miss, the effective damage is 0
+  const effectForResponse = spellHit === false ? 0 : effectAfterSave;
+
   // Extract damage type from spell effect description (e.g. "1d10 fire damage" → "fire")
   const dtMatch = spell.effect.toLowerCase().match(/(\w+)\s+damage/) || spell.effect.toLowerCase().match(/(\w+)\s+each/);
   const spellDamageType = dtMatch ? dtMatch[1] : null;
 
   logEvent(party, "spell_cast", char.id, {
     casterName: char.name, spellName: params.spell_name,
-    targetName: params.target_id, effect: effectAfterSave,
+    targetName: params.target_id, effect: effectForResponse,
     ...(spellDamageType && { damageType: spellDamageType }),
     ...(spell.isHealing && { isHealing: true }),
+    ...(spellHit !== undefined && { hit: spellHit, naturalRoll: spellAttackNaturalRoll }),
     ...(targetSaved !== undefined && { targetSaved, saveRoll, saveDC, saveAbility: spell.savingThrow?.toUpperCase() }),
+    ...(targetKilled !== undefined && { targetKilled, targetHP: targetCurrentHP }),
   });
 
   const responseData: Record<string, unknown> = {
     spell: params.spell_name,
-    effect: effectAfterSave,
+    effect: effectForResponse,
     remainingSlots: result.remainingSlots,
   };
+  if (spellHit !== undefined) {
+    responseData.hit = spellHit;
+    responseData.naturalRoll = spellAttackNaturalRoll;
+  }
   if (targetSaved !== undefined) {
     responseData.targetSaved = targetSaved;
     responseData.saveDC = saveDC;
     responseData.saveRoll = saveRoll;
     responseData.fullDamage = result.totalEffect;
     responseData.damageHalved = targetSaved && spell.level > 0;
+  }
+  if (targetKilled !== undefined) {
+    responseData.targetHP = targetCurrentHP;
+    responseData.killed = targetKilled;
   }
 
   return {

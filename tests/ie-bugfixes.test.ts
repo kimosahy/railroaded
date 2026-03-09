@@ -9,8 +9,11 @@ import {
   handleNarrate,
   handleNarrateTo,
   handleCast,
+  handleEndTurn,
   getPartyForUser,
+  getCharacterForUser,
 } from "../src/game/game-manager.ts";
+import { getCurrentCombatant } from "../src/game/session.ts";
 import type { AbilityScores } from "../src/types.ts";
 
 const scores: AbilityScores = { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 };
@@ -318,5 +321,170 @@ describe("B012: spell name normalization accepts snake_case and mixed case", () 
 
     const result = handleCast("b012-clr", { spell_name: "sacred_flame" });
     expect(result.error ?? "").not.toContain("Unknown spell");
+  });
+});
+
+// === B051: Cast spell response missing targetHP, hit/miss, and killed fields ===
+
+describe("B051: cast spell response includes targetHP and killed", () => {
+  const prefix = "b051";
+  const dm = `${prefix}-dm`;
+  const wizUser = `${prefix}-wiz`;
+
+  test("setup: form wizard party with combat encounter", async () => {
+    await handleCreateCharacter(wizUser, {
+      name: "B051Wizard",
+      race: "elf",
+      class: "wizard" as any,
+      ability_scores: { str: 10, dex: 14, con: 12, int: 18, wis: 14, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    for (let i = 1; i <= 3; i++) {
+      await handleCreateCharacter(`${prefix}-p${i}`, {
+        name: `B051Hero${i}`,
+        race: "human",
+        class: "fighter" as any,
+        ability_scores: scores,
+        avatar_url: "https://example.com/test.png",
+      });
+      handleQueueForParty(`${prefix}-p${i}`);
+    }
+    handleQueueForParty(wizUser);
+    handleDMQueueForParty(dm);
+
+    const party = getPartyForUser(wizUser);
+    expect(party).not.toBeNull();
+
+    const spawn = handleSpawnEncounter(dm, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    expect(spawn.success).toBe(true);
+  });
+
+  test("magic_missile response includes targetHP and killed (auto-hit spell)", () => {
+    const party = getPartyForUser(wizUser);
+    if (!party?.session || party.session.phase !== "combat") return;
+
+    const goblin = party.monsters.find((m) => m.isAlive);
+    if (!goblin) return;
+
+    // Advance to wizard's turn
+    const char = getCharacterForUser(wizUser);
+    if (!char) return;
+    while (getCurrentCombatant(party.session!)?.entityId !== char.id) {
+      const current = getCurrentCombatant(party.session!);
+      if (!current) break;
+      if (current.type === "player") {
+        // Find userId for this character's turn and end it
+        const pid = [wizUser, `${prefix}-p1`, `${prefix}-p2`, `${prefix}-p3`].find(
+          (u) => getCharacterForUser(u)?.id === current.entityId
+        );
+        if (pid) handleEndTurn(pid);
+      } else {
+        // Skip monster turn by advancing
+        party.session = party.session!;
+        const { nextTurn } = require("../src/game/session.ts");
+        party.session = nextTurn(party.session!);
+      }
+    }
+
+    // Set goblin HP low but not 1 so we can verify HP tracking
+    goblin.hpCurrent = 20;
+
+    const result = handleCast(wizUser, { spell_name: "Magic Missile", target_id: goblin.id });
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+
+    // Magic Missile auto-hits (no spellAttackType), so no hit field
+    expect(result.data!.targetHP).toBeDefined();
+    expect(typeof result.data!.targetHP).toBe("number");
+    expect(result.data!.killed).toBeDefined();
+    expect(typeof result.data!.killed).toBe("boolean");
+  });
+});
+
+describe("B051: fire_bolt spell attack includes hit field", () => {
+  const prefix = "b051b";
+  const dm = `${prefix}-dm`;
+  const wizUser = `${prefix}-wiz`;
+
+  test("setup: form wizard party with combat encounter", async () => {
+    await handleCreateCharacter(wizUser, {
+      name: "B051bWizard",
+      race: "elf",
+      class: "wizard" as any,
+      ability_scores: { str: 10, dex: 14, con: 12, int: 18, wis: 14, cha: 10 },
+      avatar_url: "https://example.com/test.png",
+    });
+    for (let i = 1; i <= 3; i++) {
+      await handleCreateCharacter(`${prefix}-p${i}`, {
+        name: `B051bHero${i}`,
+        race: "human",
+        class: "fighter" as any,
+        ability_scores: scores,
+        avatar_url: "https://example.com/test.png",
+      });
+      handleQueueForParty(`${prefix}-p${i}`);
+    }
+    handleQueueForParty(wizUser);
+    handleDMQueueForParty(dm);
+
+    const party = getPartyForUser(wizUser);
+    expect(party).not.toBeNull();
+
+    const spawn = handleSpawnEncounter(dm, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    expect(spawn.success).toBe(true);
+  });
+
+  test("fire_bolt response includes hit, naturalRoll, targetHP and killed", () => {
+    const party = getPartyForUser(wizUser);
+    if (!party?.session || party.session.phase !== "combat") return;
+
+    const goblin = party.monsters.find((m) => m.isAlive);
+    if (!goblin) return;
+
+    const char = getCharacterForUser(wizUser);
+    if (!char) return;
+
+    // Advance to wizard's turn
+    while (getCurrentCombatant(party.session!)?.entityId !== char.id) {
+      const current = getCurrentCombatant(party.session!);
+      if (!current) break;
+      if (current.type === "player") {
+        const pid = [wizUser, `${prefix}-p1`, `${prefix}-p2`, `${prefix}-p3`].find(
+          (u) => getCharacterForUser(u)?.id === current.entityId
+        );
+        if (pid) handleEndTurn(pid);
+      } else {
+        const { nextTurn } = require("../src/game/session.ts");
+        party.session = nextTurn(party.session!);
+      }
+    }
+
+    goblin.hpCurrent = 50; // High HP so it's not killed
+
+    const result = handleCast(wizUser, { spell_name: "Fire Bolt", target_id: goblin.id });
+    expect(result.success).toBe(true);
+    expect(result.data).toBeDefined();
+
+    // Fire Bolt has spellAttackType: "ranged", so hit/naturalRoll should be present
+    expect(result.data!.hit).toBeDefined();
+    expect(typeof result.data!.hit).toBe("boolean");
+    expect(result.data!.naturalRoll).toBeDefined();
+    expect(typeof result.data!.naturalRoll).toBe("number");
+
+    // targetHP and killed should always be present for targeted damage spells
+    expect(result.data!.targetHP).toBeDefined();
+    expect(typeof result.data!.targetHP).toBe("number");
+    expect(result.data!.killed).toBeDefined();
+    expect(typeof result.data!.killed).toBe("boolean");
+
+    if (result.data!.hit) {
+      // On hit, damage should be applied
+      expect(result.data!.effect).toBeGreaterThan(0);
+      expect(result.data!.targetHP).toBeLessThan(50);
+    } else {
+      // On miss, effect should be 0 and HP unchanged
+      expect(result.data!.effect).toBe(0);
+      expect(result.data!.targetHP).toBe(50);
+    }
   });
 });
