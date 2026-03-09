@@ -3314,6 +3314,64 @@ export function handleListItems(_userId: string, params: { category?: string }):
   };
 }
 
+// Patterns that indicate internal QA/debug text that should not appear in public summaries.
+const DEBUG_PATTERNS: RegExp[] = [
+  /\bB\d{3,4}\b/i,               // Bug references: B036, B047, B048
+  /VERIFIED\s+FIXED/i,
+  /STILL\s+BROKEN/i,
+  /\[ie-[^\]]*\]/i,              // Internal issue tags: [ie-B048], [ie-ux-016]
+  /\bQA\b/,
+  /\bREGRESSION\b/i,
+  /\bPLAYTEST\b/i,
+  /\bDEBUG\b/i,
+];
+
+/**
+ * Returns true if the summary contains internal QA/debug text that should
+ * not be shown to public spectators.
+ */
+export function summaryContainsDebugText(summary: string): boolean {
+  return DEBUG_PATTERNS.some((re) => re.test(summary));
+}
+
+/**
+ * Strips debug/QA markers from a summary, returning spectator-safe prose.
+ * Removes parenthetical debug notes, issue tags, and standalone markers.
+ */
+export function filterSummary(summary: string): string {
+  let filtered = summary;
+
+  // Remove [ie-*] tags
+  filtered = filtered.replace(/\[ie-[^\]]*\]/gi, "");
+
+  // Remove parenthetical debug notes like "(2nd confirmation)" or "(half-orc RE)"
+  // that immediately follow a debug keyword phrase
+  filtered = filtered.replace(/\s*\([^)]*\)\s*/g, (match, offset, str) => {
+    // Only strip if preceded by a debug pattern word in the same sentence fragment
+    const before = str.slice(Math.max(0, offset - 60), offset);
+    if (/VERIFIED\s+FIXED|STILL\s+BROKEN|B\d{3,4}/i.test(before)) {
+      return " ";
+    }
+    return match;
+  });
+
+  // Remove whole sentences / clauses containing debug patterns
+  // Split on '. ' or '.' at end, filter, rejoin
+  const sentences = filtered.split(/(?<=\.)\s+/);
+  const clean = sentences.filter((s) => !DEBUG_PATTERNS.some((re) => re.test(s)));
+  filtered = clean.join(" ").trim();
+
+  // Final pass: strip any residual debug tokens
+  for (const re of DEBUG_PATTERNS) {
+    filtered = filtered.replace(new RegExp(re.source, re.flags + (re.flags.includes("g") ? "" : "g")), "");
+  }
+
+  // Collapse multiple spaces / trailing punctuation artifacts
+  filtered = filtered.replace(/\s{2,}/g, " ").trim();
+
+  return filtered;
+}
+
 export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   if (!params.summary || typeof params.summary !== "string" || params.summary.trim() === "") {
     return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session." };
@@ -3322,11 +3380,14 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
+  // Strip any QA/debug markers before storing or surfacing the summary
+  const cleanSummary = filterSummary(params.summary);
+
   if (party.session) {
     party.session = endSessionState(party.session);
   }
 
-  logEvent(party, "session_end", null, { summary: params.summary });
+  logEvent(party, "session_end", null, { summary: cleanSummary });
 
   // Track lifetime stats for all party members
   for (const mid of party.members) {
@@ -3347,7 +3408,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
     party.dbReady.then(() => {
       if (!party.dbSessionId) return;
       db.update(gameSessionsTable)
-        .set({ isActive: false, endedAt: new Date(), summary: params.summary })
+        .set({ isActive: false, endedAt: new Date(), summary: cleanSummary })
         .where(eq(gameSessionsTable.id, party.dbSessionId))
         .catch((err) => console.error("[DB] Failed to end session:", err));
     });
@@ -3366,7 +3427,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
       // Record session history
       campaign.sessionHistory.push({
         session_number: campaign.sessionCount,
-        summary: params.summary,
+        summary: cleanSummary,
         completed_dungeon: params.completed_dungeon,
       });
 
