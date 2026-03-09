@@ -69,9 +69,10 @@ describe("in-memory session lifecycle", () => {
   test("loadPersistedSessions returns 0 when DB has no sessions", async () => {
     _clearSessionsForTest();
     // Even if DB is down, loadPersistedSessions catches errors and returns 0
+    // Timeout extended: DB connection attempt can take >5s to fail without Postgres
     const count = await loadPersistedSessions();
     expect(count).toBeGreaterThanOrEqual(0);
-  });
+  }, 15_000);
 });
 
 // === DB-dependent tests (skipped without Postgres) ===
