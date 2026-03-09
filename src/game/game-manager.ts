@@ -807,6 +807,12 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     return { success: false, error: "You can only attack during combat." };
   }
 
+  // Check turn order
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== char.id) {
+    return { success: false, error: "It's not your turn." };
+  }
+
   // Check action resource
   const resources = getTurnResources(party, char.id);
   if (resources.actionUsed) {
@@ -1254,9 +1260,13 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     return { success: false, error: `${spell.name} is a reaction spell. Use the reaction tool instead.` };
   }
 
-  // Check action resource in combat
+  // Check turn order and action resource in combat
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) {
+      return { success: false, error: "It's not your turn." };
+    }
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) {
       return { success: false, error: "You've already used your action this turn." };
@@ -1449,6 +1459,8 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
@@ -1462,6 +1474,8 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
@@ -1475,6 +1489,8 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
@@ -1488,6 +1504,8 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
@@ -1501,6 +1519,8 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
+    const current = getCurrentCombatant(party.session);
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
