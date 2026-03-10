@@ -240,6 +240,19 @@ describe("interact_with_feature", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Not a DM");
   });
+
+  test("returns 400 error instead of 500 when feature_name is missing", () => {
+    // Simulates REST body with wrong field name (e.g. {feature: "..."} instead of {feature_name: "..."})
+    const result = handleInteractWithFeature("tpl-dm-1", {} as { feature_name: string });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("feature_name");
+  });
+
+  test("returns 400 error instead of 500 when feature_name is undefined", () => {
+    const result = handleInteractWithFeature("tpl-dm-1", { feature_name: undefined as unknown as string });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("feature_name");
+  });
 });
 
 // --- DM scene override ---

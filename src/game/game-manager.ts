@@ -2606,6 +2606,10 @@ export function handleTriggerEncounter(userId: string): { success: boolean; data
 }
 
 export function handleInteractWithFeature(userId: string, params: { feature_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  if (!params.feature_name || typeof params.feature_name !== "string") {
+    return { success: false, error: "Missing required parameter: feature_name" };
+  }
+
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
   if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
