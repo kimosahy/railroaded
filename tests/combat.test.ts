@@ -29,6 +29,18 @@ describe("rollInitiative", () => {
     expect(entry.entityId).toBe("p1");
     expect(entry.type).toBe("player");
   });
+
+  test("handles negative DEX modifier (ie-B055: zombie DEX 6 → mod -2)", () => {
+    // DEX 6 → modifier -2. Should not throw 'Invalid dice notation: "1d20+-2"'
+    expect(() => rollInitiative("m1", "Zombie", 6, "monster", makeRoller([10]))).not.toThrow();
+    const entry = rollInitiative("m1", "Zombie", 6, "monster", makeRoller([10]));
+    expect(entry.initiative).toBe(8); // 10 + (-2) = 8
+  });
+
+  test("handles zero DEX modifier (DEX 10)", () => {
+    const entry = rollInitiative("m2", "Skeleton", 10, "monster", makeRoller([12]));
+    expect(entry.initiative).toBe(12); // 12 + 0
+  });
 });
 
 describe("sortInitiative", () => {

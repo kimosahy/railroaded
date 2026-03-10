@@ -2,7 +2,7 @@
  * Combat engine: initiative, attack rolls, damage, critical hits.
  */
 
-import { roll, abilityModifier } from "./dice.ts";
+import { roll, rollD20, abilityModifier } from "./dice.ts";
 import type { DiceRollResult } from "./dice.ts";
 import type { AbilityScores } from "../types.ts";
 
@@ -37,7 +37,7 @@ export function rollInitiative(
   randomFn?: (sides: number) => number
 ): InitiativeEntry {
   const mod = abilityModifier(dexScore);
-  const result = roll(`1d20+${mod}`, randomFn);
+  const result = rollD20(mod, randomFn);
   return {
     entityId,
     initiative: result.total,
