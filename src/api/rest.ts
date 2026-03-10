@@ -85,8 +85,10 @@ player.get("/actions", (c) => respond(c, gm.handleGetAvailableActions(c.get("use
 player.get("/available-actions", (c) => respond(c, gm.handleGetAvailableActions(c.get("user").userId)));
 
 player.post("/move", async (c) => {
-  const body = await c.req.json<{ direction_or_target: string }>();
-  return respond(c, gm.handleMove(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  const direction_or_target = (body.direction_or_target ?? body.room_id ?? body.direction) as string;
+  if (!direction_or_target) return respond(c, { success: false, error: "Missing direction_or_target, room_id, or direction." });
+  return respond(c, gm.handleMove(c.get("user").userId, { direction_or_target }));
 });
 
 player.post("/attack", async (c) => {

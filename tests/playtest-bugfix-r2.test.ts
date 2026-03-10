@@ -276,7 +276,7 @@ describe("unconscious characters cannot take actions (Round 3 Bug 1)", () => {
       return;
     }
     char.conditions = handleDropToZero(char.conditions);
-    const result = handleMove("healtest-p1", { direction: "north", distance: 5 });
+    const result = handleMove("healtest-p1", { direction_or_target: "north" });
     expect(result.success).toBe(false);
     expect(result.error).toContain("unconscious");
     char.conditions = [];

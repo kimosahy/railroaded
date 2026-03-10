@@ -1587,6 +1587,7 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
 }
 
 export function handleMove(userId: string, params: { direction_or_target: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target." };
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
