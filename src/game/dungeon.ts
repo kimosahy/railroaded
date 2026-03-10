@@ -103,27 +103,35 @@ export function getAvailableExits(state: DungeonState): {
   return exits;
 }
 
+export type MoveResult =
+  | { ok: true; state: DungeonState }
+  | { ok: false; reason: string };
+
 /**
  * Move to a connected room.
- * Returns updated state or null if the move is invalid.
+ * Returns updated state or a reason string if the move is invalid.
  */
 export function moveToRoom(
   state: DungeonState,
   targetRoomId: string
-): DungeonState | null {
+): MoveResult {
   // Check if the room is accessible
   const exits = getAvailableExits(state);
   const exit = exits.find((e) => e.roomId === targetRoomId);
 
-  if (!exit) return null;
+  if (!exit) return { ok: false, reason: "no_exit" };
 
   // Can't move through locked doors without a key/check
-  if (exit.connectionType === "locked") return null;
+  if (exit.connectionType === "locked") {
+    const targetRoom = state.rooms.get(targetRoomId);
+    const roomName = targetRoom?.name ?? "that room";
+    return { ok: false, reason: `The path to ${roomName} is locked. You need to find a way to unlock it before you can proceed.` };
+  }
 
   // Update state
   const newRooms = new Map(state.rooms);
   const targetRoom = newRooms.get(targetRoomId);
-  if (!targetRoom) return null;
+  if (!targetRoom) return { ok: false, reason: "no_exit" };
 
   newRooms.set(targetRoomId, {
     ...targetRoom,
@@ -132,9 +140,12 @@ export function moveToRoom(
   });
 
   return {
-    rooms: newRooms,
-    connections: state.connections,
-    currentRoomId: targetRoomId,
+    ok: true,
+    state: {
+      rooms: newRooms,
+      connections: state.connections,
+      currentRoomId: targetRoomId,
+    },
   };
 }
 

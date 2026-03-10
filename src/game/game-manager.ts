@@ -1616,13 +1616,13 @@ export function handleMove(userId: string, params: { direction_or_target: string
     return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}` };
   }
 
-  const newState = moveToRoom(party.dungeonState, target.roomId);
-  if (!newState) {
-    return { success: false, error: `Cannot move to ${target.roomName} (${target.connectionType}).` };
+  const moveResult = moveToRoom(party.dungeonState, target.roomId);
+  if (!moveResult.ok) {
+    return { success: false, error: moveResult.reason };
   }
 
-  party.dungeonState = newState;
-  const room = getCurrentRoom(newState);
+  party.dungeonState = moveResult.state;
+  const room = getCurrentRoom(moveResult.state);
 
   logEvent(party, "room_enter", char.id, { roomName: room?.name });
 
@@ -3015,16 +3015,19 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   }
 
   if (nextRoom && party.dungeonState) {
-    const newState = moveToRoom(party.dungeonState, nextRoom);
-    if (newState) {
-      party.dungeonState = newState;
-      const room = getCurrentRoom(newState);
+    const moveResult = moveToRoom(party.dungeonState, nextRoom);
+    if (moveResult.ok) {
+      party.dungeonState = moveResult.state;
+      const room = getCurrentRoom(moveResult.state);
       logEvent(party, "room_enter", null, { roomName: room?.name });
-      const newExits = getAvailableExits(newState).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId }));
+      const newExits = getAvailableExits(moveResult.state).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId }));
       return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase, exits: newExits } };
     }
-    const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
-    return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
+    if (moveResult.reason === "no_exit") {
+      const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
+      return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
+    }
+    return { success: false, error: moveResult.reason };
   }
 
   // No room specified — return available exits so DM can choose
