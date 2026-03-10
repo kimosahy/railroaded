@@ -1203,6 +1203,19 @@ describe("I. Communication", () => {
     expect(result.data!.to).toBe(char2.name);
   });
 
+  test("handleWhisper fails gracefully when player_id is missing", () => {
+    const result = handleWhisper(players[0], { player_id: undefined as unknown as string, message: "hello" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing player_id");
+  });
+
+  test("handleWhisper fails gracefully when message is missing", () => {
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleWhisper(players[0], { player_id: char2.id, message: undefined as unknown as string });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Missing message");
+  });
+
   test("handleNarrate (DM) succeeds", () => {
     const result = handleNarrate(dm, { text: "The dungeon grows dark." });
     expect(result.success).toBe(true);

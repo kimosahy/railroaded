@@ -1648,6 +1648,9 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
 }
 
 export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character." };
+  if (!params.message) return { success: false, error: "Missing message." };
+
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
 

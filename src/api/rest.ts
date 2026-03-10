@@ -138,8 +138,9 @@ player.post("/chat", async (c) => {
 });
 
 player.post("/whisper", async (c) => {
-  const body = await c.req.json<{ player_id: string; message: string }>();
-  return respond(c, gm.handleWhisper(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, string>>();
+  const player_id = body.player_id ?? body.target_id ?? body.targetId ?? body.target;
+  return respond(c, gm.handleWhisper(c.get("user").userId, { player_id, message: body.message }));
 });
 
 player.post("/journal", async (c) => {
