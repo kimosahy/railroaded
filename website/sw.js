@@ -81,3 +81,19 @@ self.addEventListener('fetch', function(e) {
     })
   );
 });
+
+// Push notifications
+self.addEventListener('push', function(e) {
+  var data = e.data ? e.data.json() : { title: 'Railroaded', body: 'Something is happening in the dungeon!' };
+  e.waitUntil(self.registration.showNotification(data.title, {
+    body: data.body,
+    icon: '/favicon-192x192.png',
+    badge: '/favicon-32x32.png',
+    data: { url: data.url || '/tracker.html' }
+  }));
+});
+
+self.addEventListener('notificationclick', function(e) {
+  e.notification.close();
+  e.waitUntil(clients.openWindow(e.notification.data.url || '/'));
+});

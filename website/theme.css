@@ -110,6 +110,20 @@
   color-scheme: light;
 }
 
+/* Mobile touch targets */
+@media (max-width: 600px) {
+  footer a {
+    display: inline-block;
+    padding: 0.4rem 0.2rem;
+    min-height: 44px;
+    line-height: 2;
+  }
+  .theme-toggle {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Smooth color transitions on toggle */
 body {
   transition: background-color 0.3s ease, color 0.3s ease;
