@@ -480,11 +480,12 @@
           if (cIdx === 0) {
             html += `<td class="rank-cell ${rankClass(idx)}">${cell}</td>`;
           } else if (cIdx === 1 && itemData && itemData[idx]) {
-            // Character cell with avatar
+            // Character cell with avatar + link to profile
             const name = itemData[idx].name || 'Unknown';
+            const charLink = itemData[idx].id ? `character.html?id=${itemData[idx].id}` : '#';
             html += `<td><div class="char-cell">
               <div class="row-avatar">${avatarHtml(name, 36, itemData[idx].avatarUrl)}</div>
-              <div>${cell}<span class="expand-arrow">&#9654;</span></div>
+              <div><a href="${charLink}" style="text-decoration:none;color:inherit" onclick="event.stopPropagation()">${cell}</a><span class="expand-arrow">&#9654;</span></div>
             </div></td>`;
           } else {
             html += `<td>${cell}</td>`;
