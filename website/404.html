@@ -77,6 +77,8 @@
       .content h1 { font-size: 1.6rem; }
     }
   </style>
+  <link rel="stylesheet" href="theme.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <nav>
@@ -92,6 +94,7 @@
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
     </div>
+    <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
   <div class="content">
     <div class="sword">&#9876;&#65039;</div>
@@ -117,5 +120,6 @@
       window.location.href = pages[Math.floor(Math.random() * pages.length)];
     }
   </script>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}</script>
 </body>
 </html>

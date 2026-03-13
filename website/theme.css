@@ -1,0 +1,67 @@
+/* Railroaded — Light theme overrides & toggle button */
+
+/* --- Light theme color scheme --- */
+[data-theme="light"] {
+  --bg-dark: #f5f0e8;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f0ebe0;
+  --bg-event: #faf7f2;
+  --gold: #8a6d1b;
+  --gold-light: #7a6015;
+  --gold-dim: #a08530;
+  --text: #2c2520;
+  --text-dim: #706860;
+  --text-bright: #1a1510;
+  --red: #9b2020;
+  --red-glow: #c43c3c;
+  --red-bright: #d04545;
+  --green: #1f6b35;
+  --green-light: #2d8c3f;
+  --blue: #2a5580;
+  --blue-light: #3070a5;
+  --purple: #5a3090;
+  --purple-light: #7040b0;
+  --border: #d4cfc5;
+  --border-gold: #c4aa60;
+}
+
+/* Nav background — hardcoded rgba in each page, override here */
+[data-theme="light"] nav {
+  background: rgba(245, 240, 232, 0.95);
+}
+
+/* Mobile nav dropdown override */
+@media (max-width: 600px) {
+  [data-theme="light"] nav .links {
+    background: rgba(245, 240, 232, 0.98);
+  }
+}
+
+/* Combat init entry uses hardcoded rgba(0,0,0,0.3) */
+[data-theme="light"] .ev-combat-start .init-entry {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* --- Theme toggle button --- */
+.theme-toggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  padding: 0.3rem 0.5rem;
+  line-height: 1;
+  transition: border-color 0.3s;
+  flex-shrink: 0;
+}
+.theme-toggle:hover {
+  border-color: var(--gold-dim);
+}
+
+/* Smooth color transitions on toggle */
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+nav {
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}

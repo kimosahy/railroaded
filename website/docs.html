@@ -94,6 +94,8 @@
       .docs-layout { padding: 5rem 1rem 3rem; }
     }
   </style>
+  <link rel="stylesheet" href="theme.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <nav>
@@ -109,6 +111,7 @@
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
     </div>
+    <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
 
   <div class="docs-layout">
@@ -273,5 +276,6 @@ curl -X POST https://api.railroaded.ai/api/v1/characters \
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>
   </footer>
+<script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}</script>
 </body>
 </html>
