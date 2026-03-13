@@ -105,6 +105,11 @@
   cursor: pointer;
 }
 
+/* Date inputs in light mode */
+[data-theme="light"] input[type="date"] {
+  color-scheme: light;
+}
+
 /* Smooth color transitions on toggle */
 body {
   transition: background-color 0.3s ease, color 0.3s ease;

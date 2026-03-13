@@ -669,11 +669,16 @@
   <div style="max-width:1400px;margin:0 auto;padding:0.5rem 2rem 0;">
     <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
       <label style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">Status:</label>
-      <select id="status-filter" onchange="applyStatusFilter()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+      <select id="status-filter" onchange="applyTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
         <option value="all">All</option>
         <option value="live">Live</option>
         <option value="completed">Completed</option>
       </select>
+      <label style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-left:0.4rem;">Party:</label>
+      <select id="party-filter" onchange="applyTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+        <option value="all">All Parties</option>
+      </select>
+      <button onclick="clearTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.75rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;white-space:nowrap;margin-left:0.4rem;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">Clear Filters</button>
     </div>
   </div>
 
@@ -1237,17 +1242,39 @@
     let sessionsOffset = 0;
     const SESSIONS_LIMIT = 10;
 
-    function applyStatusFilter() {
-      const val = document.getElementById('status-filter').value;
+    function applyTrackerFilters() {
+      const status = document.getElementById('status-filter').value;
+      const partyVal = document.getElementById('party-filter').value;
       // Filter parties
       let filteredParties = partiesCache;
-      if (val === 'completed') filteredParties = [];
+      if (status === 'completed') filteredParties = [];
+      if (partyVal !== 'all') filteredParties = filteredParties.filter(p => (p.name || '') === partyVal);
       renderParties(filteredParties);
       // Filter sessions
       let filteredSessions = sessionsCache;
-      if (val === 'live') filteredSessions = sessionsCache.filter(s => s.isActive);
-      else if (val === 'completed') filteredSessions = sessionsCache.filter(s => !s.isActive);
+      if (status === 'live') filteredSessions = filteredSessions.filter(s => s.isActive);
+      else if (status === 'completed') filteredSessions = filteredSessions.filter(s => !s.isActive);
+      if (partyVal !== 'all') filteredSessions = filteredSessions.filter(s => (s.partyName || '') === partyVal);
       renderSessions(filteredSessions, false);
+    }
+
+    function clearTrackerFilters() {
+      document.getElementById('status-filter').value = 'all';
+      document.getElementById('party-filter').value = 'all';
+      renderParties(partiesCache);
+      renderSessions(sessionsCache, false);
+    }
+
+    function populatePartyFilter() {
+      const select = document.getElementById('party-filter');
+      const names = new Set();
+      for (const p of partiesCache) { if (p.name) names.add(p.name); }
+      for (const s of sessionsCache) { if (s.partyName) names.add(s.partyName); }
+      const sorted = Array.from(names).sort();
+      const current = select.value;
+      select.innerHTML = '<option value="all">All Parties</option>' +
+        sorted.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      if (sorted.includes(current)) select.value = current;
     }
 
     function renderSessions(sessions, append) {
@@ -1315,6 +1342,7 @@
         const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
         renderSessions(sessionsCache, false);
         if (scrollEl) scrollEl.scrollTop = scrollTop;
+        populatePartyFilter();
       } catch (e) {
         sessionsCache = [];
         renderSessions([], false);
@@ -1397,6 +1425,7 @@
         const scrollTop = scrollEl ? scrollEl.scrollTop : 0;
         renderParties(partiesCache);
         if (scrollEl) scrollEl.scrollTop = scrollTop;
+        populatePartyFilter();
       } catch (e) {
         partiesCache = [];
         renderParties([]);

@@ -141,9 +141,18 @@
     <p>Chronicles of dungeons conquered, told by those who were there</p>
   </div>
   <div style="max-width:800px;margin:0 auto;padding:0 2rem 0.5rem;">
-    <div style="display:flex;gap:0.5rem;align-items:center;">
-      <input type="text" id="journal-search" placeholder="Search by character name or keyword..." oninput="filterJournals()" style="flex:1;font-family:'Crimson Text',serif;font-size:1rem;padding:0.5rem 0.8rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
-      <button onclick="document.getElementById('journal-search').value='';filterJournals()" style="font-family:'Cinzel',serif;font-size:0.75rem;padding:0.5rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;white-space:nowrap;">Clear</button>
+    <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
+      <input type="text" id="journal-search" placeholder="Search by character name or keyword..." oninput="filterJournals()" style="flex:1;min-width:180px;font-family:'Crimson Text',serif;font-size:1rem;padding:0.5rem 0.8rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+      <select id="journal-party-filter" onchange="filterJournals()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.45rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+        <option value="all">All Parties</option>
+      </select>
+      <button onclick="clearJournalFilters()" style="font-family:'Cinzel',serif;font-size:0.75rem;padding:0.5rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;white-space:nowrap;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">Clear</button>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.4rem;flex-wrap:wrap;">
+      <label style="font-family:'Cinzel',serif;font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">From:</label>
+      <input type="date" id="journal-date-from" onchange="filterJournals()" style="font-family:'Crimson Text',serif;font-size:0.85rem;padding:0.3rem 0.5rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);outline:none;color-scheme:dark;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+      <label style="font-family:'Cinzel',serif;font-size:0.72rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">To:</label>
+      <input type="date" id="journal-date-to" onchange="filterJournals()" style="font-family:'Crimson Text',serif;font-size:0.85rem;padding:0.3rem 0.5rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);outline:none;color-scheme:dark;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
     </div>
   </div>
   <div class="page-with-narrator">
@@ -493,16 +502,69 @@
 
     function filterJournals() {
       const query = (document.getElementById('journal-search').value || '').toLowerCase().trim();
+      const partyVal = document.getElementById('journal-party-filter').value;
+      const dateFrom = document.getElementById('journal-date-from').value;
+      const dateTo = document.getElementById('journal-date-to').value;
       const entries = document.querySelectorAll('.session-entry');
+      let visible = 0;
       entries.forEach(function(el, i) {
-        if (!query) { el.style.display = ''; return; }
         const s = journalSessions[i];
-        if (!s) { el.style.display = ''; return; }
-        const text = ((s.partyName || '') + ' ' + (s.summary || '')).toLowerCase();
-        // Also match member names if available
-        const members = (s.members || []).map(function(m) { return (m.name || '').toLowerCase(); }).join(' ');
-        el.style.display = (text.includes(query) || members.includes(query)) ? '' : 'none';
+        if (!s) { el.style.display = ''; visible++; return; }
+        let show = true;
+        // Text search filter
+        if (query) {
+          const text = ((s.partyName || '') + ' ' + (s.summary || '')).toLowerCase();
+          const members = (s.members || []).map(function(m) { return (m.name || '').toLowerCase(); }).join(' ');
+          if (!text.includes(query) && !members.includes(query)) show = false;
+        }
+        // Party filter
+        if (show && partyVal !== 'all') {
+          if ((s.partyName || '') !== partyVal) show = false;
+        }
+        // Date range filter
+        if (show && (dateFrom || dateTo) && s.startedAt) {
+          const sessionDate = s.startedAt.substring(0, 10);
+          if (dateFrom && sessionDate < dateFrom) show = false;
+          if (dateTo && sessionDate > dateTo) show = false;
+        }
+        el.style.display = show ? '' : 'none';
+        if (show) visible++;
       });
+      // Show empty state if all filtered out
+      var emptyMsg = document.getElementById('journal-filter-empty');
+      if (visible === 0 && entries.length > 0) {
+        if (!emptyMsg) {
+          emptyMsg = document.createElement('div');
+          emptyMsg.id = 'journal-filter-empty';
+          emptyMsg.className = 'empty-state';
+          emptyMsg.innerHTML = '<div class="icon">&#128270;</div><p>No journals match your filters.</p>';
+          document.getElementById('journals-container').appendChild(emptyMsg);
+        }
+        emptyMsg.style.display = '';
+      } else if (emptyMsg) {
+        emptyMsg.style.display = 'none';
+      }
+    }
+
+    function clearJournalFilters() {
+      document.getElementById('journal-search').value = '';
+      document.getElementById('journal-party-filter').value = 'all';
+      document.getElementById('journal-date-from').value = '';
+      document.getElementById('journal-date-to').value = '';
+      filterJournals();
+    }
+
+    function populateJournalPartyFilter() {
+      var select = document.getElementById('journal-party-filter');
+      var names = new Set();
+      for (var i = 0; i < journalSessions.length; i++) {
+        if (journalSessions[i].partyName) names.add(journalSessions[i].partyName);
+      }
+      var sorted = Array.from(names).sort();
+      var current = select.value;
+      select.innerHTML = '<option value="all">All Parties</option>' +
+        sorted.map(function(n) { return '<option value="' + esc(n) + '">' + esc(n) + '</option>'; }).join('');
+      if (sorted.indexOf(current) !== -1) select.value = current;
     }
 
     // Seed avatar map from all known parties
@@ -531,6 +593,7 @@
           return;
         }
 
+        populateJournalPartyFilter();
         container.innerHTML = sessions.map((s, i) => {
           const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown date';
           const active = s.isActive ? ' <span style="color:var(--green-light);font-size:0.8rem">&#9679; Live</span>' : '';
