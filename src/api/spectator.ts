@@ -1912,4 +1912,167 @@ spectator.get("/dungeons", async (c) => {
   }
 });
 
+// --- RSS / Atom Feed ---
+
+/** XML-escape special characters for safe embedding in Atom XML. */
+export function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+spectator.get("/feed.xml", async (c) => {
+  const SITE = "https://railroaded.ai";
+  const FEED_LIMIT = 20;
+
+  try {
+    // Fetch recent sessions with events
+    const sessionRows = await db
+      .select({
+        id: gameSessionsTable.id,
+        partyId: gameSessionsTable.partyId,
+        partyName: partiesTable.name,
+        summary: gameSessionsTable.summary,
+        startedAt: gameSessionsTable.startedAt,
+        endedAt: gameSessionsTable.endedAt,
+        campaignName: campaignsTable.name,
+        eventCount: count(sessionEventsTable.id),
+      })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .leftJoin(
+        campaignsTable,
+        eq(gameSessionsTable.campaignId, campaignsTable.id)
+      )
+      .leftJoin(
+        sessionEventsTable,
+        eq(gameSessionsTable.id, sessionEventsTable.sessionId)
+      )
+      .groupBy(
+        gameSessionsTable.id,
+        partiesTable.name,
+        campaignsTable.name
+      )
+      .orderBy(desc(gameSessionsTable.startedAt))
+      .limit(FEED_LIMIT);
+
+    const sessions = sessionRows.filter((r) => Number(r.eventCount) > 0);
+
+    // Batch-fetch narrations for these sessions
+    const sessionIds = sessions.map((s) => s.id);
+    let narrationMap = new Map<string, string>();
+    if (sessionIds.length > 0) {
+      const narrationRows = await db
+        .select({
+          sessionId: narrationsTable.sessionId,
+          content: narrationsTable.content,
+          createdAt: narrationsTable.createdAt,
+        })
+        .from(narrationsTable)
+        .where(inArray(narrationsTable.sessionId, sessionIds))
+        .orderBy(asc(narrationsTable.createdAt));
+
+      // Keep earliest narration per session (the opening prose)
+      for (const nr of narrationRows) {
+        if (!narrationMap.has(nr.sessionId)) {
+          narrationMap.set(nr.sessionId, nr.content);
+        }
+      }
+    }
+
+    // Batch-fetch party members
+    const partyIds = [
+      ...new Set(sessions.map((s) => s.partyId).filter(Boolean)),
+    ] as string[];
+    let memberMap = new Map<string, string[]>();
+    if (partyIds.length > 0) {
+      const memberRows = await db
+        .select({
+          partyId: charactersTable.partyId,
+          name: charactersTable.name,
+        })
+        .from(charactersTable)
+        .where(inArray(charactersTable.partyId, partyIds));
+
+      for (const mr of memberRows) {
+        if (!mr.partyId) continue;
+        const list = memberMap.get(mr.partyId) || [];
+        list.push(mr.name);
+        memberMap.set(mr.partyId, list);
+      }
+    }
+
+    // Build the latest update timestamp
+    const latestDate =
+      sessions.length > 0 ? sessions[0].startedAt.toISOString() : new Date().toISOString();
+
+    // Build Atom entries
+    const entries = sessions.map((s) => {
+      const partyName = s.partyName ?? "Unknown Party";
+      const cleanSummary = sanitizeSummaryForPublic(s.summary ?? null);
+      const title = s.campaignName
+        ? `${xmlEscape(partyName)} — ${xmlEscape(s.campaignName)}`
+        : xmlEscape(partyName);
+
+      const members = memberMap.get(s.partyId) || [];
+      const memberLine =
+        members.length > 0
+          ? `Party: ${members.map((n) => xmlEscape(n)).join(", ")}`
+          : "";
+
+      const narration = narrationMap.get(s.id) || "";
+      const truncatedNarration =
+        narration.length > 500 ? narration.slice(0, 500) + "..." : narration;
+
+      const descParts: string[] = [];
+      if (cleanSummary) descParts.push(xmlEscape(cleanSummary));
+      if (memberLine) descParts.push(memberLine);
+      if (truncatedNarration) descParts.push(xmlEscape(truncatedNarration));
+
+      const description = descParts.join("\n\n");
+      const published = s.startedAt.toISOString();
+      const updated = s.endedAt ? s.endedAt.toISOString() : published;
+      const link = `${SITE}/journals.html?session=${s.id}`;
+
+      return `  <entry>
+    <title>${title}</title>
+    <link href="${xmlEscape(link)}" rel="alternate"/>
+    <id>urn:railroaded:session:${s.id}</id>
+    <published>${published}</published>
+    <updated>${updated}</updated>
+    <summary type="text">${description}</summary>
+  </entry>`;
+    });
+
+    const atom = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Railroaded — Adventure Journals</title>
+  <subtitle>AI-powered D&amp;D session chronicles</subtitle>
+  <link href="${SITE}/journals.html" rel="alternate"/>
+  <link href="${SITE}/spectator/feed.xml" rel="self"/>
+  <id>urn:railroaded:feed</id>
+  <updated>${latestDate}</updated>
+  <author><name>Railroaded</name></author>
+${entries.join("\n")}
+</feed>`;
+
+    c.header("Content-Type", "application/atom+xml; charset=UTF-8");
+    c.header("Cache-Control", "public, max-age=300");
+    return c.body(atom);
+  } catch (err) {
+    console.error("[RSS] Failed to generate feed:", err);
+    const fallback = `<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Railroaded — Adventure Journals</title>
+  <id>urn:railroaded:feed</id>
+  <updated>${new Date().toISOString()}</updated>
+</feed>`;
+    c.header("Content-Type", "application/atom+xml; charset=UTF-8");
+    return c.body(fallback);
+  }
+});
+
 export default spectator;

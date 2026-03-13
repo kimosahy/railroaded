@@ -640,6 +640,7 @@
   </style>
   <link rel="stylesheet" href="theme.css">
   <script src="theme.js"></script>
+  <script src="audio.js"></script>
 </head>
 <body>
   <nav>
@@ -1437,6 +1438,12 @@
         const newHtml = newEvents.slice().reverse().map(renderEvent).join('');
         feed.insertAdjacentHTML('afterbegin', newHtml);
         liveEventCount = newCount;
+
+        // Play sound for the most recent new event
+        if (window.RailroadedAudio && newEvents.length > 0) {
+          const latest = newEvents[newEvents.length - 1];
+          window.RailroadedAudio.playForEvent(latest.type, latest.data);
+        }
       } catch (err) { /* silent */ }
     }
 
@@ -1471,6 +1478,12 @@
         const newHtml = newEvents.slice().reverse().map(renderEvent).join('');
         feed.insertAdjacentHTML('afterbegin', newHtml);
         sessionEventCount = newCount;
+
+        // Play sound for the most recent new event
+        if (window.RailroadedAudio && newEvents.length > 0) {
+          const latest = newEvents[newEvents.length - 1];
+          window.RailroadedAudio.playForEvent(latest.type, latest.data);
+        }
 
         // Update session event count in the sessions list too
         const sInfo = sessionsCache.find(s => s.id === selectedSessionId);

@@ -490,6 +490,32 @@ export const dmStats = pgTable("dm_stats", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// --- Push Subscriptions (browser push notifications) ---
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  preferences: jsonb("preferences")
+    .notNull()
+    .$type<{
+      session_start: boolean;
+      combat_end: boolean;
+      character_death: boolean;
+      dungeon_cleared: boolean;
+      level_up: boolean;
+    }>()
+    .default({
+      session_start: true,
+      combat_end: true,
+      character_death: true,
+      dungeon_cleared: true,
+      level_up: true,
+    }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- NPC Interactions (log of all NPC interactions) ---
 
 export const npcInteractions = pgTable("npc_interactions", {

@@ -132,6 +132,7 @@
   </style>
   <link rel="stylesheet" href="theme.css">
   <script src="theme.js"></script>
+  <script src="audio.js"></script>
 </head>
 <body>
   <nav>
@@ -245,6 +246,7 @@
     let memberMap = {};
     let refreshTimer = null;
     let lastNarrationCount = 0;
+    let lastEventCount = 0;
 
     async function loadSession() {
       const page = document.getElementById('session-page');
@@ -282,7 +284,16 @@
           memberMap[m.id] = m.name || 'Unknown';
         }
 
-        renderSession(session, party, eventsData.events || [], narrData.narrations || []);
+        const events = eventsData.events || [];
+
+        // Play sound for new events during auto-refresh (not initial load)
+        if (window.RailroadedAudio && lastEventCount > 0 && events.length > lastEventCount) {
+          const latest = events[events.length - 1];
+          window.RailroadedAudio.playForEvent(latest.type, latest.data);
+        }
+        lastEventCount = events.length;
+
+        renderSession(session, party, events, narrData.narrations || []);
 
         // Auto-refresh for active sessions
         if (session.isActive && !refreshTimer) {

@@ -12,9 +12,10 @@
     "db:seed": "bun run src/db/seed.ts"
   },
   "dependencies": {
-    "hono": "^4.7.0",
     "drizzle-orm": "^0.38.0",
+    "hono": "^4.7.0",
     "postgres": "^3.4.0",
+    "web-push": "^3.6.7",
     "yaml": "^2.7.0"
   },
   "devDependencies": {
