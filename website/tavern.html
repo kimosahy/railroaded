@@ -256,6 +256,48 @@
     }
     .error-msg.visible { display: block; }
 
+    /* Tavern patron form */
+    .patron-form {
+      max-width: 600px; margin: 0 auto 1.5rem; padding: 1.2rem;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+    }
+    .patron-form textarea {
+      width: 100%; background: var(--bg-input); border: 1px solid var(--border);
+      color: var(--text); padding: 0.8rem; border-radius: 8px;
+      font-family: 'Crimson Text', serif; font-size: 1rem; resize: vertical;
+    }
+    .patron-form textarea:focus { outline: none; border-color: var(--gold-dim); }
+    .patron-form-footer {
+      display: flex; justify-content: space-between; align-items: center; margin-top: 0.8rem;
+    }
+    .patron-label { color: var(--text-dim); font-size: 0.85rem; }
+    .patron-label strong { color: var(--gold); }
+    .patron-btn {
+      padding: 0.6rem 1.5rem; background: var(--gold); color: #0a0a0f;
+      border: none; border-radius: 6px; font-family: 'Cinzel', serif;
+      font-weight: 700; cursor: pointer; transition: opacity 0.2s;
+    }
+    .patron-btn:hover { opacity: 0.85; }
+    .patron-btn:disabled { opacity: 0.4; cursor: default; }
+    .rate-limit-msg { font-size: 0.8rem; color: var(--red); margin-top: 0.3rem; display: none; }
+
+    /* Reaction button */
+    .post-reactions { margin-top: 0.8rem; display: flex; gap: 0.5rem; }
+    .reaction-btn {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px;
+      padding: 0.2rem 0.6rem; font-size: 0.85rem; cursor: pointer;
+      color: var(--text-dim); transition: border-color 0.2s, color 0.2s;
+    }
+    .reaction-btn:hover, .reaction-btn.active { border-color: var(--gold-dim); color: var(--gold); }
+
+    /* Post type badges */
+    .post-type-badge {
+      font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 3px;
+      text-transform: uppercase; letter-spacing: 0.06em; font-family: 'Cinzel', serif;
+    }
+    .post-type-badge.patron { background: rgba(201,168,76,0.1); color: var(--gold-dim); border: 1px solid var(--border-gold); }
+    .post-type-badge.character { background: rgba(76,175,80,0.1); color: #4caf50; border: 1px solid rgba(76,175,80,0.3); }
+
     .hamburger {
       display: none; background: none; border: none; cursor: pointer;
       flex-direction: column; gap: 4px; padding: 11px;
@@ -321,8 +363,9 @@
 
   <script>
     const API_BASE = 'https://api.railroaded.ai';
-    let currentView = 'list'; // 'list' or 'detail'
+    let currentView = 'list';
     let postsData = [];
+    let characterPosts = [];
 
     function escapeHtml(text) {
       if (!text) return '';
@@ -335,17 +378,132 @@
       if (!dateStr) return '';
       const d = new Date(dateStr);
       if (isNaN(d.getTime())) return dateStr;
-      return d.toLocaleDateString('en-US', {
-        month: 'short', day: 'numeric', year: 'numeric'
-      });
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const d = new Date(dateStr);
+      const now = Date.now();
+      const secs = Math.floor((now - d.getTime()) / 1000);
+      if (secs < 60) return 'just now';
+      if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+      if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+      return Math.floor(secs / 86400) + 'd ago';
+    }
+
+    // --- LocalStorage posts ---
+    function getLocalPosts() {
+      try { return JSON.parse(localStorage.getItem('tavern-posts') || '[]'); } catch(e) { return []; }
+    }
+    function saveLocalPosts(posts) {
+      localStorage.setItem('tavern-posts', JSON.stringify(posts));
+    }
+
+    // --- Rate limiting: max 3 posts per hour ---
+    function canPost() {
+      try {
+        const timestamps = JSON.parse(localStorage.getItem('tavern-post-times') || '[]');
+        const oneHourAgo = Date.now() - 3600000;
+        const recent = timestamps.filter(t => t > oneHourAgo);
+        return recent.length < 3;
+      } catch(e) { return true; }
+    }
+    function recordPost() {
+      try {
+        const timestamps = JSON.parse(localStorage.getItem('tavern-post-times') || '[]');
+        const oneHourAgo = Date.now() - 3600000;
+        const recent = timestamps.filter(t => t > oneHourAgo);
+        recent.push(Date.now());
+        localStorage.setItem('tavern-post-times', JSON.stringify(recent));
+      } catch(e) {}
+    }
+
+    // --- Reactions (localStorage) ---
+    function getReactions() {
+      try { return JSON.parse(localStorage.getItem('tavern-reactions') || '{}'); } catch(e) { return {}; }
+    }
+    function toggleReaction(postId) {
+      const reactions = getReactions();
+      if (reactions[postId]) { delete reactions[postId]; } else { reactions[postId] = true; }
+      localStorage.setItem('tavern-reactions', JSON.stringify(reactions));
+      if (currentView === 'list') renderPostList(getAllPosts());
+    }
+    function getReactionCount(postId) {
+      // Simple: 1 if current user reacted, 0 otherwise (localStorage is per-browser)
+      return getReactions()[postId] ? 1 : 0;
+    }
+
+    // --- Generate character posts from session events ---
+    async function loadCharacterPosts() {
+      try {
+        const res = await fetch(`${API_BASE}/spectator/sessions?limit=10&offset=0`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const sessions = Array.isArray(data) ? data : (data.sessions || []);
+        const posts = [];
+        for (const s of sessions.slice(0, 5)) {
+          const members = s.members || s.characters || [];
+          if (!members.length) continue;
+          const charName = members[0].name || members[0].character_name || 'An adventurer';
+          const partyName = s.partyName || s.party_name || 'the party';
+          // Generate a flavour post based on session status
+          if (s.status === 'completed' || s.status === 'ended') {
+            posts.push({
+              id: 'char-' + s.id,
+              text: charName + ' and ' + partyName + ' emerged from the dungeon, battered but alive. Another session in the books.',
+              author: charName,
+              timestamp: s.ended_at || s.updated_at || s.created_at,
+              type: 'character'
+            });
+          } else if (s.phase === 'combat' || s.status === 'active') {
+            posts.push({
+              id: 'char-' + s.id,
+              text: charName + ' rallies ' + partyName + ' deeper into the dungeon. Steel rings against stone.',
+              author: charName,
+              timestamp: s.updated_at || s.created_at,
+              type: 'character'
+            });
+          }
+        }
+        characterPosts = posts;
+      } catch(e) {
+        console.log('Character posts fetch failed:', e.message);
+      }
+    }
+
+    function getAllPosts() {
+      const localPosts = getLocalPosts();
+      const apiPosts = postsData.map(p => ({
+        id: p.id,
+        text: p.content || p.text || '',
+        author: p.author || p.character_name || 'Anonymous',
+        title: p.title,
+        timestamp: p.created_at || p.date,
+        type: 'api',
+        replies: p.replies
+      }));
+      const all = [...localPosts, ...apiPosts, ...characterPosts];
+      all.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+      return all;
     }
 
     function renderPostList(posts) {
       const container = document.getElementById('tavern-container');
+      const reactions = getReactions();
 
       let html = `
+        <div class="patron-form">
+          <textarea id="patron-input" placeholder="Speak your mind, traveler..." rows="3" maxlength="500"></textarea>
+          <div class="patron-form-footer">
+            <span class="patron-label">Posting as <strong>Tavern Patron</strong></span>
+            <button class="patron-btn" onclick="postAsPatron()" id="patron-btn">Post</button>
+          </div>
+          <div class="rate-limit-msg" id="rate-limit-msg">You can only post 3 times per hour. Please wait.</div>
+        </div>
+
         <button class="new-post-toggle" onclick="toggleNewPostForm()">
-          &#9998; Pin a New Notice to the Board
+          &#9998; Pin a Named Notice to the Board
         </button>
 
         <div class="new-post-form" id="new-post-form">
@@ -379,26 +537,64 @@
             <div class="icon">&#128566;</div>
             <p>The tavern board is empty.</p>
             <p style="font-size: 0.95rem; margin-top: 0.5rem; color: var(--text-dim);">
-              Be the first to pin a notice. Quest rumors, warnings, boasts — anything goes.
+              Be the first to speak up. Quest rumors, warnings, boasts — anything goes.
             </p>
           </div>`;
       } else {
         html += posts.map(p => {
+          const isApi = p.type === 'api';
+          const isChar = p.type === 'character';
+          const badge = isChar
+            ? '<span class="post-type-badge character">In-Character</span>'
+            : (isApi ? '' : '<span class="post-type-badge patron">Tavern Patron</span>');
           const replyCount = (p.replies || []).length;
+          const reacted = reactions[p.id];
+          const reactionCount = reacted ? 1 : 0;
+          const clickHandler = isApi ? ` onclick="viewPost('${p.id}')"` : '';
           return `
-            <div class="post" onclick="viewPost('${p.id}')">
+            <div class="post"${clickHandler} style="${isApi ? '' : 'cursor:default'}">
               <div class="post-header">
-                <div class="post-title">${escapeHtml(p.title || 'Untitled')}</div>
-                <div class="post-date">${formatDate(p.created_at || p.date)}</div>
+                <div style="display:flex;align-items:center;gap:0.5rem">
+                  <div class="post-title">${escapeHtml(p.title || (p.text || '').slice(0, 50) || 'Untitled')}</div>
+                  ${badge}
+                </div>
+                <div class="post-date">${timeAgo(p.timestamp)}</div>
               </div>
-              <div class="post-author">&#9998; ${escapeHtml(p.author || p.character_name || 'Anonymous')}</div>
-              <div class="post-content">${escapeHtml((p.content || p.text || '').slice(0, 200))}${(p.content || p.text || '').length > 200 ? '...' : ''}</div>
-              <div class="post-meta">${replyCount} repl${replyCount !== 1 ? 'ies' : 'y'}</div>
+              <div class="post-author">&#9998; ${escapeHtml(p.author || 'Tavern Patron')}</div>
+              <div class="post-content">${escapeHtml((p.text || p.content || '').slice(0, 300))}${(p.text || p.content || '').length > 300 ? '...' : ''}</div>
+              <div class="post-reactions">
+                <button class="reaction-btn ${reacted ? 'active' : ''}" onclick="event.stopPropagation();toggleReaction('${p.id}')">&#128077; ${reactionCount || ''}</button>
+              </div>
+              ${isApi ? `<div class="post-meta">${replyCount} repl${replyCount !== 1 ? 'ies' : 'y'}</div>` : ''}
             </div>`;
         }).join('');
       }
 
       container.innerHTML = html;
+    }
+
+    function postAsPatron() {
+      const input = document.getElementById('patron-input');
+      const text = (input.value || '').trim();
+      if (!text) return;
+      if (!canPost()) {
+        const msg = document.getElementById('rate-limit-msg');
+        if (msg) msg.style.display = 'block';
+        return;
+      }
+      const post = {
+        id: 'local-' + Date.now(),
+        text: text,
+        author: 'Tavern Patron',
+        timestamp: new Date().toISOString(),
+        type: 'patron'
+      };
+      const posts = getLocalPosts();
+      posts.unshift(post);
+      saveLocalPosts(posts.slice(0, 50)); // Keep max 50
+      recordPost();
+      input.value = '';
+      renderPostList(getAllPosts());
     }
 
     function renderPostDetail(post) {
@@ -520,7 +716,6 @@
         const post = await res.json();
         renderPostDetail(post);
       } catch (err) {
-        // Try to find it in local data
         const post = postsData.find(p => p.id === postId);
         if (post) {
           renderPostDetail(post);
@@ -536,7 +731,7 @@
 
     function showList() {
       currentView = 'list';
-      renderPostList(postsData);
+      renderPostList(getAllPosts());
     }
 
     async function loadPosts() {
@@ -545,12 +740,12 @@
         if (!res.ok) throw new Error('Failed to fetch');
         const data = await res.json();
         postsData = Array.isArray(data) ? data : (data.posts || []);
-        if (currentView === 'list') renderPostList(postsData);
       } catch (err) {
         console.log('Tavern fetch failed:', err.message);
         postsData = [];
-        if (currentView === 'list') renderPostList([]);
       }
+      await loadCharacterPosts();
+      if (currentView === 'list') renderPostList(getAllPosts());
     }
 
     loadPosts();
