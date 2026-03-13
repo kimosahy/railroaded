@@ -134,6 +134,33 @@
       100% { opacity: 0; transform: translateY(-150px) scale(1.3); }
     }
 
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+
+    /* Replay controls */
+    .replay-controls {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 0.8rem 1.2rem; margin: 1rem 0; display: flex; align-items: center; gap: 1rem;
+    }
+    .replay-controls button {
+      background: none; border: 1px solid var(--border); color: var(--gold); cursor: pointer;
+      font-size: 1.1rem; width: 40px; height: 40px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; transition: border-color 0.2s;
+    }
+    .replay-controls button:hover { border-color: var(--gold); }
+    .replay-controls input[type="range"] {
+      flex: 1; accent-color: var(--gold); height: 6px; cursor: pointer;
+    }
+    .replay-controls select {
+      background: var(--bg-dark); color: var(--text); border: 1px solid var(--border);
+      border-radius: 4px; padding: 0.3rem 0.5rem; font-family: 'Cinzel', serif; font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .replay-badge {
+      display: inline-block; font-family: 'Cinzel', serif; font-size: 0.75rem;
+      padding: 0.2rem 0.6rem; border-radius: 4px; text-transform: uppercase;
+      letter-spacing: 0.06em; background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid var(--gold-dim);
+    }
+
     @media (max-width: 768px) {
       .content-grid { grid-template-columns: 1fr; }
       .narration-panel { max-height: none; }
@@ -383,12 +410,23 @@
           }).join('')}
         </div>
 
+        ${!session.isActive && events.length > 0 ? `
+        <div class="replay-controls" id="replay-controls">
+          <button id="replay-play" onclick="toggleReplay()" title="Play/Pause">&#9654;&#65039;</button>
+          <input type="range" id="replay-scrubber" min="0" max="${events.length - 1}" value="0" oninput="scrubReplay(+this.value)">
+          <select id="replay-speed" onchange="setReplaySpeed(+this.value)">
+            <option value="1">1x</option>
+            <option value="2">2x</option>
+            <option value="4" selected>4x</option>
+          </select>
+          <span id="replay-progress" style="color:var(--text-dim);font-size:0.85rem;white-space:nowrap">0 / ${events.length} events</span>
+        </div>` : ''}
+
         <div class="content-grid">
-          <div class="event-log">
-            ${events.length === 0
+          <div class="event-log" id="event-log">
+            ${session.isActive ? (events.length === 0
               ? '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events yet...</div>'
               : events.map(e => {
-                  const actor = e.actorId && memberMap[e.actorId] ? memberMap[e.actorId] : '';
                   const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
                   return `<div class="event">
                     <div class="event-icon">${eventIcon(e.type)}</div>
@@ -397,7 +435,8 @@
                       <div class="event-time">${ts}</div>
                     </div>
                   </div>`;
-                }).join('')
+                }).join(''))
+              : ''
             }
           </div>
 
@@ -420,6 +459,11 @@
       lastNarrationCount = narrations.length;
       showReactionBar();
       updateReactionCounter();
+
+      // Init replay for completed sessions
+      if (!session.isActive && events.length > 0) {
+        initReplay(events);
+      }
 
       // Typewriter new narrations
       page.querySelectorAll('[data-typewrite]').forEach(el => {
@@ -477,6 +521,108 @@
     function showReactionBar() {
       const bar = document.getElementById('reaction-bar');
       if (bar) bar.style.display = 'flex';
+    }
+
+    // --- Replay ---
+    let replayEvents = [];
+    let replayIndex = 0;
+    let replayPlaying = false;
+    let replayTimer = null;
+    let replaySpeed = 4; // 4x default
+
+    function renderEventHtml(e) {
+      const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
+      return `<div class="event" style="animation:fadeIn 0.3s ease">
+        <div class="event-icon">${eventIcon(e.type)}</div>
+        <div class="event-body">
+          <div class="event-text">${eventText(e)}</div>
+          <div class="event-time">${ts}</div>
+        </div>
+      </div>`;
+    }
+
+    function initReplay(events) {
+      replayEvents = events;
+      replayIndex = 0;
+      replayPlaying = false;
+      replaySpeed = 4;
+      // Check for deep link ?t=N
+      const tParam = new URLSearchParams(window.location.search).get('t');
+      if (tParam != null) {
+        const idx = parseInt(tParam, 10);
+        if (idx > 0 && idx < events.length) {
+          scrubReplay(idx);
+          return;
+        }
+      }
+      updateReplayUI();
+    }
+
+    function toggleReplay() {
+      if (replayPlaying) {
+        pauseReplay();
+      } else {
+        if (replayIndex >= replayEvents.length) {
+          replayIndex = 0;
+          const log = document.getElementById('event-log');
+          if (log) log.innerHTML = '';
+        }
+        replayPlaying = true;
+        updateReplayUI();
+        stepReplay();
+      }
+    }
+
+    function pauseReplay() {
+      replayPlaying = false;
+      if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+      updateReplayUI();
+    }
+
+    function stepReplay() {
+      if (!replayPlaying || replayIndex >= replayEvents.length) {
+        replayPlaying = false;
+        if (replayTimer) { clearTimeout(replayTimer); replayTimer = null; }
+        updateReplayUI();
+        if (replayIndex >= replayEvents.length) {
+          const prog = document.getElementById('replay-progress');
+          if (prog) prog.innerHTML = `${replayEvents.length} / ${replayEvents.length} events <span class="replay-badge">Replay complete</span>`;
+        }
+        return;
+      }
+      const log = document.getElementById('event-log');
+      if (log) {
+        log.insertAdjacentHTML('beforeend', renderEventHtml(replayEvents[replayIndex]));
+        log.scrollTop = log.scrollHeight;
+      }
+      replayIndex++;
+      updateReplayUI();
+      const delay = replaySpeed === 1 ? 2000 : replaySpeed === 2 ? 1000 : 500;
+      replayTimer = setTimeout(stepReplay, delay);
+    }
+
+    function scrubReplay(idx) {
+      pauseReplay();
+      replayIndex = Math.max(0, Math.min(idx, replayEvents.length));
+      const log = document.getElementById('event-log');
+      if (log) {
+        log.innerHTML = replayEvents.slice(0, replayIndex).map(renderEventHtml).join('');
+        log.scrollTop = log.scrollHeight;
+      }
+      updateReplayUI();
+    }
+
+    function setReplaySpeed(speed) {
+      replaySpeed = speed;
+    }
+
+    function updateReplayUI() {
+      const playBtn = document.getElementById('replay-play');
+      if (playBtn) playBtn.textContent = replayPlaying ? '\u23F8\uFE0F' : '\u25B6\uFE0F';
+      const scrubber = document.getElementById('replay-scrubber');
+      if (scrubber) scrubber.value = replayIndex;
+      const prog = document.getElementById('replay-progress');
+      if (prog) prog.textContent = `${replayIndex} / ${replayEvents.length} events`;
     }
 
     loadSession();
