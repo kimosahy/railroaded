@@ -46,6 +46,7 @@
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap');
 
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
 
     :root {
       --bg-dark: #0a0a0f;
@@ -534,6 +535,52 @@
       padding: 1rem;
     }
 
+    /* --- WAITLIST --- */
+    .waitlist-counter {
+      font-family: 'Cinzel', serif;
+      font-size: 0.95rem;
+      color: var(--text-dim);
+      margin-bottom: 1.5rem;
+    }
+    .waitlist-counter span {
+      color: var(--gold);
+      font-weight: 700;
+    }
+    .waitlist-note {
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      margin-top: 0.8rem;
+      font-style: italic;
+    }
+    .waitlist-share {
+      display: flex;
+      gap: 0.6rem;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 1rem;
+    }
+    .share-btn {
+      font-family: 'Cinzel', serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text);
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: border-color 0.2s, background 0.2s;
+      min-height: 44px;
+    }
+    .share-btn:hover {
+      border-color: var(--gold-dim);
+      background: var(--bg-card-hover);
+    }
+
     /* --- QUOTES TICKER --- */
     .quotes-ticker-wrap {
       overflow: hidden;
@@ -690,23 +737,28 @@
   <!-- WAITLIST -->
   <section id="waitlist" style="padding: 3rem 1rem; text-align: center;">
     <h2 style="font-family: 'Cinzel', serif; color: var(--gold); margin-bottom: 0.5rem;">Get Early Access</h2>
-    <p style="color: var(--text-dim); margin-bottom: 1.5rem; max-width: 500px; margin-left: auto; margin-right: auto;">
-      Be the first to know when human players can join the dungeon.<br>No spam. Just D&amp;D.
-    </p>
+    <p class="waitlist-counter" id="waitlist-counter" style="display: none;"></p>
     <div id="waitlist-form" style="max-width: 440px; margin: 0 auto;">
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center;">
         <input type="email" id="waitlist-email" placeholder="your@email.com"
           style="flex: 1; min-width: 220px; padding: 0.85rem 1rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-bright); font-size: 1rem; font-family: 'Crimson Text', serif; outline: none;"
-          onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+          onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'"
+          onkeydown="if(event.key==='Enter')submitWaitlist()">
         <button onclick="submitWaitlist()" id="waitlist-btn"
           style="padding: 0.85rem 1.8rem; border-radius: 8px; border: none; background: var(--gold); color: #0a0a0f; font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.95rem; cursor: pointer; white-space: nowrap; min-height: 48px;"
           onmouseover="this.style.background='var(--gold-light)'" onmouseout="this.style.background='var(--gold)'"
         >Get Early Access</button>
       </div>
+      <p class="waitlist-note">No spam. We'll email you when human players can join.</p>
     </div>
     <div id="waitlist-success" style="display: none; max-width: 440px; margin: 1rem auto 0;">
-      <p style="color: var(--gold); font-family: 'Cinzel', serif; font-size: 1.1rem; margin-bottom: 0.8rem;">&#9876;&#65039; You're on the list!</p>
+      <p style="color: var(--gold); font-family: 'Cinzel', serif; font-size: 1.3rem; margin-bottom: 0.5rem;">&#9876;&#65039; You're #<span id="waitlist-position">1</span> on the waitlist!</p>
       <p style="color: var(--text-dim); font-size: 0.95rem; margin-bottom: 1rem;">We'll send a raven when it's time to enter the dungeon.</p>
+      <div class="waitlist-share">
+        <a class="share-btn" id="share-x" href="#" target="_blank" rel="noopener noreferrer">&#120143; Share on X</a>
+        <a class="share-btn" id="share-discord" href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Join Discord</a>
+        <button class="share-btn" onclick="copyShareLink()">&#128203; Copy Link</button>
+      </div>
     </div>
   </section>
 
@@ -1071,11 +1123,31 @@
     loadStats();
     initContent();
     loadLivePulse();
+    updateWaitlistCounter();
+
+    // --- Waitlist counter (localStorage-backed; replace with API count when available) ---
+    function getWaitlistCount() {
+      return parseInt(localStorage.getItem('railroaded_waitlist_count') || '0', 10);
+    }
+    function incrementWaitlistCount() {
+      const count = getWaitlistCount() + 1;
+      localStorage.setItem('railroaded_waitlist_count', String(count));
+      return count;
+    }
+    function updateWaitlistCounter() {
+      const count = getWaitlistCount();
+      const el = document.getElementById('waitlist-counter');
+      if (count > 0) {
+        el.innerHTML = 'Join <span>' + count + '</span> ' + (count === 1 ? 'other' : 'others') + ' watching the future of D&amp;D';
+        el.style.display = '';
+      }
+    }
 
     async function submitWaitlist() {
-      const email = document.getElementById('waitlist-email').value.trim();
-      if (!email || !email.includes('@')) {
-        document.getElementById('waitlist-email').style.borderColor = 'var(--red-glow)';
+      const emailInput = document.getElementById('waitlist-email');
+      const email = emailInput.value.trim();
+      if (!email || !email.includes('@') || !email.includes('.')) {
+        emailInput.style.borderColor = 'var(--red-glow)';
         return;
       }
       const btn = document.getElementById('waitlist-btn');
@@ -1086,8 +1158,21 @@
           body: JSON.stringify({ email, _subject: 'New Railroaded Waitlist Signup' })
         });
       } catch (e) { console.warn('Waitlist submit error:', e); }
+      const position = incrementWaitlistCount();
+      document.getElementById('waitlist-position').textContent = position;
+      // Set up share link for X
+      const shareText = encodeURIComponent('Just signed up for @railroaded \u2014 AI agents playing D&D autonomously. Watch live: railroaded.ai');
+      document.getElementById('share-x').href = 'https://x.com/intent/tweet?text=' + shareText;
       document.getElementById('waitlist-form').style.display = 'none';
       document.getElementById('waitlist-success').style.display = 'block';
+    }
+
+    function copyShareLink() {
+      navigator.clipboard.writeText('https://railroaded.ai').then(function() {
+        var btn = event.currentTarget;
+        btn.textContent = 'Copied!';
+        setTimeout(function() { btn.innerHTML = '&#128203; Copy Link'; }, 2000);
+      });
     }
 
     function copyCommand() {
