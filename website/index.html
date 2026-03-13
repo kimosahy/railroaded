@@ -883,6 +883,22 @@
     .hamburger.open span:nth-child(2) { opacity: 0; }
     .hamburger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
+    /* Epic Moments */
+    .epic-scroll { display: flex; gap: 1rem; overflow-x: auto; padding: 0.5rem 0 1rem; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+    .epic-scroll::-webkit-scrollbar { height: 4px; }
+    .epic-scroll::-webkit-scrollbar-thumb { background: var(--gold-dim); border-radius: 2px; }
+    .epic-card {
+      flex: 0 0 280px; scroll-snap-align: start;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1.2rem; transition: border-color 0.2s; text-decoration: none; color: inherit;
+      display: flex; flex-direction: column; gap: 0.5rem;
+    }
+    .epic-card:hover { border-color: var(--gold-dim); }
+    .epic-icon { font-size: 2rem; }
+    .epic-title { font-family: 'Cinzel', serif; font-size: 0.95rem; color: var(--gold-light); font-weight: 600; }
+    .epic-desc { font-size: 0.9rem; color: var(--text); line-height: 1.5; }
+    .epic-meta { font-size: 0.8rem; color: var(--text-dim); margin-top: auto; }
+
     @media (max-width: 600px) {
       nav { padding: 0 1rem; }
       .hamburger { display: flex; }
@@ -894,6 +910,7 @@
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
       section { padding: 3rem 1rem; }
+      .epic-card { flex: 0 0 240px; }
     }
   </style>
   <link rel="stylesheet" href="theme.css">
@@ -1130,6 +1147,13 @@
     <h2>This Week's Featured Adventure</h2>
     <p class="subtitle">The most dramatic session from the past seven days</p>
     <div id="featured-container"></div>
+  </section>
+
+  <!-- EPIC MOMENTS -->
+  <section id="epic-moments-section" style="display: none;">
+    <h2>Epic Moments</h2>
+    <p class="subtitle">The most dramatic events from recent sessions</p>
+    <div class="epic-scroll" id="epic-moments-container"></div>
   </section>
 
   <!-- EXPLORE -->
@@ -1487,10 +1511,110 @@
       }
     }
 
+    // --- Epic Moments ---
+    async function loadEpicMoments() {
+      try {
+        const res = await fetch(`${API_BASE}/spectator/sessions?limit=20&offset=0`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const sessions = Array.isArray(data) ? data : (data.sessions || []);
+        if (!sessions.length) return;
+
+        const moments = [];
+        // Check up to 5 sessions for events
+        for (const s of sessions.slice(0, 5)) {
+          if (!s.id) continue;
+          try {
+            const evRes = await fetch(`${API_BASE}/spectator/sessions/${s.id}/events`);
+            if (!evRes.ok) continue;
+            const evData = await evRes.json();
+            const events = Array.isArray(evData) ? evData : (evData.events || []);
+            for (const ev of events) {
+              const d = ev.data || {};
+              const t = ev.type || '';
+              const ts = ev.timestamp || ev.created_at || s.created_at;
+              // Critical hits
+              if ((t === 'attack' || t === 'combat_action') && (d.critical || d.crit || d.isCritical)) {
+                moments.push({
+                  icon: '\u{1F4A5}',
+                  title: 'Critical Hit!',
+                  desc: (d.attackerName || d.actor || 'A warrior') + ' landed a devastating critical hit' + (d.damage ? ' for ' + d.damage + ' damage' : '') + '!',
+                  sessionId: s.id,
+                  time: ts
+                });
+              }
+              // Character death
+              if (t === 'character_death' || t === 'death' || (t === 'status_change' && d.newStatus === 'dead')) {
+                moments.push({
+                  icon: '\u{1F480}',
+                  title: 'Fallen Hero',
+                  desc: (d.characterName || d.name || 'An adventurer') + ' has fallen in battle.',
+                  sessionId: s.id,
+                  time: ts
+                });
+              }
+              // Combat start
+              if (t === 'combat_start' || t === 'encounter_start') {
+                const count = d.monsterCount || (d.monsters || []).length || 0;
+                if (count >= 3) {
+                  moments.push({
+                    icon: '\u2694\uFE0F',
+                    title: 'Ambush!',
+                    desc: 'The party faces ' + count + ' monsters in a fierce battle!',
+                    sessionId: s.id,
+                    time: ts
+                  });
+                }
+              }
+              // Session/dungeon complete
+              if (t === 'session_end' || t === 'dungeon_complete' || t === 'dungeon_cleared') {
+                moments.push({
+                  icon: '\u{1F3F0}',
+                  title: 'Dungeon Cleared!',
+                  desc: (s.partyName || s.party_name || 'The party') + ' conquered the dungeon and emerged victorious.',
+                  sessionId: s.id,
+                  time: ts
+                });
+              }
+            }
+          } catch(e) { /* skip session */ }
+          if (moments.length >= 4) break;
+        }
+
+        if (moments.length === 0) return;
+
+        const section = document.getElementById('epic-moments-section');
+        const container = document.getElementById('epic-moments-container');
+        section.style.display = '';
+
+        container.innerHTML = moments.slice(0, 4).map(m => {
+          const ago = m.time ? timeAgoShort(m.time) : '';
+          return `<a href="session.html?id=${encodeURIComponent(m.sessionId)}" class="epic-card">
+            <div class="epic-icon">${m.icon}</div>
+            <div class="epic-title">${escapeHtml(m.title)}</div>
+            <div class="epic-desc">${escapeHtml(m.desc)}</div>
+            ${ago ? `<div class="epic-meta">${ago}</div>` : ''}
+          </a>`;
+        }).join('');
+      } catch(e) {
+        console.log('Epic moments failed:', e.message);
+      }
+    }
+
+    function timeAgoShort(dateStr) {
+      const d = new Date(dateStr);
+      const secs = Math.floor((Date.now() - d.getTime()) / 1000);
+      if (secs < 60) return 'just now';
+      if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+      if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+      return Math.floor(secs / 86400) + 'd ago';
+    }
+
     loadStats();
     initContent();
     loadLivePulse();
     loadFeatured();
+    loadEpicMoments();
     initWaitlist();
     loadFollowingSection();
 
