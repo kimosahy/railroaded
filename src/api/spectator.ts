@@ -22,6 +22,8 @@ import {
   tavernPosts as tavernPostsTable,
   tavernReplies as tavernRepliesTable,
   dmStats as dmStatsTable,
+  campaignTemplates as campaignTemplatesTable,
+  rooms as roomsTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg } from "drizzle-orm";
 
@@ -1791,6 +1793,123 @@ spectator.post("/tavern/:id/reply", async (c) => {
   if (post) post.replies.push(reply);
 
   return c.json({ reply }, 201);
+});
+
+// --- Dungeon Board ---
+
+// GET /spectator/dungeons — aggregate dungeon stats from campaign_templates + sessions
+spectator.get("/dungeons", async (c) => {
+  try {
+    // 1. Load all campaign templates with room counts
+    const templates = await db.select({
+      id: campaignTemplatesTable.id,
+      name: campaignTemplatesTable.name,
+      description: campaignTemplatesTable.description,
+      difficultyTier: campaignTemplatesTable.difficultyTier,
+      estimatedSessions: campaignTemplatesTable.estimatedSessions,
+      roomCount: count(roomsTable.id),
+    })
+      .from(campaignTemplatesTable)
+      .leftJoin(roomsTable, eq(campaignTemplatesTable.id, roomsTable.campaignTemplateId))
+      .groupBy(campaignTemplatesTable.id);
+
+    // 2. For each template, aggregate session stats via parties
+    const dungeons: {
+      id: string;
+      name: string;
+      description: string;
+      difficulty: string;
+      roomCount: number;
+      totalSessions: number;
+      completionRate: number;
+      highestLevel: number;
+      parties: { name: string; members: { name: string; class: string; level: number }[] }[];
+    }[] = [];
+
+    for (const t of templates) {
+      // Find all parties that used this template
+      const partyRows = await db.select({
+        id: partiesTable.id,
+        name: partiesTable.name,
+        sessionCount: partiesTable.sessionCount,
+      })
+        .from(partiesTable)
+        .where(eq(partiesTable.campaignTemplateId, t.id));
+
+      const partyIds = partyRows.map((p) => p.id);
+
+      let totalSessions = 0;
+      let completedSessions = 0;
+      let highestLevel = 0;
+      const notableParties: { name: string; members: { name: string; class: string; level: number }[] }[] = [];
+
+      if (partyIds.length > 0) {
+        // Count sessions and completed sessions
+        const sessionRows = await db.select({
+          id: gameSessionsTable.id,
+          isActive: gameSessionsTable.isActive,
+          endedAt: gameSessionsTable.endedAt,
+          summary: gameSessionsTable.summary,
+        })
+          .from(gameSessionsTable)
+          .where(inArray(gameSessionsTable.partyId, partyIds));
+
+        totalSessions = sessionRows.length;
+        // A session is "completed" if it ended (has endedAt) and isn't still active
+        completedSessions = sessionRows.filter((s) => s.endedAt && !s.isActive).length;
+
+        // Get highest level character that attempted this dungeon
+        const [levelRow] = await db.select({
+          maxLevel: max(charactersTable.level),
+        })
+          .from(charactersTable)
+          .where(inArray(charactersTable.partyId, partyIds));
+
+        highestLevel = Number(levelRow?.maxLevel ?? 0);
+
+        // Get notable parties (up to 3, most sessions first)
+        const sortedParties = [...partyRows].sort((a, b) => b.sessionCount - a.sessionCount).slice(0, 3);
+        for (const p of sortedParties) {
+          const members = await db.select({
+            name: charactersTable.name,
+            class: charactersTable.class,
+            level: charactersTable.level,
+          })
+            .from(charactersTable)
+            .where(eq(charactersTable.partyId, p.id));
+
+          notableParties.push({
+            name: p.name ?? "Unknown Party",
+            members,
+          });
+        }
+      }
+
+      const completionRate = totalSessions > 0
+        ? Math.round((completedSessions / totalSessions) * 100)
+        : 0;
+
+      dungeons.push({
+        id: t.id,
+        name: t.name,
+        description: t.description,
+        difficulty: t.difficultyTier,
+        roomCount: Number(t.roomCount),
+        totalSessions,
+        completionRate,
+        highestLevel,
+        parties: notableParties,
+      });
+    }
+
+    // Sort by total sessions (most popular first), then by name
+    dungeons.sort((a, b) => b.totalSessions - a.totalSessions || a.name.localeCompare(b.name));
+
+    return c.json({ dungeons });
+  } catch (err) {
+    console.error("[DB] Failed to fetch dungeon board:", err);
+    return c.json({ dungeons: [] });
+  }
 });
 
 export default spectator;
