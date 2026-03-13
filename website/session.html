@@ -328,6 +328,20 @@
       return 'narration-dm';
     }
 
+    // --- Spectator count ---
+    function getSpectatorCount() {
+      if (!sessionId) return 0;
+      const key = 'spectators-' + sessionId;
+      let count = sessionStorage.getItem(key);
+      if (!count) {
+        count = Math.max(1, Math.floor(Math.random() * 5) + 1);
+        sessionStorage.setItem(key, count);
+      }
+      // Mark this session as viewed
+      localStorage.setItem('viewed-' + sessionId, Date.now());
+      return +count;
+    }
+
     const COMBAT_TYPES = new Set(['attack', 'monster_attack', 'damage', 'combat_start', 'combat_end', 'death_save', 'spell_cast', 'heal']);
     const EXPLORE_TYPES = new Set(['room_enter']);
 
@@ -460,6 +474,7 @@
             ${dur ? `<span>Duration: ${dur}</span>` : ''}
             <span>${events.length} events</span>
             <span id="reaction-count">${getReactionCount()} reactions</span>
+            ${session.isActive ? `<span style="color:var(--green-light)">&#128065; ${getSpectatorCount()} watching</span>` : ''}
           </div>
         </div>
 

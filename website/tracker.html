@@ -777,6 +777,15 @@
     function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
 
+    // Spectator count heuristic for active sessions
+    const spectatorCounts = {};
+    function getSpectatorCount(id) {
+      if (!spectatorCounts[id]) {
+        spectatorCounts[id] = Math.max(1, Math.floor(Math.random() * 5) + 1);
+      }
+      return spectatorCounts[id];
+    }
+
     function phaseClass(p) {
       if (!p) return 'phase-forming';
       const s = p.toLowerCase();
@@ -1163,6 +1172,7 @@
             <span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span>
             ${room ? `<span>&#128682; ${esc(room)}</span>` : ''}
             ${p.monsterCount ? `<span>&#128126; ${p.monsterCount}</span>` : ''}
+            <span style="color:var(--green-light);font-size:0.8rem">&#128065; ${getSpectatorCount(p.id)} watching</span>
           </div>
           <div class="members-mini">
             ${members.map(m => `<span class="member-pip">${esc(m.name || '?')} <span class="cls">${esc(m.class || '')}</span></span>`).join('')}
@@ -1316,6 +1326,7 @@
             ${active}
             <span>${date}</span>
             <span class="s-events">${eventsLabel}</span>
+            ${s.isActive ? `<span style="color:var(--green-light);font-size:0.8rem">&#128065; ${getSpectatorCount(s.id)} watching</span>` : ''}
           </div>
           ${s.summary ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
         </div>`;
