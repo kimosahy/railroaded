@@ -23,7 +23,7 @@ import {
   tavernReplies as tavernRepliesTable,
   dmStats as dmStatsTable,
 } from "../db/schema.ts";
-import { eq, desc, count, asc, isNotNull, max, and, inArray } from "drizzle-orm";
+import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg } from "drizzle-orm";
 
 const SUMMARY_FALLBACK = "Dungeon Exploration Session";
 
@@ -724,6 +724,81 @@ spectator.get("/stats", async (c) => {
     totalNarrations,
     highestLevel,
     totalParties,
+  });
+});
+
+// GET /spectator/stats/detailed — aggregate chart data for the stats dashboard
+spectator.get("/stats/detailed", async (c) => {
+  const classDistribution: Record<string, number> = {};
+  const raceDistribution: Record<string, number> = {};
+  const levelDistribution: Record<string, number> = {};
+  let sessionsPerDay: { date: string; count: number }[] = [];
+  let avgSessionDurationMinutes: number | null = null;
+
+  const queries = [
+    // Class distribution — all characters
+    async () => {
+      const rows = await db.select({
+        class: charactersTable.class,
+        total: count(),
+      }).from(charactersTable).groupBy(charactersTable.class);
+      for (const r of rows) {
+        classDistribution[r.class] = Number(r.total);
+      }
+    },
+    // Race distribution — all characters
+    async () => {
+      const rows = await db.select({
+        race: charactersTable.race,
+        total: count(),
+      }).from(charactersTable).groupBy(charactersTable.race);
+      for (const r of rows) {
+        raceDistribution[r.race] = Number(r.total);
+      }
+    },
+    // Level distribution — all characters
+    async () => {
+      const rows = await db.select({
+        level: charactersTable.level,
+        total: count(),
+      }).from(charactersTable).groupBy(charactersTable.level).orderBy(asc(charactersTable.level));
+      for (const r of rows) {
+        levelDistribution[String(r.level)] = Number(r.total);
+      }
+    },
+    // Sessions per day — last 30 days
+    async () => {
+      const rows = await db.select({
+        day: sql<string>`date(${gameSessionsTable.startedAt})`.as("day"),
+        total: count(),
+      }).from(gameSessionsTable)
+        .where(sql`${gameSessionsTable.startedAt} >= NOW() - INTERVAL '30 days'`)
+        .groupBy(sql`date(${gameSessionsTable.startedAt})`)
+        .orderBy(sql`date(${gameSessionsTable.startedAt})`);
+      sessionsPerDay = rows.map((r) => ({ date: r.day, count: Number(r.total) }));
+    },
+    // Average session duration (completed sessions only)
+    async () => {
+      const [row] = await db.select({
+        avgMinutes: avg(
+          sql<number>`EXTRACT(EPOCH FROM (${gameSessionsTable.endedAt} - ${gameSessionsTable.startedAt})) / 60`
+        ),
+      }).from(gameSessionsTable)
+        .where(isNotNull(gameSessionsTable.endedAt));
+      avgSessionDurationMinutes = row?.avgMinutes ? Math.round(Number(row.avgMinutes)) : null;
+    },
+  ];
+
+  await Promise.all(queries.map((q) => q().catch((err) => {
+    console.error("[DB] Detailed stats query failed:", err);
+  })));
+
+  return c.json({
+    classDistribution,
+    raceDistribution,
+    levelDistribution,
+    sessionsPerDay,
+    avgSessionDurationMinutes,
   });
 });
 
