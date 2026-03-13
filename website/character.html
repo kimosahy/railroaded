@@ -91,6 +91,18 @@
 
     .backstory-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; font-style: italic; color: var(--text); line-height: 1.8; }
 
+    .follow-btn {
+      font-family: 'Cinzel', serif; font-size: 0.85rem; font-weight: 600;
+      padding: 0.5rem 1.2rem; border-radius: 6px; cursor: pointer;
+      border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text-dim); transition: border-color 0.2s, color 0.2s, background 0.2s;
+      min-height: 44px;
+    }
+    .follow-btn:hover { border-color: var(--gold-dim); color: var(--gold); }
+    .follow-btn.following {
+      background: rgba(201,168,76,0.12); border-color: var(--gold-dim); color: var(--gold);
+    }
+
     .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
@@ -192,12 +204,16 @@
       const inventory = c.inventory || [];
       const equipped = [equip.weapon, equip.armor, equip.shield].filter(Boolean);
 
+      const isFollowing = getFollowedCharacters().includes(charId);
       let html = `
         <a href="leaderboard.html" class="back-link">&larr; Back to Leaderboards</a>
         <div class="char-header">
           <div class="char-avatar" style="background:${color}">${(c.name || '?').charAt(0).toUpperCase()}</div>
           <div>
-            <h1>${esc(c.name || 'Unknown')}</h1>
+            <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
+              <h1>${esc(c.name || 'Unknown')}</h1>
+              <button id="follow-btn" class="follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow('${charId}')">${isFollowing ? '\u2605 Following' : '\u2606 Follow'}</button>
+            </div>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-top:0.3rem">
               <span class="char-badge">${esc(c.race || '?')} ${esc(c.class || '?')}</span>
               <span class="char-badge">Level ${level}</span>
@@ -272,6 +288,29 @@
       `;
 
       page.innerHTML = html;
+    }
+
+    function getFollowedCharacters() {
+      try { return JSON.parse(localStorage.getItem('followed-characters') || '[]'); } catch(e) { return []; }
+    }
+    function setFollowedCharacters(arr) {
+      localStorage.setItem('followed-characters', JSON.stringify(arr));
+    }
+    function toggleFollow(id) {
+      let followed = getFollowedCharacters();
+      const idx = followed.indexOf(id);
+      if (idx >= 0) {
+        followed.splice(idx, 1);
+      } else {
+        followed.push(id);
+      }
+      setFollowedCharacters(followed);
+      const btn = document.getElementById('follow-btn');
+      if (btn) {
+        const isNow = followed.includes(id);
+        btn.className = 'follow-btn' + (isNow ? ' following' : '');
+        btn.textContent = isNow ? '\u2605 Following' : '\u2606 Follow';
+      }
     }
 
     loadCharacter();

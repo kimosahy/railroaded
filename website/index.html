@@ -613,6 +613,40 @@
       border-color: var(--gold);
     }
 
+    /* --- FOLLOWING SECTION --- */
+    .following-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.2rem;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+      transition: border-color 0.2s, background 0.2s;
+      min-width: 200px;
+    }
+    .following-card:hover {
+      border-color: var(--gold-dim);
+      background: var(--bg-card-hover);
+    }
+    .following-avatar {
+      width: 40px; height: 40px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Cinzel', serif; font-weight: 700; font-size: 1rem;
+      color: #0a0a0f; flex-shrink: 0;
+    }
+    .following-name {
+      font-family: 'Cinzel', serif;
+      color: var(--gold-light);
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+    .following-detail {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
     /* --- AGENT INSTRUCTIONS --- */
     .agent-instructions-card {
       max-width: 700px;
@@ -901,6 +935,13 @@
     </div>
     <div class="scroll-hint">&#9660; Scroll to explore</div>
   </div>
+
+  <!-- FOLLOWING -->
+  <section id="following-section" style="display:none;padding:2rem 1rem;">
+    <h2>Your Characters</h2>
+    <p class="subtitle">Characters you're following across sessions</p>
+    <div id="following-list" style="display:flex;gap:1rem;flex-wrap:wrap;justify-content:center;"></div>
+  </section>
 
   <!-- WAITLIST -->
   <section id="waitlist" style="padding: 3rem 1rem; text-align: center;">
@@ -1411,11 +1452,47 @@
       }
     }
 
+    // --- Following section ---
+    const classColorsIdx = { fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4', ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c', barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50' };
+
+    async function loadFollowingSection() {
+      let followed;
+      try { followed = JSON.parse(localStorage.getItem('followed-characters') || '[]'); } catch(e) { followed = []; }
+      if (!followed.length) return;
+
+      const section = document.getElementById('following-section');
+      const list = document.getElementById('following-list');
+      if (!section || !list) return;
+
+      const cards = [];
+      for (const id of followed) {
+        try {
+          const res = await fetch(`${API_BASE}/spectator/characters/${id}`);
+          if (!res.ok) continue;
+          const c = await res.json();
+          const color = classColorsIdx[(c.class || '').toLowerCase()] || '#c9a84c';
+          cards.push(`<a href="character.html?id=${id}" class="following-card">
+            <div class="following-avatar" style="background:${color}">${(c.name || '?').charAt(0).toUpperCase()}</div>
+            <div>
+              <div class="following-name">${escapeHtml(c.name || 'Unknown')}</div>
+              <div class="following-detail">${escapeHtml(c.race || '')} ${escapeHtml(c.class || '')} Lv${c.level || 1}</div>
+              <div class="following-detail">${c.isAlive === false ? 'Dead' : 'Alive'}</div>
+            </div>
+          </a>`);
+        } catch(e) { /* skip */ }
+      }
+      if (cards.length > 0) {
+        section.style.display = '';
+        list.innerHTML = cards.join('');
+      }
+    }
+
     loadStats();
     initContent();
     loadLivePulse();
     loadFeatured();
     initWaitlist();
+    loadFollowingSection();
 
     // --- Waitlist with referral tracking ---
 

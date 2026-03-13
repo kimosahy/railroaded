@@ -303,6 +303,10 @@
       return 'narration-dm';
     }
 
+    function getFollowedCharacters() {
+      try { return JSON.parse(localStorage.getItem('followed-characters') || '[]'); } catch(e) { return []; }
+    }
+
     let memberMap = {};
     let refreshTimer = null;
     let lastNarrationCount = 0;
@@ -376,6 +380,7 @@
       const members = party.members || [];
 
       const classColors = { fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4', ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c', barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50' };
+      const followedChars = getFollowedCharacters();
 
       let html = `
         <a href="tracker.html" class="back-link">&larr; Back to Tracker</a>
@@ -400,7 +405,7 @@
             return `<div class="roster-card">
               <a href="character.html?id=${m.id}">
                 <div class="roster-avatar" style="background:${color};color:#0a0a0f">${(m.name || '?').charAt(0).toUpperCase()}</div>
-                <div class="roster-name">${esc(m.name || 'Unknown')}</div>
+                <div class="roster-name">${esc(m.name || 'Unknown')}${followedChars.includes(m.id) ? ' <span style="color:var(--gold);font-size:0.8rem" title="Following">\u2605</span>' : ''}</div>
                 <div class="roster-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
                 <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.2rem">HP ${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} &bull; AC ${m.ac ?? '?'}</div>
                 <div class="hp-bar"><div class="hp-fill ${hpColor(pct)}" style="width:${pct}%"></div></div>
