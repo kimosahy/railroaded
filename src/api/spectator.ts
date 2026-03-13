@@ -25,6 +25,7 @@ import {
   campaignTemplates as campaignTemplatesTable,
   rooms as roomsTable,
   waitlistSignups as waitlistSignupsTable,
+  monsterTemplates as monsterTemplatesTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg } from "drizzle-orm";
 
@@ -2269,6 +2270,93 @@ spectator.get("/waitlist/count", async (c) => {
   } catch (err) {
     console.error("[WAITLIST] Count error:", err);
     return c.json({ error: "Failed to get count" }, 500);
+  }
+});
+
+/** Strip instance suffixes like "Goblin A" → "Goblin" from monster names. */
+export function stripMonsterSuffix(name: string): string {
+  return name.trim().replace(/\s+[A-Z]$/, "");
+}
+
+/** Count encounters per base monster name from combat_start event rows. */
+export function countEncountersFromEvents(
+  eventRows: { data: Record<string, unknown> }[]
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const row of eventRows) {
+    const monsters = row.data.monsters as { name?: string }[] | undefined;
+    if (!Array.isArray(monsters)) continue;
+    for (const m of monsters) {
+      const raw = (m.name || "").trim();
+      if (!raw) continue;
+      const baseName = stripMonsterSuffix(raw);
+      counts.set(baseName, (counts.get(baseName) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+export interface BestiaryEntry {
+  name: string;
+  hp: number;
+  ac: number;
+  cr: number;
+  xp: number;
+  count: number;
+}
+
+/** Build the bestiary array from templates + encounter counts. */
+export function buildBestiary(
+  templates: { name: string; hpMax: number; ac: number; challengeRating: number; xpValue: number }[],
+  encounterCounts: Map<string, number>
+): BestiaryEntry[] {
+  const bestiary: BestiaryEntry[] = templates.map((t) => ({
+    name: t.name,
+    hp: t.hpMax,
+    ac: t.ac,
+    cr: t.challengeRating,
+    xp: t.xpValue,
+    count: encounterCounts.get(t.name) || 0,
+  }));
+
+  // Add monsters from events that don't have templates (custom monsters)
+  for (const [name, cnt] of encounterCounts) {
+    if (!templates.some((t) => t.name === name)) {
+      bestiary.push({ name, hp: 0, ac: 0, cr: 0, xp: 0, count: cnt });
+    }
+  }
+
+  // Sort by encounter count descending, then name
+  bestiary.sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return bestiary;
+}
+
+// GET /spectator/bestiary — monster compendium with encounter counts
+spectator.get("/bestiary", async (c) => {
+  try {
+    const templates = await db
+      .select({
+        name: monsterTemplatesTable.name,
+        hpMax: monsterTemplatesTable.hpMax,
+        ac: monsterTemplatesTable.ac,
+        challengeRating: monsterTemplatesTable.challengeRating,
+        xpValue: monsterTemplatesTable.xpValue,
+      })
+      .from(monsterTemplatesTable)
+      .orderBy(asc(monsterTemplatesTable.name));
+
+    const combatEvents = await db
+      .select({ data: sessionEventsTable.data })
+      .from(sessionEventsTable)
+      .where(eq(sessionEventsTable.type, "combat_start"));
+
+    const encounterCounts = countEncountersFromEvents(combatEvents);
+    const bestiary = buildBestiary(templates, encounterCounts);
+
+    return c.json({ monsters: bestiary });
+  } catch (err) {
+    console.error("[DB] Failed to fetch bestiary:", err);
+    return c.json({ monsters: [] });
   }
 });
 

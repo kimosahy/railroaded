@@ -210,38 +210,10 @@
     async function loadBestiary() {
       var grid = document.getElementById('monster-grid');
       try {
-        var sessRes = await fetch(API + '/spectator/sessions?limit=50&offset=0');
-        if (!sessRes.ok) throw new Error('fetch failed');
-        var sessData = await sessRes.json();
-        var sessions = sessData.sessions || [];
-
-        // Fetch events for sessions with events
-        var monsterMap = {};
-        var fetches = sessions
-          .filter(function(s) { return (s.eventCount || 0) > 0; })
-          .slice(0, 20)
-          .map(function(s) { return fetch(API + '/spectator/sessions/' + s.id + '/events?limit=500').then(function(r) { return r.ok ? r.json() : { events: [] }; }); });
-
-        var results = await Promise.all(fetches);
-        for (var r of results) {
-          var events = r.events || [];
-          for (var e of events) {
-            if (e.type === 'combat_start' && e.data && e.data.monsters) {
-              for (var m of e.data.monsters) {
-                var key = (m.name || 'Unknown').trim();
-                if (!monsterMap[key]) {
-                  monsterMap[key] = { name: key, count: 0, hp: m.hp || 0, ac: m.ac || 0 };
-                }
-                monsterMap[key].count++;
-                if (m.hp && m.hp > monsterMap[key].hp) monsterMap[key].hp = m.hp;
-                if (m.ac && m.ac > monsterMap[key].ac) monsterMap[key].ac = m.ac;
-              }
-            }
-          }
-        }
-
-        monstersData = Object.values(monsterMap);
-        monstersData.sort(function(a, b) { return b.count - a.count; });
+        var res = await fetch(API + '/spectator/bestiary');
+        if (!res.ok) throw new Error('fetch failed');
+        var data = await res.json();
+        monstersData = data.monsters || [];
         renderGrid();
       } catch (e) {
         console.warn('Bestiary error:', e);
