@@ -25,6 +25,18 @@ import {
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray } from "drizzle-orm";
 
+const SUMMARY_FALLBACK = "Dungeon Exploration Session";
+
+/** Sanitize a session summary for public display — strips QA/debug markers and
+ *  replaces fully-debug summaries with a generic fallback. */
+function sanitizeSummaryForPublic(summary: string | null): string | null {
+  if (!summary) return null;
+  const cleaned = gm.filterSummary(summary);
+  if (!cleaned || cleaned.length < 3) return SUMMARY_FALLBACK;
+  if (gm.summaryContainsDebugText(cleaned)) return SUMMARY_FALLBACK;
+  return cleaned;
+}
+
 // --- Tavern Board in-memory storage ---
 
 interface TavernReply {
@@ -230,7 +242,7 @@ spectator.get("/parties/:id", async (c) => {
       currentRoom: null, currentRoomDescription: null,
       monsters: [],
       recentEvents,
-      sessionSummary: latestSession?.summary ?? null,
+      sessionSummary: sanitizeSummaryForPublic(latestSession?.summary ?? null),
       eventCount: recentEvents.length,
     });
   } catch (err) {
@@ -749,7 +761,7 @@ spectator.get("/sessions", async (c) => {
         partyName: r.partyName ?? null,
         phase: r.phase,
         isActive: r.isActive,
-        summary: r.summary ?? null,
+        summary: sanitizeSummaryForPublic(r.summary ?? null),
         startedAt: r.startedAt.toISOString(),
         endedAt: r.endedAt ? r.endedAt.toISOString() : null,
         eventCount: Number(r.eventCount),

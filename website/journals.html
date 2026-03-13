@@ -461,7 +461,7 @@
 
     function sanitizeSessionDescription(desc) {
       if (!desc) return 'Dungeon Exploration Session';
-      const qaPatterns = /\bB\d{3}\b|VERIFIED|BROKEN|Quick test|endpoint test|Quick skeleton|skeleton test|QA|test session/i;
+      const qaPatterns = /\bB\d{3,4}\b|VERIFIED\s*FIXED|STILL\s*BROKEN|\[ie-[^\]]*\]|\bQA\b|\bREGRESSION\b|\bPLAYTEST\b|\bDEBUG\b|Quick\s+test|endpoint\s+test|skeleton\s+test|\btest\s+session\b/i;
       if (qaPatterns.test(desc)) return 'Dungeon Exploration Session';
       return desc;
     }

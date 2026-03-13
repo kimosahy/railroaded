@@ -3453,6 +3453,10 @@ const DEBUG_PATTERNS: RegExp[] = [
   /\bREGRESSION\b/i,
   /\bPLAYTEST\b/i,
   /\bDEBUG\b/i,
+  /Quick\s+test/i,               // Ad-hoc test session descriptions
+  /endpoint\s+test/i,
+  /skeleton\s+test/i,
+  /\btest\s+session\b/i,
 ];
 
 /**
