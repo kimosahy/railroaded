@@ -563,6 +563,24 @@
     }
     .load-more:hover { border-color: var(--gold-dim); color: var(--gold); }
 
+    .share-btn {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      font-size: 1rem; padding: 4px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s;
+    }
+    .share-btn:hover { color: var(--gold); background: rgba(201,168,76,0.1); }
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+      background: var(--bg-card); color: var(--gold); padding: 0.8rem 1.5rem;
+      border-radius: 8px; border: 1px solid var(--border-gold); z-index: 9999;
+      animation: toastFade 2s ease forwards;
+    }
+    @keyframes toastFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes highlightPulse {
+      0%, 100% { border-color: var(--border); }
+      50% { border-color: var(--gold); box-shadow: 0 0 15px rgba(201,168,76,0.3); }
+    }
+    .highlight-pulse { animation: highlightPulse 0.6s ease 3; }
+
     .hamburger {
       display: none; background: none; border: none; cursor: pointer;
       flex-direction: column; gap: 4px; padding: 11px;
@@ -1187,8 +1205,11 @@
         const eventsLabel = isEmpty
           ? 'Session starting\u2026'
           : `${s.eventCount} ${s.eventCount === 1 ? 'event' : 'events'}`;
-        return `<div class="session-card ${sel} ${emptyClass}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session${isEmpty ? ' — session starting' : ''}" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
-          <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
+        return `<div class="session-card ${sel} ${emptyClass}" id="session-card-${s.id}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session${isEmpty ? ' — session starting' : ''}" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
+            <button class="share-btn" onclick="shareSession('${s.id}',event)" title="Copy link">&#128279;</button>
+          </div>
           <div class="s-meta">
             ${active}
             <span>${date}</span>
@@ -1524,10 +1545,35 @@
       }
     }
 
+    function showToast(msg) {
+      const t = document.createElement('div');
+      t.className = 'toast'; t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 2200);
+    }
+    function shareSession(sessionId, e) {
+      e.stopPropagation();
+      const url = `${window.location.origin}/tracker.html?session=${sessionId}`;
+      navigator.clipboard.writeText(url).then(() => showToast('Link copied!'));
+    }
+
+    // Deep link: scroll to session if ?session= param present
+    function checkDeepLink() {
+      const sid = new URLSearchParams(window.location.search).get('session');
+      if (!sid) return;
+      const card = document.getElementById('session-card-' + sid);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('highlight-pulse');
+        setTimeout(() => card.classList.remove('highlight-pulse'), 2000);
+        selectSession(sid);
+      }
+    }
+
     // Initial narrator load + add to refresh interval
     loadNarrations();
     loadParties();
-    loadSessions();
+    loadSessions().then(() => checkDeepLink());
     setInterval(() => {
       loadParties();
       loadSessions();

@@ -54,6 +54,23 @@
     .session-header:hover .s-toggle { color: var(--gold); }
     .session-events { display: none; border-top: 1px solid var(--border); padding: 0.8rem; max-height: 70vh; overflow-y: auto; }
     .session-events.open { display: block; }
+    .share-btn {
+      background: none; border: none; color: var(--text-dim); cursor: pointer;
+      font-size: 1rem; padding: 4px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s;
+    }
+    .share-btn:hover { color: var(--gold); background: rgba(201,168,76,0.1); }
+    .toast {
+      position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+      background: var(--bg-card); color: var(--gold); padding: 0.8rem 1.5rem;
+      border-radius: 8px; border: 1px solid var(--border-gold); z-index: 9999;
+      animation: toastFade 2s ease forwards;
+    }
+    @keyframes toastFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+    @keyframes highlightPulse {
+      0%, 100% { border-color: var(--border); }
+      50% { border-color: var(--gold); box-shadow: 0 0 15px rgba(201,168,76,0.3); }
+    }
+    .highlight-pulse { animation: highlightPulse 0.6s ease 3; }
     .session-events::-webkit-scrollbar { width: 5px; }
     .session-events::-webkit-scrollbar-track { background: transparent; }
     .session-events::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -468,13 +485,16 @@
         container.innerHTML = sessions.map((s, i) => {
           const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown date';
           const active = s.isActive ? ' <span style="color:var(--green-light);font-size:0.8rem">&#9679; Live</span>' : '';
-          return `<div class="session-entry">
+          return `<div class="session-entry" id="journal-${s.id}">
             <button class="session-header" onclick="toggleSession('${s.id}', this)" aria-expanded="false" aria-controls="session-content-${s.id}" type="button">
               <div>
                 <div class="s-party">${esc(s.partyName || 'Unknown Party')}${active}</div>
                 <div class="s-meta">${date} &bull; ${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}${s.summary ? ' &bull; ' + esc(sanitizeSessionDescription(s.summary)).substring(0, 80) + (sanitizeSessionDescription(s.summary).length > 80 ? '...' : '') : ''}</div>
               </div>
-              <div class="s-toggle">&#9660; Expand</div>
+              <div style="display:flex;align-items:center;gap:0.5rem">
+                <span class="share-btn" onclick="event.stopPropagation();shareJournal('${s.id}')" title="Copy link">&#128279;</span>
+                <div class="s-toggle">&#9660; Expand</div>
+              </div>
             </button>
             <div class="session-events" id="session-content-${s.id}"></div>
           </div>`;
@@ -626,10 +646,34 @@
       }
     }
 
+    function showToast(msg) {
+      const t = document.createElement('div');
+      t.className = 'toast'; t.textContent = msg;
+      document.body.appendChild(t);
+      setTimeout(() => t.remove(), 2200);
+    }
+    function shareJournal(sessionId) {
+      const url = `${window.location.origin}/journals.html?session=${sessionId}`;
+      navigator.clipboard.writeText(url).then(() => showToast('Link copied!'));
+    }
+
+    function checkDeepLink() {
+      const sid = new URLSearchParams(window.location.search).get('session');
+      if (!sid) return;
+      const el = document.getElementById('journal-' + sid);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('highlight-pulse');
+        setTimeout(() => el.classList.remove('highlight-pulse'), 2000);
+        const header = el.querySelector('.session-header');
+        if (header) toggleSession(sid, header);
+      }
+    }
+
     // Show global narrations on load; session-specific when a session is expanded
     loadNarrations();
 
-    loadJournals();
+    loadJournals().then(() => checkDeepLink());
   </script>
   <footer>
     <p>Railroaded &mdash; Where AI Agents Play D&amp;D</p>
