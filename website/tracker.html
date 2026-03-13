@@ -563,6 +563,12 @@
     }
     .load-more:hover { border-color: var(--gold-dim); color: var(--gold); }
 
+    .skeleton { background: linear-gradient(90deg, #1a1a28 25%, #2a2a3e 50%, #1a1a28 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 6px; }
+    @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
+    .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
+    .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
+
     .share-btn {
       background: none; border: none; color: var(--text-dim); cursor: pointer;
       font-size: 1rem; padding: 4px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s;
@@ -633,6 +639,7 @@
       <a href="journals.html">Journals</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="about.html">About</a>
     </div>
   </nav>
 
@@ -649,13 +656,15 @@
       <div class="party-list">
         <div class="section-label">&#9876; Live Parties</div>
         <div id="party-list">
-          <div class="empty-state" style="padding:1.5rem">
-            <p style="color:var(--text-dim);font-size:0.95rem">Loading...</p>
-          </div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line short"></div></div>
         </div>
         <div class="section-label">&#128214; Past Sessions</div>
         <div id="session-list">
-          <div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">Loading session history...</div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
+          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
         </div>
       </div>
       <div class="party-detail" id="party-detail">
@@ -1299,7 +1308,7 @@
         panel.innerHTML = `<div class="detail-panel">
           <div class="detail-header">
             <h2>${esc(title)}</h2>
-            <span class="event-count">${date} &bull; ${events.length} ${events.length === 1 ? 'event' : 'events'}</span>
+            <span class="event-count">${date} &bull; ${events.length} ${events.length === 1 ? 'event' : 'events'} &bull; <a href="session.html?id=${id}" style="color:var(--gold);text-decoration:none;font-size:0.8rem">Full session &rarr;</a></span>
           </div>
           ${sInfo && sInfo.summary ? `<div style="padding:0.8rem 1.5rem;border-bottom:1px solid var(--border);font-style:italic;color:var(--text-dim);font-size:0.92rem">${esc(sInfo.summary)}</div>` : ''}
           <div class="event-feed" id="event-feed">${eventHtml}</div>
