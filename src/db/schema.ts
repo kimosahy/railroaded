@@ -516,6 +516,14 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// --- Waitlist Signups ---
+
+export const waitlistSignups = pgTable("waitlist_signups", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // --- NPC Interactions (log of all NPC interactions) ---
 
 export const npcInteractions = pgTable("npc_interactions", {
