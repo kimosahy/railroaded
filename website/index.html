@@ -181,6 +181,84 @@
     }
     @keyframes livePulse { 0%,100%{opacity:1;} 50%{opacity:0.3;} }
 
+    /* --- ACTIVITY PULSE BANNER --- */
+    .activity-pulse {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .activity-pulse-header {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.8rem;
+    }
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4ade80;
+      animation: livePulse 2s infinite;
+    }
+    .pulse-dot.stale {
+      background: var(--gold-dim);
+      animation: none;
+    }
+    .activity-pulse-header span:last-child {
+      font-family: 'Cinzel', serif;
+      color: var(--gold);
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .activity-pulse-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.5rem;
+      min-height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      text-decoration: none;
+    }
+    .activity-pulse-card:hover {
+      border-color: var(--gold-dim);
+    }
+    .activity-pulse-text {
+      color: var(--text);
+      font-family: 'Crimson Text', serif;
+      font-size: 1.05rem;
+      margin: 0;
+      transition: opacity 0.3s;
+    }
+    .activity-pulse-meta {
+      color: var(--text-dim);
+      font-family: 'Cinzel', serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.04em;
+    }
+    .activity-pulse-dots {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      margin-top: 0.6rem;
+    }
+    .activity-pulse-dots button {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      border: none;
+      background: var(--border);
+      padding: 0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .activity-pulse-dots button.active {
+      background: var(--gold-dim);
+    }
+
     /* --- SECTION --- */
     section {
       padding: 5rem 2rem;
@@ -762,18 +840,20 @@
     </div>
   </section>
 
-  <!-- LIVE PULSE -->
+  <!-- LIVE PULSE — Happening Now activity banner -->
   <section id="live-pulse" style="padding: 1rem 1rem 2rem; text-align: center;">
-    <div style="max-width: 800px; margin: 0 auto;">
-      <div style="display: inline-flex; align-items: center; gap: 0.5rem; margin-bottom: 0.8rem;">
-        <span style="width:8px;height:8px;border-radius:50%;background:#4ade80;animation:livePulse 2s infinite;"></span>
-        <span style="font-family:'Cinzel',serif;color:var(--gold);font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;">Happening Now</span>
+    <div class="activity-pulse">
+      <div class="activity-pulse-header">
+        <span class="pulse-dot" id="pulse-dot"></span>
+        <span>Happening Now</span>
       </div>
-      <a href="tracker.html" style="text-decoration:none;display:block;">
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:1rem 1.5rem;min-height:60px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:border-color 0.2s;" onmouseover="this.style.borderColor='var(--gold-dim)'" onmouseout="this.style.borderColor='var(--border)'">
-          <p id="pulse-text" style="color:var(--text);font-family:'Crimson Text',serif;font-size:1.05rem;font-style:italic;margin:0;transition:opacity 0.3s;">Loading latest dungeon activity...</p>
+      <a id="pulse-link" href="tracker.html" class="activity-pulse-card">
+        <div style="text-align:center;width:100%;">
+          <p class="activity-pulse-text" id="pulse-text">Loading latest dungeon activity...</p>
+          <p class="activity-pulse-meta" id="pulse-meta" style="margin-top:0.3rem;display:none;"></p>
         </div>
       </a>
+      <div class="activity-pulse-dots" id="pulse-dots"></div>
     </div>
   </section>
 
@@ -1096,27 +1176,78 @@
       loadNarrations();
     }
 
+    let pulseActivities = [];
+    let pulseIdx = 0;
+    let pulseInterval = null;
+
+    function showPulseItem(idx) {
+      const item = pulseActivities[idx];
+      if (!item) return;
+      const pulseText = document.getElementById('pulse-text');
+      const pulseMeta = document.getElementById('pulse-meta');
+      const pulseLink = document.getElementById('pulse-link');
+      const pulseDot = document.getElementById('pulse-dot');
+
+      pulseText.style.opacity = '0';
+      setTimeout(() => {
+        pulseText.textContent = item.message;
+        pulseText.style.fontStyle = 'normal';
+        pulseMeta.textContent = `${escapeHtml(item.partyName)} \u2014 ${item.ago}`;
+        pulseMeta.style.display = '';
+        pulseLink.href = item.partyId ? `tracker.html?party=${item.partyId}` : 'tracker.html';
+        pulseText.style.opacity = '1';
+
+        // Mark stale if >30min
+        const thirtyMin = 30 * 60 * 1000;
+        const isLive = (Date.now() - new Date(item.timestamp).getTime()) < thirtyMin;
+        pulseDot.classList.toggle('stale', !isLive);
+
+        // Update dots
+        const dots = document.querySelectorAll('#pulse-dots button');
+        dots.forEach((d, i) => d.classList.toggle('active', i === idx));
+      }, 300);
+    }
+
     async function loadLivePulse() {
       try {
-        const res = await fetch(`${API_BASE}/spectator/narrations?limit=5`);
+        const res = await fetch(`${API_BASE}/spectator/activity?limit=8`);
         const data = await res.json();
-        if (!data.narrations || !data.narrations.length) return;
-        const pulseText = document.getElementById('pulse-text');
-        let idx = 0;
-        function showNext() {
-          const n = data.narrations[idx % data.narrations.length];
-          const mins = Math.floor((Date.now() - new Date(n.createdAt).getTime()) / 60000);
-          const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins}m ago` : mins < 1440 ? `${Math.floor(mins/60)}h ago` : `${Math.floor(mins/1440)}d ago`;
-          pulseText.style.opacity = '0';
-          setTimeout(() => {
-            const text = n.content.length > 120 ? n.content.substring(0, 117) + '...' : n.content;
-            pulseText.textContent = `"${text}" — ${n.partyName}, ${ago}`;
-            pulseText.style.opacity = '1';
-          }, 300);
-          idx++;
+        if (!data.activities || !data.activities.length) {
+          // Fall back to narrations if no activity events
+          const nRes = await fetch(`${API_BASE}/spectator/narrations?limit=5`);
+          const nData = await nRes.json();
+          if (!nData.narrations || !nData.narrations.length) return;
+          pulseActivities = nData.narrations.map(n => ({
+            message: n.content.length > 120 ? n.content.substring(0, 117) + '...' : n.content,
+            partyName: n.partyName || 'Unknown Party',
+            partyId: null,
+            timestamp: n.createdAt,
+            ago: timeAgo(new Date(n.createdAt))
+          }));
+        } else {
+          pulseActivities = data.activities.map(a => ({
+            message: a.message,
+            partyName: a.partyName,
+            partyId: a.partyId,
+            timestamp: a.timestamp,
+            ago: timeAgo(new Date(a.timestamp))
+          }));
         }
-        showNext();
-        setInterval(showNext, 6000);
+
+        // Build indicator dots
+        const dotsEl = document.getElementById('pulse-dots');
+        dotsEl.innerHTML = pulseActivities.map((_, i) =>
+          `<button aria-label="Event ${i + 1}" onclick="pulseIdx=${i};showPulseItem(${i})"></button>`
+        ).join('');
+
+        pulseIdx = 0;
+        showPulseItem(0);
+
+        if (pulseInterval) clearInterval(pulseInterval);
+        pulseInterval = setInterval(() => {
+          pulseIdx = (pulseIdx + 1) % pulseActivities.length;
+          showPulseItem(pulseIdx);
+        }, 5000);
       } catch (e) { console.warn('Live pulse error:', e); }
     }
 

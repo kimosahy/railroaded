@@ -23,7 +23,7 @@ import {
   tavernReplies as tavernRepliesTable,
   dmStats as dmStatsTable,
 } from "../db/schema.ts";
-import { eq, desc, count, asc, isNotNull, max, and } from "drizzle-orm";
+import { eq, desc, count, asc, isNotNull, max, and, inArray } from "drizzle-orm";
 
 // --- Tavern Board in-memory storage ---
 
@@ -796,6 +796,193 @@ spectator.get("/sessions/:id/events", async (c) => {
   } catch (err) {
     console.error("[DB] Failed to fetch session events:", err);
     return c.json({ sessionId, events: [], limit, offset });
+  }
+});
+
+// --- Activity pulse (formatted recent events for homepage banner) ---
+
+/** Interesting event types for the activity pulse (skip chat, whisper, dm_journal, etc.) */
+const ACTIVITY_EVENT_TYPES = [
+  "attack",
+  "monster_attack",
+  "spell_cast",
+  "heal",
+  "death",
+  "death_save",
+  "combat_start",
+  "combat_end",
+  "level_up",
+  "room_enter",
+  "loot",
+  "rest",
+  "ability_check",
+  "narration",
+];
+
+/** Format a session event into an emoji-prefixed activity string. Returns null if not formattable. */
+export function formatActivityEvent(
+  type: string,
+  data: Record<string, unknown>
+): string | null {
+  switch (type) {
+    case "attack": {
+      const attacker = data.attackerName as string | undefined;
+      const target = data.targetName as string | undefined;
+      if (!attacker || !target) return null;
+      const hit = data.hit as boolean | undefined;
+      const critical = data.critical as boolean | undefined;
+      const damage = data.damage as number | undefined;
+      if (critical && hit)
+        return `\u{1F5E1}\uFE0F ${attacker} landed a critical hit on ${target}${damage ? ` for ${damage} damage` : ""}`;
+      if (hit)
+        return `\u2694\uFE0F ${attacker} hit ${target}${damage ? ` for ${damage} damage` : ""}`;
+      return `\u{1F6E1}\uFE0F ${target} dodged ${attacker}'s attack`;
+    }
+    case "monster_attack": {
+      const attacker = data.attackerName as string | undefined;
+      const target = data.targetName as string | undefined;
+      if (!attacker || !target) return null;
+      const hit = data.hit as boolean | undefined;
+      const damage = data.damage as number | undefined;
+      if (hit)
+        return `\u{1F47E} ${attacker} struck ${target}${damage ? ` for ${damage} damage` : ""}`;
+      return `\u{1F6E1}\uFE0F ${target} evaded ${attacker}'s attack`;
+    }
+    case "spell_cast": {
+      const caster = data.casterName as string | undefined;
+      const spell = data.spellName as string | undefined;
+      if (!caster || !spell) return null;
+      const target = data.targetName as string | undefined;
+      return `\u2728 ${caster} cast ${spell}${target ? ` on ${target}` : ""}`;
+    }
+    case "heal": {
+      const healer = data.healerName as string | undefined;
+      const target = data.targetName as string | undefined;
+      const amount = data.amount as number | undefined;
+      if (!healer || !target) return null;
+      return `\u{1F49A} ${healer} healed ${target}${amount ? ` for ${amount} HP` : ""}`;
+    }
+    case "death": {
+      const name = data.characterName as string | undefined;
+      return name ? `\u{1F480} ${name} has fallen!` : null;
+    }
+    case "death_save": {
+      const charName = (data.characterName ?? data.name) as string | undefined;
+      const success = data.success as boolean | undefined;
+      const nat20 = data.nat20 as boolean | undefined;
+      if (!charName) return null;
+      if (nat20) return `\u{1F31F} ${charName} rolled a nat 20 death save and revived!`;
+      return success
+        ? `\u{1F4AB} ${charName} passed a death save`
+        : `\u{1F480} ${charName} failed a death save`;
+    }
+    case "combat_start":
+      return `\u{1F3AF} Combat has begun!`;
+    case "combat_end": {
+      const reason = data.reason as string | undefined;
+      if (reason === "all_players_dead")
+        return `\u{1F397}\uFE0F The party was defeated...`;
+      const xp = data.xpAwarded as number | undefined;
+      return xp
+        ? `\u{1F389} Combat won! ${xp} XP awarded`
+        : `\u{1F389} Combat has ended`;
+    }
+    case "level_up": {
+      const charName = (data.characterName ?? data.name) as string | undefined;
+      const newLevel = data.newLevel as number | undefined;
+      return charName
+        ? `\u{1F31F} ${charName} leveled up${newLevel ? ` to level ${newLevel}` : ""}!`
+        : null;
+    }
+    case "room_enter": {
+      const roomName = data.roomName as string | undefined;
+      return roomName ? `\u{1F6AA} Party entered ${roomName}` : null;
+    }
+    case "loot": {
+      const charName = data.characterName as string | undefined;
+      const item = data.itemName as string | undefined;
+      return charName && item ? `\u{1F4B0} ${charName} found ${item}` : null;
+    }
+    case "rest": {
+      const restType = data.restType as string | undefined;
+      return `\u{1F3D5}\uFE0F Party took a ${restType ?? "short"} rest`;
+    }
+    case "ability_check": {
+      const charName = data.characterName as string | undefined;
+      const skill = data.skill as string | undefined;
+      const success = data.success as boolean | undefined;
+      if (!charName || !skill) return null;
+      return success
+        ? `\u{1F3B2} ${charName} passed a ${skill} check`
+        : `\u{1F3B2} ${charName} failed a ${skill} check`;
+    }
+    case "narration": {
+      const text = data.text as string | undefined;
+      if (!text) return null;
+      return text.length > 100
+        ? `\u{1F4DC} ${text.substring(0, 97)}...`
+        : `\u{1F4DC} ${text}`;
+    }
+    default:
+      return null;
+  }
+}
+
+// GET /spectator/activity — recent formatted events for the homepage activity pulse
+spectator.get("/activity", async (c) => {
+  const limit = Math.min(Number(c.req.query("limit") ?? "15"), 50);
+
+  try {
+    const rows = await db
+      .select({
+        type: sessionEventsTable.type,
+        data: sessionEventsTable.data,
+        createdAt: sessionEventsTable.createdAt,
+        sessionId: sessionEventsTable.sessionId,
+        partyName: partiesTable.name,
+        partyId: gameSessionsTable.partyId,
+      })
+      .from(sessionEventsTable)
+      .innerJoin(
+        gameSessionsTable,
+        eq(sessionEventsTable.sessionId, gameSessionsTable.id)
+      )
+      .innerJoin(
+        partiesTable,
+        eq(gameSessionsTable.partyId, partiesTable.id)
+      )
+      .where(inArray(sessionEventsTable.type, ACTIVITY_EVENT_TYPES))
+      .orderBy(desc(sessionEventsTable.createdAt))
+      .limit(limit * 2); // fetch extra to compensate for events we filter out
+
+    const activities: {
+      message: string;
+      sessionId: string;
+      partyName: string;
+      partyId: string | null;
+      timestamp: string;
+    }[] = [];
+
+    for (const row of rows) {
+      if (activities.length >= limit) break;
+      const message = formatActivityEvent(
+        row.type,
+        row.data as Record<string, unknown>
+      );
+      if (!message) continue;
+      activities.push({
+        message,
+        sessionId: row.sessionId,
+        partyName: row.partyName ?? "Unknown Party",
+        partyId: row.partyId ?? null,
+        timestamp: row.createdAt.toISOString(),
+      });
+    }
+
+    return c.json({ activities });
+  } catch (err) {
+    console.error("[DB] Failed to fetch activity events:", err);
+    return c.json({ activities: [] });
   }
 });
 
