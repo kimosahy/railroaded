@@ -342,6 +342,90 @@
       margin-top: 0.3rem;
     }
 
+    /* --- FEATURED SESSION (Story of the Week) --- */
+    .featured-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-gold);
+      border-radius: 10px;
+      padding: 2rem 2.5rem;
+      margin-top: 2rem;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+      transition: border-color 0.3s;
+    }
+    .featured-card:hover {
+      border-color: var(--gold-dim);
+    }
+    .featured-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.3rem;
+      font-weight: 600;
+      color: var(--gold-light);
+      margin-bottom: 0.3rem;
+    }
+    .featured-party-name {
+      font-family: 'Cinzel', serif;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 1rem;
+    }
+    .featured-members {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 1.2rem;
+    }
+    .featured-member {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(201, 168, 76, 0.08);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.3rem 0.7rem;
+      font-size: 0.85rem;
+    }
+    .featured-member .class-icon {
+      font-size: 0.9rem;
+    }
+    .featured-member .member-name {
+      color: var(--text-bright);
+    }
+    .featured-member .member-detail {
+      color: var(--text-dim);
+      font-size: 0.75rem;
+    }
+    .featured-excerpt {
+      color: var(--text);
+      font-style: italic;
+      font-size: 1.05rem;
+      line-height: 1.7;
+      margin-bottom: 1.2rem;
+      border-left: 3px solid var(--gold-dim);
+      padding-left: 1rem;
+    }
+    .featured-link {
+      display: inline-block;
+      font-family: 'Cinzel', serif;
+      font-size: 0.85rem;
+      color: var(--gold);
+      text-decoration: none;
+      letter-spacing: 0.04em;
+      transition: color 0.2s;
+    }
+    .featured-link:hover {
+      color: var(--gold-light);
+    }
+    .featured-empty {
+      text-align: center;
+      color: var(--text-dim);
+      font-style: italic;
+      padding: 2rem;
+    }
+
     /* --- NARRATOR PROFILE (above narration ticker) --- */
     .narrator-profile {
       display: flex;
@@ -979,6 +1063,13 @@
     </div>
   </section>
 
+  <!-- FEATURED SESSION / STORY OF THE WEEK -->
+  <section id="featured-section" style="display: none;">
+    <h2>This Week's Featured Adventure</h2>
+    <p class="subtitle">The most dramatic session from the past seven days</p>
+    <div id="featured-container"></div>
+  </section>
+
   <!-- EXPLORE -->
   <section id="explore">
     <h2>Explore</h2>
@@ -1251,9 +1342,58 @@
       } catch (e) { console.warn('Live pulse error:', e); }
     }
 
+    // --- Featured Session (Story of the Week) ---
+    function classIcon(cls) {
+      switch ((cls || '').toLowerCase()) {
+        case 'fighter': return '\u2694\uFE0F';
+        case 'rogue':   return '\uD83D\uDDE1\uFE0F';
+        case 'cleric':  return '\u2728';
+        case 'wizard':  return '\uD83D\uDD2E';
+        default:        return '\uD83D\uDC64';
+      }
+    }
+
+    async function loadFeatured() {
+      try {
+        const res = await fetch(`${API_BASE}/spectator/featured`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!data.featured) return;
+
+        const f = data.featured;
+        const section = document.getElementById('featured-section');
+        const container = document.getElementById('featured-container');
+
+        const membersHtml = (f.members || []).map(m =>
+          `<div class="featured-member">
+            <span class="class-icon">${classIcon(m.class)}</span>
+            <span class="member-name">${escapeHtml(m.name)}</span>
+            <span class="member-detail">L${m.level} ${escapeHtml(m.class)}</span>
+          </div>`
+        ).join('');
+
+        const excerptHtml = f.excerpt
+          ? `<div class="featured-excerpt">${escapeHtml(f.excerpt)}</div>`
+          : '';
+
+        container.innerHTML = `<div class="featured-card">
+          <div class="featured-title">${escapeHtml(f.title)}</div>
+          <div class="featured-party-name">${escapeHtml(f.partyName || 'Unknown Party')}</div>
+          <div class="featured-members">${membersHtml}</div>
+          ${excerptHtml}
+          <a class="featured-link" href="session.html?id=${encodeURIComponent(f.sessionId)}">Read the full adventure &rarr;</a>
+        </div>`;
+
+        section.style.display = '';
+      } catch (e) {
+        console.log('Featured fetch failed:', e.message);
+      }
+    }
+
     loadStats();
     initContent();
     loadLivePulse();
+    loadFeatured();
     updateWaitlistCounter();
 
     // --- Waitlist counter (localStorage-backed; replace with API count when available) ---

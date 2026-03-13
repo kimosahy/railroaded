@@ -203,6 +203,7 @@ export const gameSessions = pgTable("game_sessions", {
     .$type<{ entityId: string; initiative: number; type: "player" | "monster" }[]>()
     .default([]),
   isActive: boolean("is_active").notNull().default(true),
+  featured: boolean("featured").notNull().default(false),
   summary: text("summary"),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),

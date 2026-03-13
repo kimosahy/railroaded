@@ -1170,6 +1170,201 @@ spectator.get("/narrations/:sessionId", async (c) => {
   }
 });
 
+// --- Featured Session ("Story of the Week") ---
+
+/** Event types that contribute to a session's "drama score". */
+const DRAMA_EVENT_TYPES = [
+  "combat_start",
+  "combat_end",
+  "room_enter",
+  "death",
+  "character_death",
+  "death_save",
+  "level_up",
+  "loot",
+];
+
+/** Compute drama score from event-type counts. */
+export function computeDramaScore(
+  eventCounts: Record<string, number>
+): number {
+  let score = 0;
+  // Combats are exciting
+  score += (eventCounts["combat_start"] ?? 0) * 3;
+  score += (eventCounts["combat_end"] ?? 0) * 2;
+  // Room exploration
+  score += (eventCounts["room_enter"] ?? 0) * 1;
+  // Deaths/knockdowns are the most dramatic
+  score += (eventCounts["death"] ?? 0) * 10;
+  score += (eventCounts["character_death"] ?? 0) * 10;
+  score += (eventCounts["death_save"] ?? 0) * 5;
+  // Level-ups are celebratory
+  score += (eventCounts["level_up"] ?? 0) * 4;
+  // Loot is fun
+  score += (eventCounts["loot"] ?? 0) * 2;
+  return score;
+}
+
+// GET /spectator/featured — featured session for the homepage
+spectator.get("/featured", async (c) => {
+  try {
+    // 1. Check for a manually featured session first
+    const manualRows = await db.select({
+      id: gameSessionsTable.id,
+      partyId: gameSessionsTable.partyId,
+      partyName: partiesTable.name,
+      summary: gameSessionsTable.summary,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(eq(gameSessionsTable.featured, true))
+      .orderBy(desc(gameSessionsTable.endedAt))
+      .limit(1);
+
+    let sessionRow = manualRows[0] ?? null;
+
+    // 2. Auto-select: completed session from last 7 days with highest drama score
+    if (!sessionRow) {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      const recentSessions = await db.select({
+        id: gameSessionsTable.id,
+        partyId: gameSessionsTable.partyId,
+        partyName: partiesTable.name,
+        summary: gameSessionsTable.summary,
+        startedAt: gameSessionsTable.startedAt,
+        endedAt: gameSessionsTable.endedAt,
+      })
+        .from(gameSessionsTable)
+        .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+        .where(and(
+          eq(gameSessionsTable.isActive, false),
+          sql`${gameSessionsTable.endedAt} >= ${sevenDaysAgo}`,
+        ))
+        .orderBy(desc(gameSessionsTable.endedAt))
+        .limit(50);
+
+      // Score each session by drama events
+      let bestSession: typeof recentSessions[0] | null = null;
+      let bestScore = -1;
+
+      for (const sess of recentSessions) {
+        const eventRows = await db.select({
+          type: sessionEventsTable.type,
+          cnt: count(),
+        })
+          .from(sessionEventsTable)
+          .where(and(
+            eq(sessionEventsTable.sessionId, sess.id),
+            inArray(sessionEventsTable.type, DRAMA_EVENT_TYPES),
+          ))
+          .groupBy(sessionEventsTable.type);
+
+        const eventCounts: Record<string, number> = {};
+        for (const r of eventRows) {
+          eventCounts[r.type] = Number(r.cnt);
+        }
+        const score = computeDramaScore(eventCounts);
+        if (score > bestScore) {
+          bestScore = score;
+          bestSession = sess;
+        }
+      }
+
+      // 3. Fallback: most recent completed session (any time)
+      if (!bestSession) {
+        const fallbackRows = await db.select({
+          id: gameSessionsTable.id,
+          partyId: gameSessionsTable.partyId,
+          partyName: partiesTable.name,
+          summary: gameSessionsTable.summary,
+          startedAt: gameSessionsTable.startedAt,
+          endedAt: gameSessionsTable.endedAt,
+        })
+          .from(gameSessionsTable)
+          .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+          .where(eq(gameSessionsTable.isActive, false))
+          .orderBy(desc(gameSessionsTable.endedAt))
+          .limit(1);
+
+        bestSession = fallbackRows[0] ?? null;
+      }
+
+      sessionRow = bestSession;
+    }
+
+    if (!sessionRow) {
+      return c.json({ featured: null });
+    }
+
+    // Fetch party members for this session's party
+    const members = await db.select({
+      id: charactersTable.id,
+      name: charactersTable.name,
+      class: charactersTable.class,
+      level: charactersTable.level,
+      avatarUrl: charactersTable.avatarUrl,
+    })
+      .from(charactersTable)
+      .where(eq(charactersTable.partyId, sessionRow.partyId));
+
+    // Fetch the best narration excerpt (longest narration = most dramatic)
+    const narrationRows = await db.select({
+      content: narrationsTable.content,
+    })
+      .from(narrationsTable)
+      .where(eq(narrationsTable.sessionId, sessionRow.id))
+      .orderBy(sql`length(${narrationsTable.content}) DESC`)
+      .limit(1);
+
+    let excerpt: string | null = narrationRows[0]?.content ?? null;
+
+    // Fallback: look for narration-type session events
+    if (!excerpt) {
+      const narrationEventRows = await db.select({
+        data: sessionEventsTable.data,
+      })
+        .from(sessionEventsTable)
+        .where(and(
+          eq(sessionEventsTable.sessionId, sessionRow.id),
+          eq(sessionEventsTable.type, "narration"),
+        ))
+        .orderBy(sql`length(cast(${sessionEventsTable.data}->>'text' as text)) DESC`)
+        .limit(1);
+
+      excerpt = (narrationEventRows[0]?.data as Record<string, unknown>)?.text as string ?? null;
+    }
+
+    // Truncate excerpt to ~300 chars for display
+    if (excerpt && excerpt.length > 300) {
+      excerpt = excerpt.substring(0, 297) + "...";
+    }
+
+    return c.json({
+      featured: {
+        sessionId: sessionRow.id,
+        partyId: sessionRow.partyId,
+        partyName: sessionRow.partyName ?? null,
+        title: sanitizeSummaryForPublic(sessionRow.summary ?? null) ?? "Dungeon Exploration Session",
+        members: members.map((m) => ({
+          id: m.id,
+          name: m.name,
+          class: m.class,
+          level: m.level,
+          avatarUrl: m.avatarUrl ?? null,
+        })),
+        excerpt,
+        startedAt: sessionRow.startedAt.toISOString(),
+        endedAt: sessionRow.endedAt ? sessionRow.endedAt.toISOString() : null,
+      },
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch featured session:", err);
+    return c.json({ featured: null });
+  }
+});
+
 // --- Campaigns ---
 
 // GET /spectator/campaigns — list all active campaigns
