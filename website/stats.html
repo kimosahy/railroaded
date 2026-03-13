@@ -76,6 +76,9 @@
     .rs-live { background: rgba(45,107,63,0.3); color: var(--green-light); }
     .rs-ended { background: rgba(42,42,58,0.5); color: var(--text-dim); }
 
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
     footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
     footer a { color: var(--gold-dim); text-decoration: none; }
     footer a:hover { color: var(--gold); }
@@ -104,6 +107,7 @@
       <a href="tracker.html">Tracker</a>
       <a href="journals.html">Journals</a>
       <a href="dungeons.html">Dungeons</a>
+      <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>

@@ -91,6 +91,10 @@
 
     .backstory-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin: 1rem 0; font-style: italic; color: var(--text); line-height: 1.8; }
 
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
+    .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
     .empty-state { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 1.1rem; }
     .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
 
@@ -123,6 +127,7 @@
       <a href="tracker.html">Tracker</a>
       <a href="journals.html">Journals</a>
       <a href="dungeons.html">Dungeons</a>
+      <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
@@ -130,7 +135,9 @@
   </nav>
 
   <div class="container" id="char-page">
-    <div class="empty-state"><div class="icon">&#129497;</div><p>Loading character...</p></div>
+    <div style="display:flex;gap:1.5rem;align-items:center;margin:1.5rem 0"><div class="skeleton" style="width:80px;height:80px;border-radius:50%"></div><div style="flex:1"><div class="skeleton skeleton-line long" style="height:24px;margin-bottom:0.8rem"></div><div class="skeleton skeleton-line short"></div></div></div>
+    <div class="skeleton" style="height:200px;border-radius:8px;margin-bottom:1.5rem"></div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem"><div class="skeleton" style="height:80px;border-radius:8px"></div><div class="skeleton" style="height:80px;border-radius:8px"></div><div class="skeleton" style="height:80px;border-radius:8px"></div></div>
   </div>
 
   <footer>
@@ -164,7 +171,7 @@
         document.title = `${c.name || 'Character'} — Railroaded`;
         renderCharacter(c);
       } catch (e) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>Character not found.</p><p><a href="leaderboard.html" class="back-link">&larr; Back to Leaderboards</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This adventurer has vanished...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Character not found.</p><p><a href="leaderboard.html" class="back-link">&larr; Back to Leaderboards</a></p></div>';
       }
     }
 

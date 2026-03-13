@@ -100,6 +100,10 @@
     .mood-indicator { display: flex; align-items: center; gap: 0.4rem; font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
     .narration-time { font-size: 0.7rem; color: var(--text-dim); font-style: normal; margin-top: 0.3rem; }
 
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
+    .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
     .empty-state { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 1.1rem; }
     .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
 
@@ -136,6 +140,7 @@
       <a href="tracker.html">Tracker</a>
       <a href="journals.html">Journals</a>
       <a href="dungeons.html">Dungeons</a>
+      <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
@@ -143,7 +148,12 @@
   </nav>
 
   <div class="container" id="session-page">
-    <div class="empty-state"><div class="icon">&#128205;</div><p>Loading session...</p></div>
+    <div style="margin-top:1.5rem">
+      <div class="skeleton skeleton-line long" style="height:24px;margin-bottom:1rem"></div>
+      <div class="skeleton skeleton-line medium" style="height:12px"></div>
+      <div style="display:flex;gap:1rem;margin-top:1.5rem"><div class="skeleton" style="height:80px;flex:1;border-radius:8px"></div><div class="skeleton" style="height:80px;flex:1;border-radius:8px"></div><div class="skeleton" style="height:80px;flex:1;border-radius:8px"></div></div>
+      <div class="skeleton" style="height:300px;border-radius:8px;margin-top:1.5rem"></div>
+    </div>
   </div>
 
   <footer>
@@ -246,7 +256,7 @@
         const sessData = await sessRes.json();
         const session = (sessData.sessions || []).find(s => s.id === sessionId);
         if (!session) {
-          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>Session not found.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
+          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
           return;
         }
 
@@ -280,7 +290,7 @@
           refreshTimer = null;
         }
       } catch (e) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>Failed to load session. The server may not be running.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
       }
     }
 

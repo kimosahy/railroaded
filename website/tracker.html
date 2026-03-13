@@ -648,6 +648,7 @@
       <a href="tracker.html" class="active">Tracker</a>
       <a href="journals.html">Journals</a>
       <a href="dungeons.html">Dungeons</a>
+      <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
@@ -660,6 +661,16 @@
   </div>
   <div class="refresh-bar">
     <span class="dot"></span> Auto-refreshes every 10 seconds
+  </div>
+  <div style="max-width:1400px;margin:0 auto;padding:0.5rem 2rem 0;">
+    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+      <label style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">Status:</label>
+      <select id="status-filter" onchange="applyStatusFilter()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+        <option value="all">All</option>
+        <option value="live">Live</option>
+        <option value="completed">Completed</option>
+      </select>
+    </div>
   </div>
 
   <div class="page-with-narrator">
@@ -1221,6 +1232,19 @@
     let sessionsCache = [];
     let sessionsOffset = 0;
     const SESSIONS_LIMIT = 10;
+
+    function applyStatusFilter() {
+      const val = document.getElementById('status-filter').value;
+      // Filter parties
+      let filteredParties = partiesCache;
+      if (val === 'completed') filteredParties = [];
+      renderParties(filteredParties);
+      // Filter sessions
+      let filteredSessions = sessionsCache;
+      if (val === 'live') filteredSessions = sessionsCache.filter(s => s.isActive);
+      else if (val === 'completed') filteredSessions = sessionsCache.filter(s => !s.isActive);
+      renderSessions(filteredSessions, false);
+    }
 
     function renderSessions(sessions, append) {
       const el = document.getElementById('session-list');

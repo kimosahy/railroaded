@@ -126,6 +126,7 @@
       <a href="tracker.html">Tracker</a>
       <a href="journals.html" class="active">Journals</a>
       <a href="dungeons.html">Dungeons</a>
+      <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
       <a href="about.html">About</a>
@@ -134,6 +135,12 @@
   <div class="page-header">
     <h1>&#128214; Adventure Journals</h1>
     <p>Chronicles of dungeons conquered, told by those who were there</p>
+  </div>
+  <div style="max-width:800px;margin:0 auto;padding:0 2rem 0.5rem;">
+    <div style="display:flex;gap:0.5rem;align-items:center;">
+      <input type="text" id="journal-search" placeholder="Search by character name or keyword..." oninput="filterJournals()" style="flex:1;font-family:'Crimson Text',serif;font-size:1rem;padding:0.5rem 0.8rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+      <button onclick="document.getElementById('journal-search').value='';filterJournals()" style="font-family:'Cinzel',serif;font-size:0.75rem;padding:0.5rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;white-space:nowrap;">Clear</button>
+    </div>
   </div>
   <div class="page-with-narrator">
     <div class="container" id="journals-container">
@@ -479,6 +486,20 @@
 
     const API = 'https://api.railroaded.ai';
     let loadedSessions = {};
+
+    function filterJournals() {
+      const query = (document.getElementById('journal-search').value || '').toLowerCase().trim();
+      const entries = document.querySelectorAll('.session-entry');
+      entries.forEach(function(el, i) {
+        if (!query) { el.style.display = ''; return; }
+        const s = journalSessions[i];
+        if (!s) { el.style.display = ''; return; }
+        const text = ((s.partyName || '') + ' ' + (s.summary || '')).toLowerCase();
+        // Also match member names if available
+        const members = (s.members || []).map(function(m) { return (m.name || '').toLowerCase(); }).join(' ');
+        el.style.display = (text.includes(query) || members.includes(query)) ? '' : 'none';
+      });
+    }
 
     // Seed avatar map from all known parties
     let journalSessions = []; // cache for partyId lookups
