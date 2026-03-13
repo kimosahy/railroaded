@@ -47,6 +47,7 @@
     .session-entry { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 1.2rem; overflow: hidden; }
     .session-header { padding: 1.2rem 1.5rem; cursor: pointer; transition: background 0.2s; display: flex; justify-content: space-between; align-items: center; }
     .session-header:hover { background: var(--bg-card-hover); }
+    button.session-header { font: inherit; color: inherit; text-align: left; border: none; background: none; width: 100%; }
     .s-party { font-family: 'Cinzel', serif; font-size: 1.15rem; color: var(--gold-light); }
     .s-meta { font-size: 0.85rem; color: var(--text-dim); margin-top: 0.2rem; }
     .s-toggle { font-family: 'Cinzel', serif; font-size: 0.8rem; color: var(--gold-dim); white-space: nowrap; padding-left: 1rem; }
@@ -428,6 +429,13 @@
     }
 
 
+    function sanitizeSessionDescription(desc) {
+      if (!desc) return 'Dungeon Exploration Session';
+      const qaPatterns = /\bB\d{3}\b|VERIFIED|BROKEN|Quick test|endpoint test|Quick skeleton|skeleton test|QA|test session/i;
+      if (qaPatterns.test(desc)) return 'Dungeon Exploration Session';
+      return desc;
+    }
+
     const API = 'https://api.railroaded.ai';
     let loadedSessions = {};
 
@@ -461,14 +469,14 @@
           const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Unknown date';
           const active = s.isActive ? ' <span style="color:var(--green-light);font-size:0.8rem">&#9679; Live</span>' : '';
           return `<div class="session-entry">
-            <div class="session-header" onclick="toggleSession('${s.id}', this)">
+            <button class="session-header" onclick="toggleSession('${s.id}', this)" aria-expanded="false" aria-controls="session-content-${s.id}" type="button">
               <div>
                 <div class="s-party">${esc(s.partyName || 'Unknown Party')}${active}</div>
-                <div class="s-meta">${date} &bull; ${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}${s.summary ? ' &bull; ' + esc(s.summary).substring(0, 80) + (s.summary.length > 80 ? '...' : '') : ''}</div>
+                <div class="s-meta">${date} &bull; ${s.eventCount || 0} ${(s.eventCount || 0) === 1 ? 'event' : 'events'}${s.summary ? ' &bull; ' + esc(sanitizeSessionDescription(s.summary)).substring(0, 80) + (sanitizeSessionDescription(s.summary).length > 80 ? '...' : '') : ''}</div>
               </div>
               <div class="s-toggle">&#9660; Expand</div>
-            </div>
-            <div class="session-events" id="events-${s.id}"></div>
+            </button>
+            <div class="session-events" id="session-content-${s.id}"></div>
           </div>`;
         }).join('');
       } catch (e) {
@@ -477,12 +485,13 @@
     }
 
     async function toggleSession(id, headerEl) {
-      const eventsEl = document.getElementById('events-' + id);
+      const eventsEl = document.getElementById('session-content-' + id);
       const toggleEl = headerEl.querySelector('.s-toggle');
 
       if (eventsEl.classList.contains('open')) {
         eventsEl.classList.remove('open');
         toggleEl.innerHTML = '&#9660; Expand';
+        headerEl.setAttribute('aria-expanded', 'false');
         activeNarratorSessionId = null;
         loadNarrations(); // revert to global feed
         return;
@@ -490,6 +499,7 @@
 
       eventsEl.classList.add('open');
       toggleEl.innerHTML = '&#9650; Collapse';
+      headerEl.setAttribute('aria-expanded', 'true');
       activeNarratorSessionId = id;
       loadNarrations(id); // load session-specific narrations
 
