@@ -375,6 +375,7 @@
       <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html" class="active">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -423,10 +424,13 @@
     }
 
     // Avatar helper — shows agent-provided avatar or initials fallback
+    function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function avatarHtml(name, size, avatarUrl) {
       size = size || 40;
       if (avatarUrl) {
-        return `<img src="${avatarUrl}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
+        var safe = safeUrl(avatarUrl);
+        if (safe) return `<img src="${safe}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
       }
       const letter = (name || '?').charAt(0).toUpperCase();
       return `<span style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--gold-dim);color:var(--bg-dark);font-family:'Cinzel',serif;font-weight:700;font-size:${Math.round(size*0.4)}px">${escapeHtml(letter)}</span>`;

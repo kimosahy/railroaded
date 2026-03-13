@@ -654,6 +654,7 @@
       <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -766,11 +767,14 @@
     function avatarImg(name, size, avatarUrl) {
       size = size || 36;
       if (avatarUrl) {
-        return `<img src="${avatarUrl}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
+        var safe = safeUrl(avatarUrl);
+        if (safe) return `<img src="${safe}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
       }
       return initials(name);
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
 
     function phaseClass(p) {
@@ -791,10 +795,11 @@
       const col = charColor(m.name);
       const pct = hpPercent(m.hpCurrent, m.hpMax);
       const url = charAvatar(m.name) || m.avatarUrl || null;
-      const avatarContent = url
-        ? `<img src="${esc(url)}" alt="" width="48" height="48" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+      const safeAvatarUrl = url ? safeUrl(url) : '';
+      const avatarContent = safeAvatarUrl
+        ? `<img src="${safeAvatarUrl}" alt="" width="48" height="48" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
         : initials(m.name);
-      const avatarBg = url ? 'transparent' : col;
+      const avatarBg = safeAvatarUrl ? 'transparent' : col;
       const desc = m.description ? esc(m.description) : '<span style="opacity:0.5">No description.</span>';
       const xpLine = m.xp != null ? ` &bull; ${m.xp} XP` : '';
       return `<div class="member-card" role="button" tabindex="0" aria-label="${esc(m.name)} details" onclick="this.classList.toggle('expanded')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('expanded')}">
@@ -855,10 +860,11 @@
       const name = d.speakerName || 'Unknown';
       const col = charColor(name);
       const url = charAvatar(name) || d.avatarUrl || null;
-      const avatarContent = url
-        ? `<img src="${esc(url)}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
+      const safeChatUrl = url ? safeUrl(url) : '';
+      const avatarContent = safeChatUrl
+        ? `<img src="${safeChatUrl}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
         : initials(name);
-      const avatarBg = url ? 'transparent' : col;
+      const avatarBg = safeChatUrl ? 'transparent' : col;
       return `<div class="ev ev-chat">
         <div class="avatar" style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
@@ -1538,7 +1544,8 @@
       const panel = document.getElementById('narrator-panel');
       if (!panel) return;
       panel.querySelectorAll('.narrator-avatar-fallback').forEach(el => {
-        el.outerHTML = `<img class="narrator-avatar" src="${esc(url)}" alt="" loading="lazy">`;
+        var safe = safeUrl(url); if (!safe) return;
+        el.outerHTML = `<img class="narrator-avatar" src="${safe}" alt="" loading="lazy">`;
       });
     }
 
@@ -1705,7 +1712,7 @@
     function shareSession(sessionId, e) {
       e.stopPropagation();
       const url = `${window.location.origin}/tracker.html?session=${sessionId}`;
-      navigator.clipboard.writeText(url).then(() => showToast('Link copied!'));
+      navigator.clipboard.writeText(url).then(() => showToast('Link copied!')).catch(() => showToast('Copy failed — use Ctrl+C'));
     }
 
     // Deep link: scroll to session if ?session= param present

@@ -877,6 +877,7 @@
       <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -1581,7 +1582,7 @@
         var btn = document.getElementById('copy-referral-btn');
         btn.textContent = 'Copied!';
         setTimeout(function() { btn.innerHTML = '&#128203; Copy'; }, 2000);
-      });
+      }).catch(function() {});
     }
 
     function copyCommand() {
@@ -1590,7 +1591,7 @@
         const btn = document.querySelector('.copy-btn');
         btn.textContent = 'Copied!';
         setTimeout(() => btn.textContent = 'Copy', 2000);
-      });
+      }).catch(() => {});
     }
   </script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}</script>

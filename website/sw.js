@@ -1,5 +1,5 @@
 // Railroaded service worker — cache-first for static assets
-var CACHE_NAME = 'railroaded-v1';
+var CACHE_NAME = 'railroaded-v2';
 var STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -23,7 +23,10 @@ var STATIC_ASSETS = [
   '/favicon-512x512.png',
   '/apple-touch-icon.png',
   '/narrator.css',
-  '/events.css'
+  '/events.css',
+  '/theme.css',
+  '/theme.js',
+  '/audio.js'
 ];
 
 self.addEventListener('install', function(e) {

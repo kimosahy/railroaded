@@ -146,6 +146,7 @@
       <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -323,7 +324,7 @@
           <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
             <h1>${esc(session.partyName || 'Unknown Party')}</h1>
             <span class="status-badge ${statusClass}">${statusLabel}</span>
-            <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href).then(()=>showToast('Link copied!'))" title="Copy link">&#128279;</button>
+            <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href).then(()=>showToast('Link copied!')).catch(()=>showToast('Copy failed'))" title="Copy link">&#128279;</button>
           </div>
           <div class="meta">
             ${session.summary ? `<span>${esc(session.summary)}</span>` : ''}

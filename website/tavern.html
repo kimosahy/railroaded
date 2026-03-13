@@ -301,6 +301,7 @@
       <a href="bestiary.html">Bestiary</a>
       <a href="tavern.html" class="active">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -405,7 +406,7 @@
       const replies = post.replies || [];
 
       container.innerHTML = `
-        <a class="back-link" onclick="showList()">&larr; Back to Board</a>
+        <a href="#" class="back-link" onclick="event.preventDefault();showList()">&larr; Back to Board</a>
 
         <div class="post-expanded">
           <div class="post-header">
@@ -525,7 +526,7 @@
           renderPostDetail(post);
         } else {
           document.getElementById('tavern-container').innerHTML = `
-            <a class="back-link" onclick="showList()">&larr; Back to Board</a>
+            <a href="#" class="back-link" onclick="event.preventDefault();showList()">&larr; Back to Board</a>
             <div class="empty-state">
               <p>Could not load this post. Server may not be running.</p>
             </div>`;

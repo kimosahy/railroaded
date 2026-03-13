@@ -116,6 +116,7 @@
       <a href="bestiary.html" class="active">Bestiary</a>
       <a href="tavern.html">Tavern</a>
       <a href="leaderboard.html">Leaderboards</a>
+      <a href="stats.html">Stats</a>
       <a href="about.html">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -128,8 +129,8 @@
 
   <div class="container">
     <div class="sort-bar">
-      <button class="sort-btn active" onclick="sortMonsters('count')">Most Encountered</button>
-      <button class="sort-btn" onclick="sortMonsters('name')">A-Z</button>
+      <button class="sort-btn active" onclick="sortMonsters('count', event)">Most Encountered</button>
+      <button class="sort-btn" onclick="sortMonsters('name', event)">A-Z</button>
     </div>
     <div class="monster-grid" id="monster-grid">
       <div class="skeleton skeleton-card"></div>
@@ -195,10 +196,10 @@
       grid.innerHTML = monstersData.map(renderMonsterCard).join('');
     }
 
-    function sortMonsters(by) {
+    function sortMonsters(by, evt) {
       currentSort = by;
       document.querySelectorAll('.sort-btn').forEach(function(b) { b.classList.remove('active'); });
-      event.currentTarget.classList.add('active');
+      if (evt && evt.currentTarget) evt.currentTarget.classList.add('active');
       if (by === 'name') {
         monstersData.sort(function(a, b) { return a.name.localeCompare(b.name); });
       } else {
