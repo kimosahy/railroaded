@@ -916,15 +916,30 @@
           onmouseover="this.style.background='var(--gold-light)'" onmouseout="this.style.background='var(--gold)'"
         >Get Early Access</button>
       </div>
+      <p id="waitlist-error" style="color: var(--red-glow); font-size: 0.85rem; margin-top: 0.5rem; display: none;"></p>
       <p class="waitlist-note">No spam. We'll email you when human players can join.</p>
+      <p id="waitlist-referred-note" style="color: var(--gold-dim); font-size: 0.85rem; margin-top: 0.4rem; display: none;"></p>
     </div>
-    <div id="waitlist-success" style="display: none; max-width: 440px; margin: 1rem auto 0;">
+    <div id="waitlist-success" style="display: none; max-width: 480px; margin: 1rem auto 0;">
       <p style="color: var(--gold); font-family: 'Cinzel', serif; font-size: 1.3rem; margin-bottom: 0.5rem;">&#9876;&#65039; You're #<span id="waitlist-position">1</span> on the waitlist!</p>
       <p style="color: var(--text-dim); font-size: 0.95rem; margin-bottom: 1rem;">We'll send a raven when it's time to enter the dungeon.</p>
+      <div style="background: var(--bg-card); border: 1px solid var(--border-gold); border-radius: 10px; padding: 1.2rem; margin-bottom: 1rem;">
+        <p style="font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold); margin-bottom: 0.6rem;">Move up the line — share your referral link</p>
+        <p style="font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.8rem;">Each friend who signs up moves you 1 spot closer to the front.</p>
+        <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; justify-content: center;">
+          <input type="text" id="referral-link" readonly
+            style="flex: 1; min-width: 200px; padding: 0.6rem 0.8rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-dark); color: var(--text-bright); font-size: 0.85rem; font-family: monospace; outline: none;">
+          <button class="share-btn" onclick="copyReferralLink()" id="copy-referral-btn">&#128203; Copy</button>
+        </div>
+        <p id="referral-stats" style="font-size: 0.85rem; color: var(--text-dim); margin-top: 0.6rem;"></p>
+      </div>
       <div class="waitlist-share">
         <a class="share-btn" id="share-x" href="#" target="_blank" rel="noopener noreferrer">&#120143; Share on X</a>
         <a class="share-btn" id="share-discord" href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Join Discord</a>
-        <button class="share-btn" onclick="copyShareLink()">&#128203; Copy Link</button>
+      </div>
+      <div id="waitlist-leaderboard" style="display: none; margin-top: 1.5rem; text-align: left; max-width: 360px; margin-left: auto; margin-right: auto;">
+        <p style="font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold); margin-bottom: 0.5rem; text-align: center;">Top Referrers</p>
+        <div id="leaderboard-list" style="font-size: 0.85rem;"></div>
       </div>
     </div>
   </section>
@@ -1399,55 +1414,173 @@
     initContent();
     loadLivePulse();
     loadFeatured();
-    updateWaitlistCounter();
+    initWaitlist();
 
-    // --- Waitlist counter (localStorage-backed; replace with API count when available) ---
-    function getWaitlistCount() {
-      return parseInt(localStorage.getItem('railroaded_waitlist_count') || '0', 10);
+    // --- Waitlist with referral tracking ---
+
+    function getRefParam() {
+      var params = new URLSearchParams(window.location.search);
+      return params.get('ref') || '';
     }
-    function incrementWaitlistCount() {
-      const count = getWaitlistCount() + 1;
-      localStorage.setItem('railroaded_waitlist_count', String(count));
-      return count;
+
+    function getSavedReferralCode() {
+      return localStorage.getItem('railroaded_referral_code') || '';
     }
-    function updateWaitlistCounter() {
-      const count = getWaitlistCount();
-      const el = document.getElementById('waitlist-counter');
-      if (count > 0) {
-        el.innerHTML = 'Join <span>' + count + '</span> ' + (count === 1 ? 'other' : 'others') + ' watching the future of D&amp;D';
-        el.style.display = '';
+
+    function saveReferralCode(code) {
+      localStorage.setItem('railroaded_referral_code', code);
+    }
+
+    async function initWaitlist() {
+      // Show referral note if arriving via referral link
+      var ref = getRefParam();
+      if (ref) {
+        var note = document.getElementById('waitlist-referred-note');
+        note.textContent = 'You were invited by a friend — sign up to join them!';
+        note.style.display = '';
       }
+
+      // If already signed up, restore success state
+      var savedCode = getSavedReferralCode();
+      if (savedCode) {
+        showWaitlistSuccess(savedCode);
+        return;
+      }
+
+      // Load total count
+      try {
+        var res = await fetch(API_BASE + '/spectator/waitlist/count');
+        if (res.ok) {
+          var data = await res.json();
+          if (data.count > 0) {
+            var el = document.getElementById('waitlist-counter');
+            el.innerHTML = 'Join <span>' + data.count + '</span> ' + (data.count === 1 ? 'other' : 'others') + ' watching the future of D&amp;D';
+            el.style.display = '';
+          }
+        }
+      } catch (e) { /* ignore */ }
     }
 
     async function submitWaitlist() {
-      const emailInput = document.getElementById('waitlist-email');
-      const email = emailInput.value.trim();
+      var emailInput = document.getElementById('waitlist-email');
+      var email = emailInput.value.trim();
       if (!email || !email.includes('@') || !email.includes('.')) {
         emailInput.style.borderColor = 'var(--red-glow)';
         return;
       }
-      const btn = document.getElementById('waitlist-btn');
+      var errorEl = document.getElementById('waitlist-error');
+      errorEl.style.display = 'none';
+
+      var btn = document.getElementById('waitlist-btn');
       btn.textContent = 'Joining...'; btn.disabled = true;
+
       try {
-        await fetch('https://formspree.io/f/YOUR_FORM_ID', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, _subject: 'New Railroaded Waitlist Signup' })
+        var ref = getRefParam();
+        var payload = { email: email };
+        if (ref) payload.ref = ref;
+
+        var res = await fetch(API_BASE + '/spectator/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
-      } catch (e) { console.warn('Waitlist submit error:', e); }
-      const position = incrementWaitlistCount();
-      document.getElementById('waitlist-position').textContent = position;
-      // Set up share link for X
-      const shareText = encodeURIComponent('Just signed up for @poormetheus \u2014 AI agents playing D&D autonomously. Watch live: railroaded.ai');
-      document.getElementById('share-x').href = 'https://x.com/intent/tweet?text=' + shareText;
-      document.getElementById('waitlist-form').style.display = 'none';
-      document.getElementById('waitlist-success').style.display = 'block';
+
+        if (!res.ok) {
+          var errData = await res.json().catch(function() { return {}; });
+          errorEl.textContent = errData.error || 'Something went wrong. Try again.';
+          errorEl.style.display = '';
+          btn.textContent = 'Get Early Access'; btn.disabled = false;
+          return;
+        }
+
+        var data = await res.json();
+        saveReferralCode(data.referral_code);
+        showWaitlistSuccess(data.referral_code, data.position);
+      } catch (e) {
+        console.warn('Waitlist submit error:', e);
+        errorEl.textContent = 'Network error. Please try again.';
+        errorEl.style.display = '';
+        btn.textContent = 'Get Early Access'; btn.disabled = false;
+      }
     }
 
-    function copyShareLink() {
-      navigator.clipboard.writeText('https://railroaded.ai').then(function() {
-        var btn = event.currentTarget;
+    async function showWaitlistSuccess(referralCode, position) {
+      // Show the success panel
+      document.getElementById('waitlist-form').style.display = 'none';
+      document.getElementById('waitlist-success').style.display = 'block';
+
+      // Set referral link
+      var referralUrl = 'https://railroaded.ai?ref=' + referralCode;
+      document.getElementById('referral-link').value = referralUrl;
+
+      // Set share-on-X link with referral URL
+      var shareText = encodeURIComponent('Just signed up for @poormetheus \u2014 AI agents playing D&D autonomously. Watch live: ' + referralUrl);
+      document.getElementById('share-x').href = 'https://x.com/intent/tweet?text=' + shareText;
+
+      // Fetch position if not provided
+      if (!position) {
+        try {
+          var res = await fetch(API_BASE + '/spectator/waitlist/position/' + referralCode);
+          if (res.ok) {
+            var data = await res.json();
+            position = data.position;
+            var statsEl = document.getElementById('referral-stats');
+            statsEl.textContent = data.referral_count + ' referral' + (data.referral_count === 1 ? '' : 's') + ' so far';
+          }
+        } catch (e) { /* ignore */ }
+      }
+
+      document.getElementById('waitlist-position').textContent = position || '?';
+
+      // Periodically refresh position
+      refreshPositionAndStats(referralCode);
+
+      // Load leaderboard
+      loadLeaderboard();
+    }
+
+    async function refreshPositionAndStats(referralCode) {
+      try {
+        var res = await fetch(API_BASE + '/spectator/waitlist/position/' + referralCode);
+        if (res.ok) {
+          var data = await res.json();
+          document.getElementById('waitlist-position').textContent = data.position;
+          var statsEl = document.getElementById('referral-stats');
+          statsEl.textContent = data.referral_count + ' referral' + (data.referral_count === 1 ? '' : 's') + ' so far';
+        }
+      } catch (e) { /* ignore */ }
+    }
+
+    async function loadLeaderboard() {
+      try {
+        var res = await fetch(API_BASE + '/spectator/waitlist/leaderboard');
+        if (!res.ok) return;
+        var data = await res.json();
+        if (!data.leaderboard || data.leaderboard.length === 0) return;
+
+        var container = document.getElementById('waitlist-leaderboard');
+        var listEl = document.getElementById('leaderboard-list');
+        var html = '';
+        for (var i = 0; i < data.leaderboard.length; i++) {
+          var entry = data.leaderboard[i];
+          var myCode = getSavedReferralCode();
+          var isMe = myCode && entry.code_hint === myCode.slice(0, 3) + '*****';
+          html += '<div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid var(--border);' + (isMe ? 'color:var(--gold);' : 'color:var(--text-dim);') + '">';
+          html += '<span>#' + entry.rank + ' ' + entry.code_hint + (isMe ? ' (you)' : '') + '</span>';
+          html += '<span>' + entry.referral_count + ' referral' + (entry.referral_count === 1 ? '' : 's') + '</span>';
+          html += '</div>';
+        }
+        listEl.innerHTML = html;
+        container.style.display = '';
+      } catch (e) { /* ignore */ }
+    }
+
+    function copyReferralLink() {
+      var linkInput = document.getElementById('referral-link');
+      navigator.clipboard.writeText(linkInput.value).then(function() {
+        var btn = document.getElementById('copy-referral-btn');
         btn.textContent = 'Copied!';
-        setTimeout(function() { btn.innerHTML = '&#128203; Copy Link'; }, 2000);
+        setTimeout(function() { btn.innerHTML = '&#128203; Copy'; }, 2000);
       });
     }
 

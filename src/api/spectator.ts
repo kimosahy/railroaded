@@ -24,6 +24,7 @@ import {
   dmStats as dmStatsTable,
   campaignTemplates as campaignTemplatesTable,
   rooms as roomsTable,
+  waitlistSignups as waitlistSignupsTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg } from "drizzle-orm";
 
@@ -2072,6 +2073,202 @@ ${entries.join("\n")}
 </feed>`;
     c.header("Content-Type", "application/atom+xml; charset=UTF-8");
     return c.body(fallback);
+  }
+});
+
+// ============================
+// Waitlist with referral tracking
+// ============================
+
+/** Generate a short unique referral code (8 chars, alphanumeric). */
+function generateReferralCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  let code = "";
+  for (let i = 0; i < 8; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+/** POST /waitlist — sign up for the waitlist, optionally with a referral code. */
+spectator.post("/waitlist", async (c) => {
+  try {
+    const body = await c.req.json<{ email: string; ref?: string }>();
+    const email = body.email?.trim().toLowerCase();
+    if (!email || !email.includes("@") || !email.includes(".")) {
+      return c.json({ error: "Invalid email address" }, 400);
+    }
+
+    // Check for existing signup
+    const existing = await db
+      .select({ id: waitlistSignupsTable.id, referralCode: waitlistSignupsTable.referralCode })
+      .from(waitlistSignupsTable)
+      .where(eq(waitlistSignupsTable.email, email))
+      .limit(1);
+
+    if (existing.length > 0) {
+      // Already signed up — return their existing referral code
+      const position = await getWaitlistPosition(existing[0].referralCode);
+      return c.json({
+        already_registered: true,
+        referral_code: existing[0].referralCode,
+        position,
+      });
+    }
+
+    // Validate referral code if provided
+    let referredBy: string | null = null;
+    if (body.ref) {
+      const referrer = await db
+        .select({ id: waitlistSignupsTable.id, referralCode: waitlistSignupsTable.referralCode })
+        .from(waitlistSignupsTable)
+        .where(eq(waitlistSignupsTable.referralCode, body.ref))
+        .limit(1);
+      if (referrer.length > 0) {
+        referredBy = body.ref;
+      }
+    }
+
+    // Generate unique referral code
+    let referralCode = generateReferralCode();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const clash = await db
+        .select({ id: waitlistSignupsTable.id })
+        .from(waitlistSignupsTable)
+        .where(eq(waitlistSignupsTable.referralCode, referralCode))
+        .limit(1);
+      if (clash.length === 0) break;
+      referralCode = generateReferralCode();
+    }
+
+    // Insert new signup
+    await db.insert(waitlistSignupsTable).values({
+      email,
+      referralCode,
+      referredBy,
+    });
+
+    // Increment referrer's count
+    if (referredBy) {
+      await db
+        .update(waitlistSignupsTable)
+        .set({
+          referralCount: sql`${waitlistSignupsTable.referralCount} + 1`,
+        })
+        .where(eq(waitlistSignupsTable.referralCode, referredBy));
+    }
+
+    const position = await getWaitlistPosition(referralCode);
+
+    return c.json({
+      referral_code: referralCode,
+      position,
+    }, 201);
+  } catch (err) {
+    console.error("[WAITLIST] Signup error:", err);
+    return c.json({ error: "Failed to join waitlist" }, 500);
+  }
+});
+
+/** Compute waitlist position for a given referral code.
+ *  Position = (total signups) - (your referral count) clamped to >= 1.
+ *  People who refer more move up the line. */
+async function getWaitlistPosition(referralCode: string): Promise<number> {
+  const signup = await db
+    .select({
+      referralCount: waitlistSignupsTable.referralCount,
+      createdAt: waitlistSignupsTable.createdAt,
+    })
+    .from(waitlistSignupsTable)
+    .where(eq(waitlistSignupsTable.referralCode, referralCode))
+    .limit(1);
+
+  if (signup.length === 0) return -1;
+
+  // Count how many people signed up before this person
+  const [{ value: aheadCount }] = await db
+    .select({ value: count() })
+    .from(waitlistSignupsTable)
+    .where(sql`${waitlistSignupsTable.createdAt} < ${signup[0].createdAt}`);
+
+  // Base position = signup order (1-indexed)
+  const basePosition = aheadCount + 1;
+
+  // Each referral moves you up 1 position, minimum position is 1
+  const position = Math.max(1, basePosition - signup[0].referralCount);
+  return position;
+}
+
+/** GET /waitlist/position/:code — get position and referral stats. */
+spectator.get("/waitlist/position/:code", async (c) => {
+  try {
+    const code = c.req.param("code");
+    const signup = await db
+      .select({
+        referralCode: waitlistSignupsTable.referralCode,
+        referralCount: waitlistSignupsTable.referralCount,
+      })
+      .from(waitlistSignupsTable)
+      .where(eq(waitlistSignupsTable.referralCode, code))
+      .limit(1);
+
+    if (signup.length === 0) {
+      return c.json({ error: "Referral code not found" }, 404);
+    }
+
+    const position = await getWaitlistPosition(code);
+    const [{ value: totalCount }] = await db
+      .select({ value: count() })
+      .from(waitlistSignupsTable);
+
+    return c.json({
+      position,
+      referral_count: signup[0].referralCount,
+      total_signups: totalCount,
+    });
+  } catch (err) {
+    console.error("[WAITLIST] Position lookup error:", err);
+    return c.json({ error: "Failed to look up position" }, 500);
+  }
+});
+
+/** GET /waitlist/leaderboard — top 10 referrers. */
+spectator.get("/waitlist/leaderboard", async (c) => {
+  try {
+    const leaders = await db
+      .select({
+        referralCode: waitlistSignupsTable.referralCode,
+        referralCount: waitlistSignupsTable.referralCount,
+      })
+      .from(waitlistSignupsTable)
+      .where(sql`${waitlistSignupsTable.referralCount} > 0`)
+      .orderBy(desc(waitlistSignupsTable.referralCount))
+      .limit(10);
+
+    // Mask codes for privacy — show first 3 chars + "***"
+    const leaderboard = leaders.map((l, i) => ({
+      rank: i + 1,
+      code_hint: l.referralCode.slice(0, 3) + "*****",
+      referral_count: l.referralCount,
+    }));
+
+    return c.json({ leaderboard });
+  } catch (err) {
+    console.error("[WAITLIST] Leaderboard error:", err);
+    return c.json({ error: "Failed to load leaderboard" }, 500);
+  }
+});
+
+/** GET /waitlist/count — total waitlist signups (public stat). */
+spectator.get("/waitlist/count", async (c) => {
+  try {
+    const [{ value: totalCount }] = await db
+      .select({ value: count() })
+      .from(waitlistSignupsTable);
+    return c.json({ count: totalCount });
+  } catch (err) {
+    console.error("[WAITLIST] Count error:", err);
+    return c.json({ error: "Failed to get count" }, 500);
   }
 });
 

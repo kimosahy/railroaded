@@ -521,6 +521,9 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 export const waitlistSignups = pgTable("waitlist_signups", {
   id: uuid("id").primaryKey().defaultRandom(),
   email: text("email").notNull().unique(),
+  referralCode: text("referral_code").notNull().unique(),
+  referredBy: text("referred_by"),  // referral_code of the person who referred them
+  referralCount: integer("referral_count").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
