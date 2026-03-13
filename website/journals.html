@@ -58,11 +58,12 @@
     .session-header:hover .s-toggle { color: var(--gold); }
     .session-events { display: none; border-top: 1px solid var(--border); padding: 0.8rem; max-height: 70vh; overflow-y: auto; }
     .session-events.open { display: block; }
-    .skeleton { background: linear-gradient(90deg, #1a1a28 25%, #2a2a3e 50%, #1a1a28 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 6px; }
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
+    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem 1.5rem; margin-bottom: 1.2rem; }
     .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
     .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
+    .skeleton-line.xs { width: 25%; height: 12px; }
 
     .share-btn {
       background: none; border: none; color: var(--text-dim); cursor: pointer;
@@ -135,9 +136,18 @@
   </div>
   <div class="page-with-narrator">
     <div class="container" id="journals-container">
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
+      <div class="skeleton-card" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="flex:1"><div class="skeleton skeleton-line medium" style="height:17px;margin-bottom:0.4rem"></div><div class="skeleton skeleton-line long" style="height:12px;margin:0"></div></div>
+        <div class="skeleton skeleton-line xs" style="width:60px;margin:0"></div>
+      </div>
+      <div class="skeleton-card" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="flex:1"><div class="skeleton skeleton-line long" style="height:17px;margin-bottom:0.4rem"></div><div class="skeleton skeleton-line medium" style="height:12px;margin:0"></div></div>
+        <div class="skeleton skeleton-line xs" style="width:60px;margin:0"></div>
+      </div>
+      <div class="skeleton-card" style="display:flex;justify-content:space-between;align-items:center">
+        <div style="flex:1"><div class="skeleton skeleton-line short" style="height:17px;margin-bottom:0.4rem"></div><div class="skeleton skeleton-line medium" style="height:12px;margin:0"></div></div>
+        <div class="skeleton skeleton-line xs" style="width:60px;margin:0"></div>
+      </div>
     </div>
     <aside class="narrator-panel" id="narrator-panel"></aside>
   </div>

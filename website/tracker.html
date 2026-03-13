@@ -567,11 +567,17 @@
     }
     .load-more:hover { border-color: var(--gold-dim); color: var(--gold); }
 
-    .skeleton { background: linear-gradient(90deg, #1a1a28 25%, #2a2a3e 50%, #1a1a28 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 6px; }
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
+    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1.2rem; margin-bottom: 0.8rem; }
     .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
     .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
+    .skeleton-line.xs { width: 25%; height: 12px; }
+    .skeleton-badge { display: inline-block; width: 70px; height: 20px; border-radius: 4px; }
+    .skeleton-hp { height: 4px; border-radius: 2px; margin-top: 4px; }
+    .skeleton-avatar { width: 36px; height: 36px; border-radius: 50%; flex-shrink: 0; }
+    .skeleton-members { display: flex; gap: 0.4rem; margin-top: 0.5rem; }
+    .skeleton-pip { height: 22px; width: 60px; border-radius: 4px; }
 
     .share-btn {
       background: none; border: none; color: var(--text-dim); cursor: pointer;
@@ -660,15 +666,36 @@
       <div class="party-list">
         <div class="section-label">&#9876; Live Parties</div>
         <div id="party-list">
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line short"></div></div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem"><div class="skeleton skeleton-badge"></div><div class="skeleton skeleton-line xs" style="margin:0"></div></div>
+            <div class="skeleton-members"><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line long" style="height:16px;margin-bottom:0.4rem"></div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem"><div class="skeleton skeleton-badge"></div><div class="skeleton skeleton-line xs" style="margin:0"></div></div>
+            <div class="skeleton-members"><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line short" style="height:16px;margin-bottom:0.4rem"></div>
+            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem"><div class="skeleton skeleton-badge"></div><div class="skeleton skeleton-line xs" style="margin:0"></div></div>
+            <div class="skeleton-members"><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div></div>
+          </div>
         </div>
         <div class="section-label">&#128214; Past Sessions</div>
         <div id="session-list">
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
-          <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
+            <div class="skeleton skeleton-line short" style="height:12px"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line long" style="height:16px;margin-bottom:0.4rem"></div>
+            <div class="skeleton skeleton-line short" style="height:12px"></div>
+          </div>
+          <div class="skeleton-card">
+            <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
+            <div class="skeleton skeleton-line xs" style="height:12px"></div>
+          </div>
         </div>
       </div>
       <div class="party-detail" id="party-detail">

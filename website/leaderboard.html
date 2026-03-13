@@ -297,11 +297,16 @@
     footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
     footer a { color: var(--gold-dim); text-decoration: none; }
     footer a:hover { color: var(--gold); }
-    .skeleton { background: linear-gradient(90deg, #1a1a28 25%, #2a2a3e 50%, #1a1a28 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 6px; }
+    .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
-    .skeleton-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 1.2rem; margin-bottom: 1rem; }
     .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
     .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
+    .skeleton-avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
+    .skeleton-podium { display: flex; justify-content: center; align-items: flex-end; gap: 1.5rem; margin-bottom: 2rem; padding: 1rem 0; }
+    .skeleton-podium-bar { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px 8px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; padding: 1rem; min-width: 120px; }
+    .skeleton-table { width: 100%; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .skeleton-table-row { display: flex; align-items: center; gap: 1rem; padding: 0.8rem 1.2rem; border-bottom: 1px solid rgba(42,42,58,0.3); }
+    .skeleton-table-row:last-child { border-bottom: none; }
 
     @media (max-width: 768px) {
       .lb-table { min-width: unset !important; }
@@ -347,9 +352,9 @@
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
       .container { padding: 1rem 1rem 3rem; }
-      .podium { flex-direction: column; align-items: center; }
+      .podium, .skeleton-podium { flex-direction: column; align-items: center; }
       .podium-place { min-width: auto; width: 80%; }
-      .podium-bar { min-height: auto !important; flex-direction: row; gap: 1rem;
+      .podium-bar, .skeleton-podium-bar { min-height: auto !important; flex-direction: row; gap: 1rem;
         border-radius: 8px; padding: 0.8rem 1.2rem; justify-content: flex-start; }
       .lb-table { font-size: 0.9rem; }
       .lb-table thead th { padding: 0.5rem 0.8rem; }
@@ -385,9 +390,18 @@
     </div>
 
     <div id="leaderboard-content">
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div><div class="skeleton skeleton-line short"></div></div>
-      <div class="skeleton-card"><div class="skeleton skeleton-line long"></div><div class="skeleton skeleton-line medium"></div></div>
+      <div class="skeleton-podium">
+        <div class="skeleton-podium-bar" style="min-height:120px"><div class="skeleton skeleton-avatar" style="margin-bottom:0.5rem"></div><div class="skeleton skeleton-line" style="width:60px;margin-bottom:0.3rem"></div><div class="skeleton skeleton-line" style="width:40px;height:12px;margin:0"></div></div>
+        <div class="skeleton-podium-bar" style="min-height:160px;border-color:rgba(255,215,0,0.15)"><div class="skeleton skeleton-avatar" style="margin-bottom:0.5rem"></div><div class="skeleton skeleton-line" style="width:70px;margin-bottom:0.3rem"></div><div class="skeleton skeleton-line" style="width:45px;height:12px;margin:0"></div></div>
+        <div class="skeleton-podium-bar" style="min-height:90px"><div class="skeleton skeleton-avatar" style="margin-bottom:0.5rem"></div><div class="skeleton skeleton-line" style="width:55px;margin-bottom:0.3rem"></div><div class="skeleton skeleton-line" style="width:35px;height:12px;margin:0"></div></div>
+      </div>
+      <div class="skeleton-table">
+        <div class="skeleton-table-row"><div class="skeleton skeleton-line" style="width:24px;height:16px;margin:0"></div><div class="skeleton skeleton-avatar" style="width:36px;height:36px"></div><div style="flex:1"><div class="skeleton skeleton-line medium" style="margin-bottom:0.3rem"></div><div class="skeleton skeleton-line short" style="height:12px;margin:0"></div></div><div class="skeleton skeleton-line" style="width:50px;margin:0"></div></div>
+        <div class="skeleton-table-row"><div class="skeleton skeleton-line" style="width:24px;height:16px;margin:0"></div><div class="skeleton skeleton-avatar" style="width:36px;height:36px"></div><div style="flex:1"><div class="skeleton skeleton-line long" style="margin-bottom:0.3rem"></div><div class="skeleton skeleton-line short" style="height:12px;margin:0"></div></div><div class="skeleton skeleton-line" style="width:50px;margin:0"></div></div>
+        <div class="skeleton-table-row"><div class="skeleton skeleton-line" style="width:24px;height:16px;margin:0"></div><div class="skeleton skeleton-avatar" style="width:36px;height:36px"></div><div style="flex:1"><div class="skeleton skeleton-line medium" style="margin-bottom:0.3rem"></div><div class="skeleton skeleton-line short" style="height:12px;margin:0"></div></div><div class="skeleton skeleton-line" style="width:50px;margin:0"></div></div>
+        <div class="skeleton-table-row"><div class="skeleton skeleton-line" style="width:24px;height:16px;margin:0"></div><div class="skeleton skeleton-avatar" style="width:36px;height:36px"></div><div style="flex:1"><div class="skeleton skeleton-line short" style="margin-bottom:0.3rem"></div><div class="skeleton skeleton-line" style="width:30%;height:12px;margin:0"></div></div><div class="skeleton skeleton-line" style="width:50px;margin:0"></div></div>
+        <div class="skeleton-table-row"><div class="skeleton skeleton-line" style="width:24px;height:16px;margin:0"></div><div class="skeleton skeleton-avatar" style="width:36px;height:36px"></div><div style="flex:1"><div class="skeleton skeleton-line medium" style="margin-bottom:0.3rem"></div><div class="skeleton skeleton-line short" style="height:12px;margin:0"></div></div><div class="skeleton skeleton-line" style="width:50px;margin:0"></div></div>
+      </div>
     </div>
   </div>
 
