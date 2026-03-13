@@ -1495,6 +1495,34 @@
       img.src = NARRATOR_FALLBACK_AVATAR;
     })();
 
+    // Typewriter effect for new narrations only
+    function typewriter(el, text, speed) {
+      speed = speed || 25;
+      el.textContent = '';
+      let i = 0;
+      (function t() {
+        if (i < text.length) { el.textContent += text[i]; i++; setTimeout(t, speed); }
+      })();
+    }
+
+    function narrationVariantClass(content) {
+      if (!content) return '';
+      const lower = content.toLowerCase();
+      if (lower.includes('sword') || lower.includes('attack') || lower.includes('blood') || lower.includes('strike') || lower.includes('slash') || lower.includes('battle') || lower.includes('combat')) return 'narration-combat';
+      if (lower.includes('"') || lower.includes('\u201c') || lower.includes('says') || lower.includes('spoke') || lower.includes('whisper')) return 'narration-dialogue';
+      return 'narration-dm';
+    }
+
+    function getMoodIndicator() {
+      // Determine mood from selected party phase
+      const party = partiesCache.find(p => p.id === selectedId);
+      const phase = party ? (party.phase || '').toLowerCase() : '';
+      if (phase.includes('combat')) return '<span class="mood-icon">\u2694\uFE0F</span> Combat';
+      if (phase.includes('explor')) return '<span class="mood-icon">\uD83D\uDDFA\uFE0F</span> Exploring';
+      if (phase.includes('roleplay')) return '<span class="mood-icon">\uD83C\uDFAD</span> Roleplay';
+      return '';
+    }
+
     function renderNarratorPanel(narrations, opts) {
       const panel = document.getElementById('narrator-panel');
       if (!panel) return;
@@ -1509,8 +1537,11 @@
         </div>
       </div>`;
 
+      const mood = getMoodIndicator();
+      const moodHtml = mood ? `<div class="narrator-mood">${mood}</div>` : '';
+
       if (!narrations || narrations.length === 0) {
-        panel.innerHTML = `${header}
+        panel.innerHTML = `${header}${moodHtml}
           <div class="narrator-empty">
             ${narratorAvatarHtml()}
             <div class="narrator-empty-text">The narrator is silent... for now.</div>
@@ -1522,19 +1553,29 @@
         ? '<div class="narration-context">No narrations for this session. Latest from other adventures:</div>'
         : '';
 
+      const newNarrationIds = [];
       const entries = narrations.map(n => {
         const ago = narratorTimeAgo(new Date(n.createdAt));
+        const isNew = !lastNarrationIds.has(n.id);
+        if (isNew) newNarrationIds.push(n.id);
+        const variant = narrationVariantClass(n.content);
         const partyLabel = isFallback && n.partyName
           ? `<div class="narration-party">${esc(n.partyName)}</div>`
           : '';
-        return `<div class="narration-entry">
+        return `<div class="narration-entry ${variant}">
           ${partyLabel}
-          <div class="narration-prose">${esc(n.content)}</div>
+          <div class="narration-prose" ${isNew ? `data-typewrite="${esc(n.content)}"` : ''}>${isNew ? '' : esc(n.content)}</div>
           <div class="narration-time">${ago}</div>
         </div>`;
       }).join('');
 
-      panel.innerHTML = `${header}<div class="narrator-body">${contextLabel}${entries}</div>`;
+      panel.innerHTML = `${header}${moodHtml}<div class="narrator-body">${contextLabel}${entries}</div>`;
+
+      // Typewriter new narrations
+      panel.querySelectorAll('[data-typewrite]').forEach(el => {
+        typewriter(el, el.getAttribute('data-typewrite'));
+        el.removeAttribute('data-typewrite');
+      });
     }
 
     function narratorTimeAgo(date) {

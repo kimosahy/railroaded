@@ -94,6 +94,10 @@
     .narration-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-height: 70vh; overflow-y: auto; }
     .narration-panel h3 { font-family: 'Cinzel', serif; color: var(--gold); font-size: 1rem; margin-bottom: 0.8rem; }
     .narration-entry { font-style: italic; color: var(--text-bright); padding: 0.8rem; margin-bottom: 0.5rem; background: rgba(26,24,22,0.4); border-radius: 6px; border-left: 2px solid var(--gold-dim); font-size: 0.95rem; line-height: 1.6; }
+    .narration-dm { font-style: italic; background: rgba(201,168,76,0.04); }
+    .narration-combat { font-weight: 700; color: var(--red-glow); font-style: normal; }
+    .narration-dialogue { font-style: italic; }
+    .mood-indicator { display: flex; align-items: center; gap: 0.4rem; font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
     .narration-time { font-size: 0.7rem; color: var(--text-dim); font-style: normal; margin-top: 0.3rem; }
 
     .empty-state { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 1.1rem; }
@@ -208,8 +212,26 @@
       return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     }
 
+    // Typewriter effect for new narrations only
+    function typewriter(el, text, speed) {
+      speed = speed || 25;
+      el.textContent = '';
+      let i = 0;
+      (function t() {
+        if (i < text.length) { el.textContent += text[i]; i++; setTimeout(t, speed); }
+      })();
+    }
+    function narrationVariantClass(content) {
+      if (!content) return '';
+      const lower = content.toLowerCase();
+      if (lower.includes('sword') || lower.includes('attack') || lower.includes('blood') || lower.includes('strike') || lower.includes('battle') || lower.includes('combat')) return 'narration-combat';
+      if (lower.includes('"') || lower.includes('\u201c') || lower.includes('says') || lower.includes('spoke') || lower.includes('whisper')) return 'narration-dialogue';
+      return 'narration-dm';
+    }
+
     let memberMap = {};
     let refreshTimer = null;
+    let lastNarrationCount = 0;
 
     async function loadSession() {
       const page = document.getElementById('session-page');
@@ -323,17 +345,27 @@
 
           <div class="narration-panel">
             <h3>&#9998; Narrations</h3>
+            ${session.phase ? `<div class="mood-indicator">${session.phase.includes('combat') ? '\u2694\uFE0F Combat' : session.phase.includes('explor') ? '\uD83D\uDDFA\uFE0F Exploring' : ''}</div>` : ''}
             ${narrations.length === 0
               ? '<div style="padding:1rem;text-align:center;color:var(--text-dim);font-style:italic">The narrator is silent... for now.</div>'
-              : narrations.map(n => {
+              : narrations.map((n, i) => {
                   const ts = new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  return `<div class="narration-entry">${esc(n.content)}<div class="narration-time">${ts}</div></div>`;
+                  const variant = narrationVariantClass(n.content);
+                  const isNew = i >= lastNarrationCount;
+                  return `<div class="narration-entry ${variant}">${isNew ? `<span data-typewrite="${esc(n.content)}"></span>` : esc(n.content)}<div class="narration-time">${ts}</div></div>`;
                 }).join('')
             }
           </div>
         </div>`;
 
       page.innerHTML = html;
+      lastNarrationCount = narrations.length;
+
+      // Typewriter new narrations
+      page.querySelectorAll('[data-typewrite]').forEach(el => {
+        typewriter(el, el.getAttribute('data-typewrite'));
+        el.removeAttribute('data-typewrite');
+      });
     }
 
     loadSession();

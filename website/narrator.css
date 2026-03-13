@@ -139,6 +139,38 @@
   line-height: 1.6;
 }
 
+/* --- Style variants --- */
+.narration-dm .narration-prose {
+  font-style: italic;
+  background: rgba(201, 168, 76, 0.04);
+  padding: 0.4rem 0.6rem;
+  border-radius: 4px;
+}
+.narration-combat .narration-prose {
+  font-weight: 700;
+  color: var(--red-glow);
+}
+.narration-dialogue .narration-prose {
+  font-style: italic;
+}
+
+/* --- Mood indicator --- */
+.narrator-mood {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 1rem;
+  font-family: 'Cinzel', serif;
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border-bottom: 1px solid var(--border);
+}
+.narrator-mood .mood-icon {
+  font-size: 0.9rem;
+}
+
 /* --- Responsive: collapse narrator below main content --- */
 @media (max-width: 1100px) {
   .narrator-panel {
