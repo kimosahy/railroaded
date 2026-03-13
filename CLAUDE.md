@@ -1,336 +1,329 @@
-Pseudo-terminal will not be allocated because stdin is not a terminal.
-# CLAUDE.md — Railroaded
+# Quest Engine (Railroaded) — CLAUDE.md
 
-## What This Is
+You are working on Quest Engine, the server for Railroaded — an autonomous AI D&D platform where AI agents play D&D with no humans in the loop during gameplay. AI players + AI Dungeon Master, server handles all rules and dice.
 
-Railroaded is a platform where AI agents play D&D 5e autonomously. AI DMs run dungeons, AI players form parties and make decisions, humans watch. Live at [railroaded.ai](https://railroaded.ai).
-
-The site is the spectator layer — a frontend that renders what the game engine produces. Think Twitch for AI D&D.
-
-## Architecture
-
-- **Frontend:** Static HTML/CSS/JS on Vercel. No framework. No build step. Files are what they are.
-- **Backend API:** `api.railroaded.ai` — game engine, session management, character data, combat resolution
-- **Pages:** index.html, tracker.html, journals.html, leaderboard.html, tavern.html, session.html, character.html, docs.html, dungeons.html, bestiary.html, about.html, stats.html, 404.html
-- **Styling:** Single styles.css with CSS custom properties (variables for colors, spacing). Dark theme primary.
-- **JS:** Per-page scripts + shared main.js. Vanilla JS, no framework.
-- **Deployment:** Vercel, auto-deploy from main branch. vercel.json for rewrites/redirects.
-
-## Code Conventions
-
-- No frameworks. Vanilla HTML/CSS/JS only.
-- CSS custom properties for all colors/spacing. No hardcoded hex values in component styles.
-- Mobile-first responsive. Breakpoints: 360px (small mobile), 390px (iPhone 14), 768px (tablet), 1024px (desktop), 1440px (large desktop).
-- Minimum touch target: 44×44px on all interactive elements.
-- Minimum font size: 14px on mobile for body text (decorative/avatar text exempt).
-- Semantic HTML: use `<button>` for clickable things, not `<div onclick>`. ARIA attributes where needed.
-- All pages share the same nav header and footer. Keep them consistent.
-- OG meta tags on every page. Twitter card meta on every page.
-- No inline styles unless truly one-off. No `!important` unless overriding third-party.
-- API calls: fetch() with async/await. Handle loading states (skeleton screens), error states, empty states.
-- Console: zero errors, zero warnings in production.
-
-## Design Language
-
-- **Dark theme:** Deep navy/charcoal backgrounds (#1a1a2e or similar), light text
-- **Gold accent:** Used for CTAs, highlights, active states, important text
-- **Typography:** System font stack for body, optional serif (Georgia/Merriweather) for narration text
-- **Cards:** Rounded corners, subtle border or shadow, consistent padding
-- **Animations:** Subtle. Skeleton pulse for loading, fade-in for content, typewriter for narration. No gratuitous motion.
-- **Tone:** The site should feel like a fantasy tavern's notice board meets a modern dashboard. Not corporate. Not childish. Atmospheric but functional.
-
-## API Reference
-
-Base URL: `https://api.railroaded.ai`
-
-Key endpoints (check actual implementation — these are the patterns):
-- `GET /api/v1/sessions` — list sessions (active + recent)
-- `GET /api/v1/dm/session/:id` — session detail (party, combat state, events)
-- `GET /api/v1/characters/:id` — character profile
-- `GET /api/v1/events/recent` — recent game events across all sessions
-- `GET /api/v1/campaigns` — dungeon/campaign list
-- `GET /api/v1/leaderboard` — leaderboard data
-- `POST /api/v1/waitlist` — email signup (if implemented server-side)
-- `GET /api/v1/skill/player` — agent onboarding instructions
-
-## Current State & Completed Work
-
-The UX sprint (March 2026) addressed:
-- OG/social meta tags on all pages
-- Favicon + theme-color
-- Mobile fixes (hamburger touch target, leaderboard table reflow)
-- Custom 404 page
-- Email waitlist signup
-- Shareable session deep links
-- Journal accessibility (semantic buttons)
-- Live activity pulse on home page
-- QA content filtering from public journals
-- Skeleton loading screens
-- Session detail page (session.html)
-- Character profile pages (character.html)
-- API documentation page (docs.html)
-- Stats page
-- About page
+**This is NOT a greenfield project.** v1 is fully built, deployed, and has been playtested. You are adding features and fixing bugs in an existing ~8,700 line TypeScript codebase.
 
 ---
 
-## Roadmap
+## Reference Docs
 
-Everything below is the future. Organized by theme, roughly priority-ordered within each section.
+Read these when you need depth. Don't memorize — look things up.
 
-### Phase 1: Spectator 2.0
-
-**Live Reactions**
-- Twitch-style emoji reactions on live sessions (🗡️⚔️💀🎉)
-- Reaction overlay on the session detail page — reactions float up and fade
-- No accounts needed — use fingerprint/localStorage for rate limiting
-- Show reaction counts per event: "47 people reacted to this critical hit"
-
-**Bet on the Party**
-- Prediction system: "Will they clear the dungeon?" / "Who dies first?" / "How many rooms?"
-- Fake currency (Gold Pieces) earned by watching sessions, spent on predictions
-- Leaderboard of best predictors
-- No real money — this is engagement, not gambling
-
-**Session Replay**
-- Completed sessions become replayable — step through events like a video
-- Playback controls: play/pause, speed (1x/2x/4x), step forward/back
-- Timeline scrubber showing event density (combat = red, exploration = blue, rest = green)
-- Shareable replay links with timestamp: `session.html?id=X&t=42` (starts at event 42)
-
-**Multi-Session View**
-- Split-screen: watch 2-3 live sessions simultaneously
-- Drag-and-drop layout builder (2-up, 3-up, picture-in-picture)
-- Audio/narration focus follows mouse hover
-
-**Follow a Character**
-- "Follow" button on character profile pages
-- Browser push notification when that character enters a new session
-- "Following" feed — personalized activity stream of followed characters
-- localStorage-based (no accounts needed)
-
-### Phase 2: Human Play
-
-**Mixed Parties**
-- Human player slots in parties (1-3 humans + AI, any ratio)
-- Human players get a simplified action UI: attack/cast/move/interact buttons
-- Turn timer for humans (60s default) — AI takes over if human AFK
-- Human players see the same narration as spectators + their action options
-
-**Human DM Mode**
-- A human writes narration prompts, AI players respond
-- DM dashboard: set the scene, trigger encounters, place loot, describe rooms
-- AI players react to human DM narration just like they react to AI DM
-- This is the "D&D with infinite patient players" pitch
-
-**Spectator-to-Player Pipeline**
-- While watching a live session, see a "Join Next Run" button
-- Gets you into the matchmaker queue for the next session in that dungeon
-- Reduces friction from "watching" to "playing" to one click
-
-**Voice Input**
-- Whisper API integration for human players
-- Speak your action → transcribed → parsed → submitted as game action
-- Mobile-first: hold-to-talk button
-- Fallback to text input always available
-
-**Mobile Play Interface**
-- Most humans will play from their phone
-- Large touch targets for all actions
-- Swipeable panels: narration ← → actions ← → party status
-- Haptic feedback on combat events (if device supports)
-
-### Phase 3: Social & Community
-
-**Tournaments**
-- Bracket-style elimination tournaments
-- 8/16/32 parties compete in the same dungeon
-- Spectator voting on "MVP" after each round
-- Seasonal tournaments with unique dungeons and rewards
-- Tournament bracket page with live updating results
-
-**Guild System**
-- Persistent groups of agents/humans
-- Guild leaderboard (aggregate XP, dungeons cleared)
-- Guild tavern — private tavern board for guild members
-- Guild roster with member stats
-
-**Live Tavern Board**
-- Tavern page becomes an actual async in-character forum
-- Characters post between sessions (AI-generated banter, rumors, quest hooks)
-- Threaded discussions — characters respond to each other
-- Human visitors can post as "Tavern Patron" (anonymous, no account needed)
-
-**Achievement System**
-- Unlockable badges: "Survived 10 Dungeons", "Killed a Dragon", "TPK Survivor", "First Blood", "Pacifist Run"
-- Displayed on character profile pages
-- Shareable badge images (auto-generated, optimized for social media)
-- Achievement leaderboard: who has the most?
-
-**Shareable Character Cards**
-- Auto-generated images for each character (Spotify Wrapped style)
-- Shows: character art/avatar, name, class, level, key stats, notable achievements
-- Optimized for X (1200×675) and Discord (open graph)
-- "Share my character" button on profile page
-- Downloadable PNG + direct share to X/Discord
-
-### Phase 4: World Building
-
-**Persistent World Map**
-- Visual map that fills in as dungeons are explored
-- Each dungeon is a location on the map — unexplored = fog of war, explored = revealed
-- Zoom levels: continent → region → dungeon
-- Click a location → see that dungeon's stats, sessions, characters who've been there
-- Map updates in real-time as sessions progress
-
-**Faction System**
-- NPC factions with reputation tracking
-- Player actions affect faction standing (helped the Merchant Guild? +rep. Stole from them? −rep)
-- Faction reputation persists across sessions
-- Faction-locked content: high-rep unlocks special quests/dungeons
-- Faction leaderboard: which faction has the most player support?
-
-**Persistent Economy**
-- Gold earned in dungeons persists to character profile
-- Tavern becomes a real marketplace: buy/sell items between sessions
-- Rare loot from deep dungeons becomes tradeable
-- Price discovery: supply/demand based on actual player activity
-- Economic dashboard: inflation tracking, rarest items, biggest traders
-
-**Seasonal Campaigns**
-- Month-long story arcs with unique dungeons, bosses, lore
-- Season leaderboards (reset each month)
-- Season finale: massive multi-party raid dungeon
-- Seasonal exclusive loot/achievements
-- Between seasons: "off-season" with sandbox/practice dungeons
-
-**User-Submitted Dungeons**
-- Dungeon builder UI: place rooms, corridors, traps, monsters, loot
-- Submit for review → AI DM runs it → players explore it
-- Dungeon creator gets notified when someone runs their dungeon
-- Rating system: players rate dungeons after completion
-- Featured dungeon of the week
-
-**Auto-Generated Lore Wiki**
-- NPC compendium: every NPC encountered, auto-generated from narration
-- Location index: every room, corridor, landmark
-- Event timeline: major events across all sessions
-- Cross-referenced: click an NPC → see every session they appeared in
-- Powered by LLM summarization of session narrations
-
-### Phase 5: Agent Ecosystem
-
-**Multi-Model Arena**
-- Track which AI models produce the best players
-- Leaderboard: GPT-4 vs Claude vs Gemini vs Llama — win rates, survival rates, XP/session
-- "Model badge" on character profiles showing which AI powers them
-- This is a marketing goldmine: "Which AI plays D&D best?" writes its own headlines
-- Arena page with head-to-head comparison stats
-
-**Agent SDK**
-- `npm install @railroaded/agent` — JavaScript SDK
-- `pip install railroaded` — Python SDK
-- Handles: registration, character creation, matchmaking, game loop, action parsing
-- Example agents: "cautious healer", "reckless barbarian", "min-max optimizer"
-- Reduces integration from hours to minutes
-
-**Webhook Notifications**
-- Agent developers register webhook URLs
-- Events: session_started, session_ended, character_leveled, character_died, loot_found
-- Payload includes full event context
-- Dashboard for managing webhooks + delivery logs
-
-**Agent Personality Templates**
-- Pre-built personality configs: cautious, aggressive, diplomatic, chaotic, strategic
-- Personality affects: action selection, risk tolerance, party interaction, roleplay style
-- Mix-and-match: "aggressive in combat, diplomatic in roleplay"
-- Template marketplace: community-created personality configs
-
-**Agent Replay Analysis**
-- Post-session analysis: "Here's where your agent made a suboptimal decision"
-- Decision tree visualization: what your agent chose vs. what other agents chose in similar situations
-- Survival rate comparison: your agent vs. average
-- Improvement suggestions: "Your agent never uses ranged attacks when outnumbered — consider adding a fallback strategy"
-
-### Phase 6: Monetization
-
-**Premium Spectator**
-- Free tier: watch live, basic leaderboard, journals
-- Premium: HD narration with enhanced formatting, exclusive dungeons, ad-free, priority notifications, replay access with full playback controls
-- $5/month or $40/year
-
-**Custom Dungeon Commissions**
-- Pay to design a dungeon (via the dungeon builder or describe it and AI generates the layout)
-- Watch AI agents run your dungeon live
-- Get a branded shareable replay link
-- $10-25 per dungeon depending on complexity
-
-**Adopt an Agent**
-- Sponsor a character: name it, choose its personality template, pick its class
-- Get push notifications for every session your character plays
-- Character wears a "Sponsored by [Your Name]" badge
-- Monthly subscription: $3/month per character
-
-**API Tiers**
-- Free: 1 agent, 5 sessions/day
-- Indie: 5 agents, 50 sessions/day — $10/month
-- Pro: 25 agents, unlimited sessions — $50/month
-- Enterprise: custom — contact sales
-
-**Character Art Generation**
-- AI-generated character portraits (DALL-E/Midjourney style)
-- Auto-generated on character creation (basic) or on-demand (premium/detailed)
-- Purchasable as prints, phone wallpapers, or social media assets
-- Premium characters get animated portraits
-
-**Sponsored Dungeons**
-- Brands create themed dungeons (game companies, media franchises)
-- "Presented by [Brand]" banner on dungeon page and session replays
-- Brand gets engagement metrics: views, completions, character deaths
-- Revenue share or flat fee
-
-### Infrastructure (Non-User-Facing)
-
-**WebSocket Migration**
-- Replace polling with WebSocket connections for real-time updates
-- Server-sent events as fallback for environments that block WebSockets
-- Reduces API load, improves latency for live spectating
-
-**Replay Storage**
-- Completed sessions serialized and stored in CDN-backed storage
-- Efficient format: event log + snapshots at key points (room transitions, combat start)
-- Enables replay feature without re-querying the live API
-
-**Multi-Region API**
-- Edge deployment for API (Vercel Edge Functions or Cloudflare Workers)
-- Reduces latency for non-European users (current server is Frankfurt)
-- CDN for static assets (already handled by Vercel)
-
-**Rate Limiting Dashboard**
-- Agent developers see their API usage in real-time
-- Quota tracking, rate limit warnings, usage graphs
-- Self-service API key management
-
-**Admin Panel**
-- Internal tool for managing the platform
-- Feature sessions, moderate tavern posts, manage campaigns
-- Monitor live sessions, kill stuck sessions, view error logs
-- User/agent management, waitlist management, webhook monitoring
+- **Game rules:** `docs/game-mechanics.md` — D&D 5e simplified. Races, classes, combat, spells, equipment, resting, leveling.
+- **Architecture:** `docs/architecture.md` — Data models, API design, project structure, agent tool interface, deployment.
+- **Working patterns:** `docs/cc-patterns.md` — Commit discipline, testing, TypeScript rules, how to work with existing code, bug patterns to avoid.
+- **Known issues:** `docs/known-issues.md` — All bugs and gaps from playtesting, prioritized.
 
 ---
 
-## The Big Picture
+## Current Sprint: Sprint C — Persistence & World
 
-Railroaded is building toward a self-sustaining ecosystem:
+Goal: Multi-session campaigns with persistent characters, NPCs that remember you, and a growing world. Build in phase order (1→5) — each phase depends on the previous.
 
-1. **AI agents play** → generates content (sessions, stories, characters)
-2. **Humans watch** → validates the content is entertaining
-3. **Humans play** → adds unpredictability and emotional investment
-4. **Community grows** → tournaments, guilds, tavern culture
-5. **World deepens** → persistent map, factions, economy, lore
-6. **Agents improve** → multi-model arena, SDK, personality system
-7. **Revenue flows** → premium, commissions, API tiers, sponsorships
+### Done (verified by playtest)
 
-Each phase feeds the next. More agents = more content. More content = more spectators. More spectators = more humans wanting to play. More humans = more community. More community = more agents (developers build agents to compete). The flywheel.
+- **Monster turn resolution** — `monster_attack` tool works, initiative auto-advances through monsters, DM can resolve monster turns. Confirmed working in Playtest Round 3. (See known-issues.md F1, commit cd1efc2)
+- **Event persistence** — `logEvent()` writes to both in-memory array and `session_events` DB table. Character snapshots at session-end and combat-end. (Commits 60812e2, 54b53fb, 5f455f0)
+- **Party names** — Procedural generator using race/class composition. Stored in DB, surfaced in all party endpoints. (Commit 54b53fb)
+- **Load from DB on restart** — `loadPersistedState()` rebuilds characters/parties/events from DB at startup. (Commit 5f455f0)
+- **Monster naming bug** — Case-insensitive template lookup, fallback for missing field. "undefined A" → "Skeleton A". (Commit d25e55b)
 
-The underlying thesis: **AI-generated content is only interesting if it has real stakes, real persistence, and real spectators.** D&D provides the stakes and persistence. Railroaded provides the spectators. The agents provide the scale.
+### Sprint Backlog (in priority order)
+
+- **Narrator layer** — narrations table, POST /narrator/narrate (auth'd), GET /spectator/narrations (public). External narrator agent reads events and POSTs prose. (Commit 28f7619)
+- **Homepage heartbeat** — "Latest from the Dungeons" narration feed on index.html with auto-refresh, XSS-safe, graceful empty state. (Commit 36e240c)
+- **WebSocket turn notifications** — `notifyTurnChange()` pushes `your_turn` to players/DM when initiative advances. Broadcasts `turn_notify` to full party.
+- **Bonus actions + reactions** — TurnResources tracking (actionUsed, bonusUsed, reactionUsed), `bonus_action` tool (bonus spells, Cunning Action, Second Wind), `reaction` tool (Shield, opportunity attacks), `end_turn` tool (players must end turn explicitly). 154 tests.
+- **Death saves with drama** — WebSocket broadcasts on every death save result, nat 20 revival announcements, character death/stabilize/down notifications to party + DM. (Commit e8d4d30)
+
+### Sprint Backlog (in priority order)
+
+**P3 — Gameplay Depth & Content Creation (COMPLETE)**
+
+9. ~~**Skill checks with context**~~ ✅ Margin field, advantage/disadvantage, contested checks, group checks. (Commits 106c40b, 9f71e57)
+10. ~~**Loot flow end-to-end**~~ ✅ Item catalog, data-driven items, equip/unequip, loot drops on monster death. (Commit c93dc62)
+11. ~~**Custom dungeon templates**~~ ✅ YAML template loader (3 templates), random template selection at session start, pre-placed encounters (`trigger_encounter` tool), pre-placed loot (`loot_room` tool), `interact_with_feature` tool, `override_room_description` tool. (Commits d97eb37 → 127bfbb)
+12. ~~**Custom monster templates**~~ ✅ `create_custom_monster` DM tool, recharge/AoE/save-based attacks, DB persistence via `custom_monster_templates` table, `list_monster_templates` tool. (Commits 3c8e558 → 5378c5e)
+
+**P4 — Persistence & World (Sprint C)**
+
+Spec by Poormetheus. 5 phases, each depends on the one before it. Build in order.
+
+### Phase 1: Campaign Shell (item 13a)
+
+Everything else hangs off the campaign container. Build this first.
+
+**Schema:**
+```sql
+CREATE TABLE campaigns (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  dm_user_id UUID NOT NULL REFERENCES users(id),
+  party_id UUID NOT NULL REFERENCES parties(id),
+  status TEXT NOT NULL DEFAULT 'active',       -- active | paused | completed | abandoned
+  current_chapter INTEGER NOT NULL DEFAULT 1,
+  story_flags JSONB NOT NULL DEFAULT '{}',     -- {"ruins_cleared": true, "unoren_allied": true}
+  total_sessions INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE game_sessions ADD COLUMN campaign_id UUID REFERENCES campaigns(id);
+ALTER TABLE game_sessions ADD COLUMN session_number INTEGER;
+ALTER TABLE game_sessions ADD COLUMN session_type TEXT NOT NULL DEFAULT 'dungeon'; -- dungeon | town | travel
+```
+
+**Build:**
+- `campaigns` table + Drizzle migration
+- `campaign_id` columns on `game_sessions`, `characters`, `parties`
+- `create_campaign` DM tool — creates campaign, links to party
+- `start_session` modified to accept campaign_id, auto-increment session_number
+- `handleEndSession` modified to update campaign.total_sessions
+- Campaign briefing endpoint: `GET /spectator/campaigns/{id}/briefing` — returns party, session count, story flags, known NPCs, active quests
+- `set_story_flag` / `get_story_flags` DM tools
+
+### Phase 2: Character Persistence Across Sessions (item 13b)
+
+Campaigns are meaningless without persistent characters.
+
+**Schema:**
+```sql
+ALTER TABLE characters ADD COLUMN campaign_id UUID REFERENCES campaigns(id);
+ALTER TABLE characters ADD COLUMN died_in_session UUID REFERENCES game_sessions(id);
+ALTER TABLE characters ADD COLUMN cause_of_death TEXT;
+ALTER TABLE characters ADD COLUMN gold INTEGER NOT NULL DEFAULT 0;
+```
+
+**Build:**
+- On session end, snapshot ALL character state to DB (HP, XP, inventory, conditions, gold, spell slots)
+- On new session start within a campaign, load character state from DB instead of creating fresh
+- Character death handling: set `is_alive = false`, `died_in_session`, `cause_of_death`
+- Dead characters stay in DB — part of campaign history. Player can create a new character and join the same party
+- `award_gold` DM tool
+- Level-up auto-application when XP threshold met (5e standard: L2=300, L3=900, L4=2700, L5=6500). Server applies HP increase, new spell slots, class features. Level cap 5
+- Also snapshot character state on phase transitions (combat → exploration), not just session end — covers crash recovery
+
+### Phase 3: NPC System (item 14)
+
+NPCs make the world feel lived-in. The emotional core of between-session play.
+
+**Schema:**
+```sql
+CREATE TABLE npcs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID NOT NULL REFERENCES campaigns(id),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  personality TEXT NOT NULL DEFAULT '',
+  location TEXT,
+  disposition INTEGER NOT NULL DEFAULT 0,      -- -100 (hostile) to +100 (devoted)
+  disposition_label TEXT NOT NULL DEFAULT 'neutral',
+  is_alive BOOLEAN NOT NULL DEFAULT TRUE,
+  tags JSONB NOT NULL DEFAULT '[]',            -- ["merchant", "quest_giver"]
+  memory JSONB NOT NULL DEFAULT '[]',          -- [{sessionId, event, summary, disposition_at_time}]
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE npc_interactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  npc_id UUID NOT NULL REFERENCES npcs(id),
+  session_id UUID NOT NULL REFERENCES game_sessions(id),
+  character_id UUID REFERENCES characters(id),
+  interaction_type TEXT NOT NULL,              -- dialogue | trade | combat | quest_given | quest_completed | gift | theft | betrayal
+  description TEXT NOT NULL,
+  disposition_change INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Disposition scale:** -100 hostile, -50 unfriendly, -25 wary, 0 neutral, +25 friendly, +50 allied, +100 devoted. DM sets exact shift via `update_npc_disposition(npc_id, change, reason)`.
+
+**NPC memory:** `npcs.memory` JSONB array stores last 20 specific events (not just vibes). Format: `{sessionId, event, summary, disposition_at_time}`. Full history lives in `npc_interactions`. Memory gives the DM agent narrative fuel to roleplay the NPC.
+
+**Build:**
+- `npcs` + `npc_interactions` tables + migrations
+- `create_npc` DM tool (name, description, personality, location, tags)
+- `get_npc` / `list_npcs` DM tools
+- `update_npc_disposition` DM tool — auto-computes label, writes interaction log, updates memory array
+- `voice_npc` modified to log the interaction and reference the persistent NPC entity
+- `talk_to_npc` player tool (signals DM that player wants to interact with specific NPC)
+- Disposition label auto-computation from score thresholds
+- NPC memory pruning (keep last 20, oldest pruned)
+
+### Phase 4: Between-Session Phase (item 13c)
+
+This is where campaigns become campaigns instead of disconnected sessions. Requires characters (Phase 2) and NPCs (Phase 3).
+
+**New phase:** Add `town` to session phase enum. Between-session is a session of type `town` that starts automatically after a dungeon session ends.
+
+**DM tools in town:**
+- `narrate` — set the scene
+- `voice_npc` — roleplay NPCs
+- `create_npc` — introduce new NPCs
+- `update_npc_disposition` — adjust relationships
+- `offer_quest` — present quest hooks (logged as story flag when accepted)
+- `set_story_flag` — mark campaign progress
+- `advance_to_dungeon` — transition to next dungeon session (creates new session)
+- `trigger_long_rest` — full party resource restore
+
+**Player tools in town:**
+- `party_chat` / `whisper` — roleplay and plan
+- `talk_to_npc` — initiate NPC interaction
+- `buy_item` / `sell_item` — trade with merchant NPCs (requires NPC with `merchant` tag + gold). Prices scale by disposition: friendly = 10% discount, hostile = 25% markup, allied = 20% discount
+- `journal_add` — write diary entry
+- `get_status` — check character sheet
+
+**Level-up:** Automatic when XP threshold met during town phase. Server applies mechanical changes (HP, spell slots, class features). DM narrates the growth.
+
+### Phase 5: World Codex (item 15)
+
+The long game. Makes Session 20 feel different from Session 2 for spectators.
+
+**Schema:**
+```sql
+CREATE TABLE world_entities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  campaign_id UUID REFERENCES campaigns(id),   -- NULL = global/shared across campaigns
+  type TEXT NOT NULL,                          -- location | faction | lore | event | artifact
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  tags JSONB NOT NULL DEFAULT '[]',
+  relationships JSONB NOT NULL DEFAULT '[]',   -- [{entityId, type: "located_in" | "allied_with" | "created_by"}]
+  first_session_id UUID REFERENCES game_sessions(id),
+  discovered_by JSONB NOT NULL DEFAULT '[]',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE world_entity_mentions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_id UUID NOT NULL REFERENCES world_entities(id),
+  session_id UUID NOT NULL REFERENCES game_sessions(id),
+  context TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+```
+
+**Build:**
+- `world_entities` + `world_entity_mentions` tables + migrations
+- `create_world_entity` / `update_world_entity` / `query_codex` DM tools
+- `promote_to_global` DM tool (make entity visible across campaigns — nulls campaign_id)
+- `GET /spectator/codex` endpoint for website
+- Campaign briefing endpoint enhanced with known locations, NPCs, active quests, recent summary
+- Auto-extraction batch job (post-session): extract entities from session events. Simple approach — can be LLM-powered later but start with rule-based extraction from event types
+
+### Campaign Briefing Endpoint (final form after Phase 5)
+
+`GET /spectator/campaigns/{id}/briefing` returns everything a new DM needs to run the next session:
+- Campaign name, sessions completed, status
+- Party: members with name/class/level/status (alive/dead + cause)
+- Story flags
+- Known locations, known NPCs (with disposition labels)
+- Active quests
+- Recent summary (1-2 sentence recap of last session)
+
+### Design Rules for Sprint C
+
+- **Character death is permanent.** Dead characters stay in DB for history. Player creates new character, joins party during next town phase
+- **Party changes happen between sessions only.** Never mid-dungeon
+- **Two campaigns can share a world.** `world_entities.campaign_id = NULL` means global. Default is campaign-scoped. DM opts in to global via `promote_to_global`
+- **NPCs belong to campaigns.** One NPC per campaign. If the same NPC appears in two campaigns, they're two separate DB rows
+- **Session crash recovery:** Event sourcing already handles this. Additionally snapshot character state on phase transitions (not just session end) to minimize data loss window
+
+**P5 — Spectator Infrastructure**
+
+16. **Party chat log / session transcript**
+    - What exists: `party_chat` and `whisper` actions exist. Chat messages are session events. No dedicated transcript endpoint.
+    - What's missing: Full session transcript endpoint (`GET /spectator/sessions/{id}/transcript`). Character-perspective filtering (what Brog saw vs Wren). Narrator-enhanced transcripts. Exportable format (Markdown).
+    - Files: `src/api/spectator.ts`, `src/game/journal.ts`
+    - Complexity: Low
+
+17. **Automated session scheduling**
+    - Problem: Spectator experience only works if sessions are happening. Empty server = dead homepage.
+    - What's needed: Session scheduler (cron or timer that starts new sessions). Agent pool (8-12 pre-built character personas). Session cadence (3-4/day). Cost guardrails (per-session budget cap, daily spend limit, auto-pause). Graceful scheduling (one at a time until concurrency is proven).
+    - Files: New `src/game/scheduler.ts`, integration with OpenClaw crons, config for cadence/budget
+    - Complexity: Medium
+
+### Sprint Sequence
+
+- ~~**Sprint A (gameplay depth):** Items 9 + 10~~ ✅ Complete
+- ~~**Sprint B (content creation):** Items 11 + 12~~ ✅ Complete
+- **Sprint C (persistence + world):** Items 13 + 14 + 15. Five phases — campaign shell → character persistence → NPCs → between-session → world codex. Full spec above.
+- **Sprint D (spectator infra):** Items 16 + 17 (transcripts + automated scheduling). Makes the spectator experience self-sustaining.
+
+---
+
+## Rules for This Sprint
+
+1. **Read the file before you touch it.** This is existing code. Understand what's there before changing it.
+2. **One backlog item at a time.** Complete it (code + test + commit) before starting the next.
+3. **Don't refactor.** If something works but looks ugly, leave it. We're adding features, not polishing.
+4. **game-manager.ts is sacred.** It's ~2,950 lines and everything flows through it. Be surgical. Change only what's needed. Don't restructure it.
+5. **New tools need approval.** Adding a tool to player-tools.ts or dm-tools.ts changes the agent API. Flag it — don't just add it.
+6. **Test everything.** `bun test` must pass before every commit. Add tests for new engine logic.
+7. **Commit after each item.** Not at the end. Each backlog item = at least one commit.
+8. **Check docs when stuck.** Game rules → `docs/game-mechanics.md`. Architecture → `docs/architecture.md`. Patterns → `docs/cc-patterns.md`.
+
+---
+
+## What's Already Built (v1 Summary)
+
+Everything from the original spec is implemented and deployed. Key facts:
+
+- **~11,500 lines of TypeScript** across source files, ~2,800 lines of tests.
+- **238 tests** covering all engine modules.
+- **Full game loop works:** Character creation → matchmaking → party formation → session start → exploration → combat → rest → session end.
+- **Three transports operational:** REST, WebSocket, MCP.
+- **Database:** PostgreSQL via Drizzle ORM with full schema (16 tables).
+- **Seeded data:** 15 monsters, items, spells, 3 dungeon templates.
+- **Auth:** Register/login with Bearer tokens, role-based access.
+- **Rate limiting, CORS, spectator API** all working.
+- **Deployed:** api.railroaded.ai (Render) + railroaded.ai (Vercel).
+- **CI/CD:** GitHub Actions → Render deploy hook on push to main.
+
+First playtest completed with AI agents (Poormetheus as player). Combat worked but exposed the issues in the sprint backlog above.
+
+---
+
+## Operational Notes
+
+- **Render cold starts:** Free tier spins down. First request after idle takes 30-60s. Don't panic.
+- **In-memory fallback:** If `DATABASE_URL` is not set, server uses in-memory storage. Data lost on restart. Production MUST use PostgreSQL.
+- **Vercel webhook staleness:** If website doesn't update after push, check Vercel dashboard and reconnect Git repo.
+- **Deploy hook:** GitHub Actions triggers Render deploy via `RENDER_DEPLOY_HOOK_URL` secret.
+
+---
+
+## Design Direction — Spectator Experience (Karim's Notes — March 2026)
+
+The sprint backlog above implements this vision in order. The key insight: `game-manager.ts` has **zero DB imports** — the entire persistence layer is greenfield. `logEvent()` pushes to an in-memory array that dies on restart. The `session_events` table exists in the schema but is never written to. The field shapes already match (`type`, `actorId`, `data`, `timestamp` → `type`, `actor_id`, `data` jsonb, `created_at`).
+
+**Architecture layers (build in this order):**
+1. **Persistence** — Event sourcing. Every `logEvent()` writes to DB. Session-end snapshot captures final character state. This is P0 items 1-3 in the sprint backlog.
+2. **Narrator** — External narrator agent (Poormetheus on OpenClaw) reads persisted events via spectator API, generates dramatic prose via LLM, POSTs narrations back to server. Server stores and serves — never calls an LLM. Per-encounter trigger frequency (combat_end, session_end, etc).
+3. **Homepage heartbeat** — Narrator output surfaced on landing page. Scrolling feed of dramatic moments.
+4. **Worldbuilding as byproduct** — Sessions accumulate lore (locations, NPCs, factions) into a living world.
+
+---
+
+## Quick Reference
+
+| What | Where |
+|------|-------|
+| Live API | https://api.railroaded.ai |
+| Live website | https://railroaded.ai |
+| Health check | GET /health |
+| Repo | github.com/kimosahy/quest-engine (private) |
+| Local path | ~/Desktop/quest-engine |
+| Run locally | `bun run src/index.ts` |
+| Run tests | `bun test` |
+| Game rules | docs/game-mechanics.md |
+| Architecture | docs/architecture.md |
+| CC patterns | docs/cc-patterns.md |
+| Known issues | docs/known-issues.md |
+| v1 spec (archived) | docs/versions/CLAUDE-v1.md |
+| Player agent guide | skills/player-skill.md |
+| DM agent guide | skills/dm-skill.md |
