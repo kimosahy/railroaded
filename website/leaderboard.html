@@ -393,6 +393,7 @@
       <button class="tab" onclick="switchTab('dungeons')">Dungeons Cleared</button>
       <button class="tab" onclick="switchTab('dm')">Best DMs</button>
       <button class="tab" onclick="switchTab('parties')">Longest Parties</button>
+      <button class="tab" onclick="switchTab('achievements')">Most Achievements</button>
     </div>
 
     <div id="leaderboard-content">
@@ -711,6 +712,71 @@
       return html;
     }
 
+    // Achievement definitions (same as character.html)
+    const ACHIEVEMENTS = [
+      { id: 'first_blood', name: 'First Blood', icon: '\u{1F5E1}\uFE0F', check: c => (c.monstersKilled || 0) >= 1 },
+      { id: 'slayer_5', name: 'Monster Slayer', icon: '\u2694\uFE0F', check: c => (c.monstersKilled || 0) >= 5 },
+      { id: 'slayer_20', name: 'Monster Hunter', icon: '\u{1F3F9}', check: c => (c.monstersKilled || 0) >= 20 },
+      { id: 'dungeon_1', name: 'Dungeon Crawler', icon: '\u{1F6AA}', check: c => (c.dungeonsCleared || 0) >= 1 },
+      { id: 'dungeon_5', name: 'Dungeon Delver', icon: '\u{1F3F0}', check: c => (c.dungeonsCleared || 0) >= 5 },
+      { id: 'veteran', name: 'Veteran', icon: '\u{1F396}\uFE0F', check: c => (c.sessionsPlayed || 0) >= 10 },
+      { id: 'crit_king', name: 'Critical King', icon: '\u{1F4A5}', check: c => (c.criticalHits || 0) >= 5 },
+      { id: 'survivor', name: 'Survivor', icon: '\u{1F4AA}', check: c => (c.timesKnockedOut || 0) >= 1 && (c.hpCurrent || 0) > 0 },
+      { id: 'rich', name: 'Gold Hoarder', icon: '\u{1F4B0}', check: c => (c.goldEarned || c.gold || 0) >= 100 },
+      { id: 'level_3', name: 'Seasoned', icon: '\u2B50', check: c => (c.level || 1) >= 3 },
+      { id: 'level_5', name: 'Hero', icon: '\u{1F31F}', check: c => (c.level || 1) >= 5 },
+      { id: 'level_10', name: 'Legend', icon: '\u{1F451}', check: c => (c.level || 1) >= 10 },
+    ];
+
+    function countAchievements(c) {
+      return ACHIEVEMENTS.filter(a => a.check(c)).length;
+    }
+
+    function earnedIcons(c) {
+      return ACHIEVEMENTS.filter(a => a.check(c)).map(a => a.icon).join(' ');
+    }
+
+    function renderAchievementsBoard(data) {
+      // Use highestLevel array as the full character list
+      const items = (data.highest_level || data.highestLevel || []).slice();
+      // Compute achievement count for each, sort desc
+      items.forEach(c => { c._achCount = countAchievements(c); });
+      items.sort((a, b) => b._achCount - a._achCount || (b.level || 0) - (a.level || 0));
+
+      let html = `
+        <div class="leaderboard-section active">
+          <h2>&#127942; Most Achievements</h2>
+          <p class="subtitle">The most decorated adventurers</p>`;
+
+      if (items.length === 0 || items[0]._achCount === 0) {
+        html += `
+          <div class="empty-state">
+            <div class="icon">&#127942;</div>
+            <p>No achievements earned yet.</p>
+            <p style="font-size: 0.95rem; margin-top: 0.5rem;">Once adventurers start earning achievements, they'll appear here.</p>
+          </div>`;
+      } else {
+        html += renderPodium(
+          items.slice(0, 3),
+          i => `${i._achCount}/${ACHIEVEMENTS.length}`,
+          i => `${i.class || '?'} Lv${i.level || 1}`
+        );
+
+        const rows = items.map((c, idx) => [
+          idx + 1,
+          `<span class="char-name">${escapeHtml(c.name || 'Unknown')}</span>
+           <br><span class="char-detail">${escapeHtml(c.race || '')} ${escapeHtml(c.class || '')}</span>`,
+          `<span class="stat-value">${c._achCount}</span> <span style="color:var(--text-dim);font-size:0.85rem">/ ${ACHIEVEMENTS.length}</span>`,
+          `<span style="font-size:0.9rem">${earnedIcons(c) || '\u2014'}</span>`
+        ]);
+
+        html += renderTable(['Rank', 'Character', 'Achievements', 'Earned'], rows, items);
+      }
+
+      html += '</div>';
+      return html;
+    }
+
     function switchTab(tab) {
       currentTab = tab;
       document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -726,6 +792,7 @@
         case 'dungeons': content.innerHTML = renderDungeonsBoard(leaderboardData); break;
         case 'dm': content.innerHTML = renderDmBoard(leaderboardData); break;
         case 'parties': content.innerHTML = renderPartiesBoard(leaderboardData); break;
+        case 'achievements': content.innerHTML = renderAchievementsBoard(leaderboardData); break;
       }
     }
 
