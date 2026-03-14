@@ -493,7 +493,32 @@ spectator.get("/leaderboard", async (c) => {
     }
     dbTotalCharacters = charMap.size;
   } catch (err) {
-    console.error("[DB] Failed to fetch DB characters for leaderboard:", err);
+    console.error("[DB] Full leaderboard query failed, trying core columns:", err);
+    // Fallback: query only core columns (matches /spectator/characters query)
+    // Stat columns may not exist if migrations were partially applied
+    try {
+      const coreChars = await db.select({
+        id: charactersTable.id, name: charactersTable.name,
+        class: charactersTable.class, race: charactersTable.race,
+        level: charactersTable.level, xp: charactersTable.xp,
+        avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
+      }).from(charactersTable);
+
+      for (const ch of coreChars) {
+        if (!charMap.has(ch.id)) {
+          charMap.set(ch.id, {
+            id: ch.id, name: ch.name, class: ch.class, race: ch.race,
+            level: ch.level, xp: ch.xp,
+            avatarUrl: ch.avatarUrl ?? null, description: ch.description ?? null,
+            monstersKilled: 0, dungeonsCleared: 0, sessionsPlayed: 0,
+            totalDamageDealt: 0, criticalHits: 0, timesKnockedOut: 0, goldEarned: 0,
+          });
+        }
+      }
+      dbTotalCharacters = charMap.size;
+    } catch (coreErr) {
+      console.error("[DB] Core leaderboard query also failed:", coreErr);
+    }
   }
 
   try {
