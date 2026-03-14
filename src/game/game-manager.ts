@@ -2594,8 +2594,10 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     let template = monsterTemplates.get(rawName);
     let resolvedName = rawName;
     if (!template) {
+      const normalize = (s: string) => s.toLowerCase().replace(/-/g, " ");
+      const normalizedRaw = normalize(rawName);
       for (const [key, val] of monsterTemplates) {
-        if (key.toLowerCase() === rawName.toLowerCase()) {
+        if (normalize(key) === normalizedRaw) {
           template = val;
           resolvedName = key; // use the canonical capitalized name
           break;

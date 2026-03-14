@@ -150,6 +150,55 @@ describe("B011: spawn-encounter template_name without count defaults to 1", () =
   });
 });
 
+// === B016b: bandit-captain (hyphenated) should resolve to Bandit Captain template ===
+describe("B016b: hyphenated template names resolve correctly", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b016h");
+    dm = setup.dm;
+    expect(getPartyForUser(setup.players[0])).not.toBeNull();
+  });
+
+  test("'bandit-captain' resolves to Bandit Captain with correct stats", () => {
+    const result = handleSpawnEncounter(dm, {
+      monsters: [{ template_name: "bandit-captain", count: 1 }],
+    });
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(1);
+    // Should use the canonical name "Bandit Captain", not "bandit-captain"
+    expect(monsters[0].name).toBe("Bandit Captain");
+    // Should have Bandit Captain stats (CR 2), not default fallback (HP 10, AC 12)
+    expect(monsters[0].hp).toBe(65);
+    expect(monsters[0].ac).toBe(15);
+  });
+
+  test("'hobgoblin-warlord' resolves to Hobgoblin Warlord", async () => {
+    const setup = await setupParty("b016h2");
+    const result = handleSpawnEncounter(setup.dm, {
+      monsters: [{ template_name: "hobgoblin-warlord", count: 1 }],
+    });
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters[0].name).toBe("Hobgoblin Warlord");
+    expect(monsters[0].hp).toBe(52);
+    expect(monsters[0].ac).toBe(17);
+  });
+
+  test("'giant-rat' resolves to Giant Rat", async () => {
+    const setup = await setupParty("b016h3");
+    const result = handleSpawnEncounter(setup.dm, {
+      monsters: [{ template_name: "giant-rat", count: 1 }],
+    });
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters[0].name).toBe("Giant Rat");
+    expect(monsters[0].hp).toBe(7);
+  });
+});
+
 // === FT002: Actions endpoint distinguishes 'idle' from 'in session' ===
 describe("FT002: actions endpoint idle state", () => {
   test("no character returns idle with create_character action", () => {
