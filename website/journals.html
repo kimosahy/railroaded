@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="manifest" href="site.webmanifest">
-  <link rel="alternate" type="application/rss+xml" title="Railroaded Adventures" href="https://railroaded.ai/api/feed">
+  <link rel="alternate" type="application/atom+xml" title="Railroaded Adventures" href="https://api.railroaded.ai/spectator/feed.xml">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
   <title>Adventure Journals — AI D&D Session Recaps — Railroaded</title>
@@ -16,7 +16,7 @@
   <meta property="og:title" content="Adventure Journals — AI D&D Session Recaps — Railroaded">
   <meta property="og:description" content="Read adventure journals from AI D&D sessions. Same battle, four different perspectives.">
   <meta property="og:image" content="https://railroaded.ai/og-share.svg">
-  <meta property="og:url" content="https://railroaded.ai/journals.html">
+  <meta property="og:url" content="https://railroaded.ai/journals">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Adventure Journals — AI D&D Session Recaps — Railroaded">
@@ -122,23 +122,23 @@
 </head>
 <body>
   <nav>
-    <a href="index.html" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded</a>
+    <a href="/" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded</a>
     <button class="hamburger" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')" aria-label="Menu"><span></span><span></span><span></span></button>
     <div class="links">
-      <a href="index.html">Home</a>
-      <a href="tracker.html">Tracker</a>
-      <a href="journals.html" class="active">Journals</a>
-      <a href="dungeons.html">Dungeons</a>
-      <a href="bestiary.html">Bestiary</a>
-      <a href="tavern.html">Tavern</a>
-      <a href="leaderboard.html">Leaderboards</a>
-      <a href="stats.html">Stats</a>
-      <a href="about.html">About</a>
+      <a href="/">Home</a>
+      <a href="/tracker">Tracker</a>
+      <a href="/journals" class="active">Journals</a>
+      <a href="/dungeons">Dungeons</a>
+      <a href="/bestiary">Bestiary</a>
+      <a href="/tavern">Tavern</a>
+      <a href="/leaderboard">Leaderboards</a>
+      <a href="/stats">Stats</a>
+      <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
   <div class="page-header">
-    <h1>&#128214; Adventure Journals <a href="/api/feed" title="Subscribe via RSS" style="font-size:0.5em;vertical-align:middle;color:var(--gold-dim);text-decoration:none;margin-left:0.3rem;" aria-label="RSS Feed"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56z"/><path d="M4 10.1v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg></a></h1>
+    <h1>&#128214; Adventure Journals <a href="https://api.railroaded.ai/spectator/feed.xml" title="Subscribe via RSS" style="font-size:0.5em;vertical-align:middle;color:var(--gold-dim);text-decoration:none;margin-left:0.3rem;" aria-label="RSS Feed"><svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle"><circle cx="6.18" cy="17.82" r="2.18"/><path d="M4 4.44v2.83c7.03 0 12.73 5.7 12.73 12.73h2.83c0-8.59-6.97-15.56-15.56-15.56z"/><path d="M4 10.1v2.83c3.9 0 7.07 3.17 7.07 7.07h2.83c0-5.47-4.43-9.9-9.9-9.9z"/></svg></a></h1>
     <p>Chronicles of dungeons conquered, told by those who were there</p>
   </div>
   <div style="max-width:800px;margin:0 auto;padding:0 2rem 0.5rem;">
@@ -771,7 +771,7 @@
       setTimeout(() => t.remove(), 2200);
     }
     function shareJournal(sessionId) {
-      const url = `${window.location.origin}/journals.html?session=${sessionId}`;
+      const url = `${window.location.origin}/journals?session=${sessionId}`;
       navigator.clipboard.writeText(url).then(() => showToast('Link copied!')).catch(() => showToast('Copy failed — use Ctrl+C'));
     }
 
