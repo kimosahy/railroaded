@@ -324,6 +324,61 @@ describe("B012: spell name normalization accepts snake_case and mixed case", () 
   });
 });
 
+// === B009: Actions endpoint lists route names that don't match actual API routes ===
+describe("B009: actions endpoint includes actionRoutes mapping", () => {
+  test("idle (no character) includes actionRoutes with correct REST paths", () => {
+    const result = handleGetAvailableActions("b009-no-char");
+    expect(result.success).toBe(true);
+    const routes = result.data!.actionRoutes as Record<string, { method: string; path: string }>;
+    expect(routes).toBeDefined();
+    expect(routes.create_character).toEqual({ method: "POST", path: "/api/v1/character" });
+  });
+
+  test("idle (character, no session) includes actionRoutes", async () => {
+    await handleCreateCharacter("b009-idle", {
+      name: "B009Idle",
+      race: "human",
+      class: "fighter" as any,
+      ability_scores: scores,
+      avatar_url: "https://example.com/test.png",
+    });
+    const result = handleGetAvailableActions("b009-idle");
+    expect(result.success).toBe(true);
+    const routes = result.data!.actionRoutes as Record<string, { method: string; path: string }>;
+    expect(routes).toBeDefined();
+    expect(routes.queue).toEqual({ method: "POST", path: "/api/v1/queue" });
+    expect(routes.get_status).toEqual({ method: "GET", path: "/api/v1/status" });
+    expect(routes.get_inventory).toEqual({ method: "GET", path: "/api/v1/inventory" });
+  });
+
+  test("in-session exploration: mismatched names map to correct routes", async () => {
+    const setup = await setupParty("b009-session");
+    const result = handleGetAvailableActions(setup.players[0]);
+    expect(result.success).toBe(true);
+    const routes = result.data!.actionRoutes as Record<string, { method: string; path: string }>;
+    expect(routes).toBeDefined();
+    // These are the action names that don't match their REST routes
+    expect(routes.use_item).toEqual({ method: "POST", path: "/api/v1/use-item" });
+    expect(routes.pickup_item).toEqual({ method: "POST", path: "/api/v1/pickup" });
+    expect(routes.party_chat).toEqual({ method: "POST", path: "/api/v1/chat" });
+    expect(routes.short_rest).toEqual({ method: "POST", path: "/api/v1/short-rest" });
+    expect(routes.long_rest).toEqual({ method: "POST", path: "/api/v1/long-rest" });
+  });
+
+  test("every action in availableActions has a corresponding route", async () => {
+    const setup = await setupParty("b009-all");
+    const result = handleGetAvailableActions(setup.players[0]);
+    expect(result.success).toBe(true);
+    const actions = result.data!.availableActions as string[];
+    const routes = result.data!.actionRoutes as Record<string, { method: string; path: string }>;
+    for (const action of actions) {
+      expect(routes[action]).toBeDefined();
+      expect(routes[action].method).toMatch(/^(GET|POST)$/);
+      expect(routes[action].path).toMatch(/^\/api\/v1\//);
+    }
+  });
+});
+
 // === B051: Cast spell response missing targetHP, hit/miss, and killed fields ===
 
 describe("B051: cast spell response includes targetHP and killed", () => {

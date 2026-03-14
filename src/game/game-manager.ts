@@ -749,15 +749,80 @@ export function handleGetInventory(userId: string): { success: boolean; data?: R
   };
 }
 
+// Mapping from action (tool) name → REST route info.
+// Action names use underscores (MCP tool convention) but REST routes use hyphens or shorter names.
+const playerActionRoutes: Record<string, { method: string; path: string }> = {
+  create_character:      { method: "POST", path: "/api/v1/character" },
+  look:                  { method: "GET",  path: "/api/v1/look" },
+  get_status:            { method: "GET",  path: "/api/v1/status" },
+  get_party:             { method: "GET",  path: "/api/v1/party" },
+  get_inventory:         { method: "GET",  path: "/api/v1/inventory" },
+  get_available_actions: { method: "GET",  path: "/api/v1/actions" },
+  move:                  { method: "POST", path: "/api/v1/move" },
+  attack:                { method: "POST", path: "/api/v1/attack" },
+  cast:                  { method: "POST", path: "/api/v1/cast" },
+  use_item:              { method: "POST", path: "/api/v1/use-item" },
+  dodge:                 { method: "POST", path: "/api/v1/dodge" },
+  dash:                  { method: "POST", path: "/api/v1/dash" },
+  disengage:             { method: "POST", path: "/api/v1/disengage" },
+  help:                  { method: "POST", path: "/api/v1/help" },
+  hide:                  { method: "POST", path: "/api/v1/hide" },
+  bonus_action:          { method: "POST", path: "/api/v1/bonus-action" },
+  reaction:              { method: "POST", path: "/api/v1/reaction" },
+  end_turn:              { method: "POST", path: "/api/v1/end-turn" },
+  death_save:            { method: "POST", path: "/api/v1/death-save" },
+  short_rest:            { method: "POST", path: "/api/v1/short-rest" },
+  long_rest:             { method: "POST", path: "/api/v1/long-rest" },
+  party_chat:            { method: "POST", path: "/api/v1/chat" },
+  whisper:               { method: "POST", path: "/api/v1/whisper" },
+  journal_add:           { method: "POST", path: "/api/v1/journal" },
+  pickup_item:           { method: "POST", path: "/api/v1/pickup" },
+  equip_item:            { method: "POST", path: "/api/v1/equip" },
+  unequip_item:          { method: "POST", path: "/api/v1/unequip" },
+  queue:                 { method: "POST", path: "/api/v1/queue" },
+  queue_for_party:       { method: "POST", path: "/api/v1/queue" },
+};
+
+const dmActionRoutes: Record<string, { method: string; path: string }> = {
+  narrate:                    { method: "POST", path: "/api/v1/dm/narrate" },
+  narrate_to:                 { method: "POST", path: "/api/v1/dm/narrate-to" },
+  spawn_encounter:            { method: "POST", path: "/api/v1/dm/spawn-encounter" },
+  trigger_encounter:          { method: "POST", path: "/api/v1/dm/trigger-encounter" },
+  voice_npc:                  { method: "POST", path: "/api/v1/dm/voice-npc" },
+  request_check:              { method: "POST", path: "/api/v1/dm/request-check" },
+  request_save:               { method: "POST", path: "/api/v1/dm/request-save" },
+  request_group_check:        { method: "POST", path: "/api/v1/dm/request-group-check" },
+  request_contested_check:    { method: "POST", path: "/api/v1/dm/request-contested-check" },
+  deal_environment_damage:    { method: "POST", path: "/api/v1/dm/deal-environment-damage" },
+  advance_scene:              { method: "POST", path: "/api/v1/dm/advance-scene" },
+  get_party_state:            { method: "GET",  path: "/api/v1/dm/party-state" },
+  get_room_state:             { method: "GET",  path: "/api/v1/dm/room-state" },
+  monster_attack:             { method: "POST", path: "/api/v1/dm/monster-attack" },
+  award_xp:                   { method: "POST", path: "/api/v1/dm/award-xp" },
+  award_loot:                 { method: "POST", path: "/api/v1/dm/award-loot" },
+  award_gold:                 { method: "POST", path: "/api/v1/dm/award-gold" },
+  end_session:                { method: "POST", path: "/api/v1/dm/end-session" },
+};
+
+function buildActionRoutes(actions: string[], routeMap: Record<string, { method: string; path: string }>): Record<string, { method: string; path: string }> {
+  const routes: Record<string, { method: string; path: string }> = {};
+  for (const action of actions) {
+    if (routeMap[action]) routes[action] = routeMap[action];
+  }
+  return routes;
+}
+
 export function handleGetAvailableActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) {
+    const actions = ["create_character"];
     return {
       success: true,
       data: {
         phase: "idle",
         isYourTurn: false,
-        availableActions: ["create_character"],
+        availableActions: actions,
+        actionRoutes: buildActionRoutes(actions, playerActionRoutes),
       },
     };
   }
@@ -765,12 +830,14 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
   const party = char.partyId ? parties.get(char.partyId) : null;
 
   if (!party?.session) {
+    const actions = ["queue", "get_status", "get_inventory"];
     return {
       success: true,
       data: {
         phase: "idle",
         isYourTurn: false,
-        availableActions: ["queue", "get_status", "get_inventory"],
+        availableActions: actions,
+        actionRoutes: buildActionRoutes(actions, playerActionRoutes),
       },
     };
   }
@@ -792,6 +859,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
     success: true,
     data: {
       phase, isYourTurn: isCurrentTurn, availableActions: actions,
+      actionRoutes: buildActionRoutes(actions, playerActionRoutes),
       ...(turnResourceState ? { turnResources: turnResourceState } : {}),
     },
   };
@@ -2456,7 +2524,10 @@ export function handleGetDmActions(userId: string): { success: boolean; data?: R
   const phase = party.session?.phase ?? "exploration";
   const availableTools = getAllowedDMActions(phase);
 
-  const data: Record<string, unknown> = { phase, availableTools };
+  const data: Record<string, unknown> = {
+    phase, availableTools,
+    actionRoutes: buildActionRoutes(availableTools, dmActionRoutes),
+  };
 
   if (party.session && phase === "combat") {
     const current = getCurrentCombatant(party.session);
