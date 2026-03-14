@@ -89,6 +89,39 @@ describe("POST /api/v1/use-item accepts item_id alias (B010)", () => {
     expect(body.healed).toBeGreaterThanOrEqual(4);
   });
 
+  test("'item' field works as alias for item_name (B008)", async () => {
+    handleAwardLoot("dm-1", { player_id: charId, item_name: "Potion of Healing" });
+    const char = getCharacterForUser(userId)!;
+    char.hpCurrent = 5;
+
+    const res = await app.request("/api/v1/use-item", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item: "Potion of Healing" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.healed).toBeGreaterThanOrEqual(4);
+  });
+
+  test("missing all item fields returns 400 with clear error (B008)", async () => {
+    const res = await app.request("/api/v1/use-item", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ target_id: "someone" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(400);
+    expect(body.error).toContain("Missing required field: item_name");
+    expect(body.error).not.toContain("undefined");
+  });
+
   test("item_name takes precedence over item_id when both provided", async () => {
     handleAwardLoot("dm-1", { player_id: charId, item_name: "Potion of Healing" });
     const char = getCharacterForUser(userId)!;

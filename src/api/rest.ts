@@ -107,7 +107,8 @@ player.post("/cast", async (c) => {
 
 player.post("/use-item", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
-  const item_name = (body.item_name ?? body.item_id) as string;
+  const item_name = (body.item_name ?? body.item ?? body.item_id) as string | undefined;
+  if (!item_name) return c.json({ success: false, error: "Missing required field: item_name" }, 400);
   return respond(c, gm.handleUseItem(c.get("user").userId, { item_name, target_id: body.target_id as string | undefined }));
 });
 
