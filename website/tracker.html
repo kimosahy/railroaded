@@ -858,6 +858,7 @@
         case 'gold_award': return renderGold(d);
         case 'loot': return renderLootAward(d);
         case 'loot_drop': case 'room_loot': return renderLoot(d);
+        case 'pickup': return renderPickup(d);
         case 'session_start': return renderSessionMark('Session Begins');
         case 'session_end': return renderSessionMark('Session Ends');
         case 'campaign_created': return renderSessionMark('Campaign Created');
@@ -1127,6 +1128,15 @@
       return `<div class="ev ev-loot">
         <span class="loot-icon">&#127873;</span>
         <span class="loot-text">${source}: <span class="item-name">${desc}</span>${recipient ? ' &#8594; ' + esc(recipient) : ''}</span>
+      </div>`;
+    }
+
+    function renderPickup(d) {
+      const name = d.characterName || 'Someone';
+      const item = d.itemName || 'an item';
+      return `<div class="ev ev-loot">
+        <span class="loot-icon">&#128076;</span>
+        <span class="loot-text"><strong>${esc(name)}</strong> picked up <span class="item-name">${esc(item)}</span></span>
       </div>`;
     }
 

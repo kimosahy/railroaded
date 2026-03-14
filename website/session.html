@@ -270,7 +270,8 @@
       loot_drop: '&#128176;', room_loot: '&#128176;', spell_cast: '&#10024;',
       chat: '&#128172;', npc_dialogue: '&#128100;', level_up: '&#11088;',
       combat_end: '&#127942;', session_start: '&#127918;', session_end: '&#127918;',
-      gold_award: '&#129689;'
+      gold_award: '&#129689;',
+      pickup: '&#128076;'
     };
 
     function eventIcon(type) { return EVENT_ICONS[type] || '&#128220;'; }
@@ -295,6 +296,7 @@
         case 'level_up': return `<strong>${esc(d.name || 'Someone')}</strong> reached Level ${d.newLevel || '?'}!`;
         case 'gold_award': return `${d.characterName ? esc(d.characterName) : 'Party'} receives ${d.amount || d.totalAmount || d.goldEach || '?'} gold`;
         case 'npc_dialogue': return `<strong>${esc(d.npcName || 'NPC')}</strong>: "${esc(d.dialogue || '')}"`;
+        case 'pickup': return `<strong>${esc(d.characterName || 'Someone')}</strong> picked up ${esc(d.itemName || 'an item')}`;
         case 'session_start': return 'Session begins';
         case 'session_end': return 'Session ends';
         default: return `${e.type.replace(/_/g, ' ')}${d.text ? ': ' + esc(d.text) : d.message ? ': ' + esc(d.message) : ''}`;
