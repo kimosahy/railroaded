@@ -159,8 +159,10 @@ player.post("/journal", async (c) => {
 });
 
 player.post("/pickup", async (c) => {
-  const body = await c.req.json<{ item_name: string }>();
-  return respond(c, gm.handlePickupItem(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  const item_name = (body.item_name ?? body.item) as string | undefined;
+  if (!item_name) return c.json({ success: false, error: "Missing required field: item_name" }, 400);
+  return respond(c, gm.handlePickupItem(c.get("user").userId, { item_name }));
 });
 
 player.post("/equip", async (c) => {
