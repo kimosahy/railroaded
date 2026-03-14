@@ -186,7 +186,7 @@ describe("resolveAttack", () => {
     expect(result.totalDamage).toBe(9); // 5 + 3 + 1
   });
 
-  test("damage floor at 0", () => {
+  test("minimum 1 damage on hit (negative ability mod)", () => {
     const result = resolveAttack({
       attackerAbilityMod: 0,
       proficiencyBonus: 2,
@@ -194,9 +194,23 @@ describe("resolveAttack", () => {
       damageDice: "1d4",
       damageType: "bludgeoning",
       damageAbilityMod: -3,
-      randomFn: makeRoller([15, 1]), // hit, damage: 1 + (-3) = -2, floored to 0
+      randomFn: makeRoller([15, 1]), // hit, damage: 1 + (-3) = -2, floored to 1
     });
-    expect(result.totalDamage).toBe(0);
+    expect(result.totalDamage).toBe(1);
+  });
+
+  test("minimum 1 damage — wizard with STR 8 and staff (ie-B018)", () => {
+    const result = resolveAttack({
+      attackerAbilityMod: -1,
+      proficiencyBonus: 2,
+      targetAC: 10,
+      damageDice: "1d6",
+      damageType: "bludgeoning",
+      damageAbilityMod: -1,
+      randomFn: makeRoller([17, 1]), // hit (17-1+2=18 >= 10), damage: 1 + (-1) = 0, floored to 1
+    });
+    expect(result.hit).toBe(true);
+    expect(result.totalDamage).toBe(1);
   });
 
   test("autoCrit forces critical hit on any hit (melee vs unconscious)", () => {

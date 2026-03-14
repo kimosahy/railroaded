@@ -130,8 +130,8 @@ export function resolveAttack(params: {
       damage = roll(damageDice, randomFn);
     }
     totalDamage = damage.total + damageAbilityMod + bonusDamage;
-    // Damage can't go below 0
-    if (totalDamage < 0) totalDamage = 0;
+    // D&D 5e: a successful hit always deals at least 1 damage
+    if (totalDamage < 1) totalDamage = 1;
   }
 
   // Attach the modifier to the attack roll result for display
