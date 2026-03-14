@@ -66,7 +66,7 @@ describe("level-up", () => {
     expect(features).toContain("Action Surge");
   });
 
-  test("rogue gains Cunning Action at level 2", () => {
+  test("rogue has Cunning Action (core feature, present at all levels)", () => {
     const status = handleGetStatus("lvl-player-2");
     const features = status.data!.features as string[];
     expect(features).toContain("Cunning Action");

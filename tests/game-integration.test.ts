@@ -253,10 +253,6 @@ describe("B. Bonus Actions", () => {
 
   test("rogue bonus action dash succeeds (Cunning Action)", () => {
     const rogueChar = getCharacterForUser(players[0])!;
-    // Cunning Action is a level 2 feature — add it manually for testing
-    if (!rogueChar.features.includes("Cunning Action")) {
-      rogueChar.features.push("Cunning Action");
-    }
     const onTurn = advanceToCharacterTurn(rogueChar.id, players, dm);
     if (!onTurn) return;
     const result = handleBonusAction(players[0], { action: "dash" });
@@ -266,9 +262,6 @@ describe("B. Bonus Actions", () => {
 
   test("rogue bonus action hide returns stealth roll (Cunning Action)", () => {
     const rogueChar = getCharacterForUser(players[0])!;
-    if (!rogueChar.features.includes("Cunning Action")) {
-      rogueChar.features.push("Cunning Action");
-    }
     // End rogue turn from the dash test (bonus action was consumed)
     handleEndTurn(players[0]);
     const onTurn = advanceToCharacterTurn(rogueChar.id, players, dm);

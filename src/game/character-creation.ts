@@ -102,8 +102,7 @@ export function classFeatures(characterClass: CharacterClass, level: number): st
       if (level >= 2) features.push("Action Surge");
       break;
     case "rogue":
-      features.push("Sneak Attack", "Thieves' Cant");
-      if (level >= 2) features.push("Cunning Action");
+      features.push("Sneak Attack", "Thieves' Cant", "Cunning Action");
       break;
     case "cleric":
       features.push("Spellcasting", "Channel Divinity: Turn Undead");

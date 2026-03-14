@@ -10,10 +10,12 @@ import {
   handleNarrateTo,
   handleCast,
   handleEndTurn,
+  handleBonusAction,
   getPartyForUser,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
 import { getCurrentCombatant } from "../src/game/session.ts";
+import { classFeatures } from "../src/game/character-creation.ts";
 import type { AbilityScores } from "../src/types.ts";
 
 const scores: AbilityScores = { str: 16, dex: 14, con: 12, int: 10, wis: 8, cha: 15 };
