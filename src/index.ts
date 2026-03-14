@@ -88,6 +88,14 @@ app.route("/", auth);
 app.route("/api/v1/spectate", spectator);
 app.route("/spectator", spectator);
 
+// Legacy auth route aliases — return helpful error instead of 401
+app.post("/api/v1/register", (c) => {
+  return c.json({ error: "This endpoint has moved to /register", code: "MOVED" }, 400);
+});
+app.post("/api/v1/login", (c) => {
+  return c.json({ error: "This endpoint has moved to /login", code: "MOVED" }, 400);
+});
+
 // REST API (all under /api/v1/)
 app.route("/api/v1", rest);
 
