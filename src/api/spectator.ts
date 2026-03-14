@@ -932,6 +932,111 @@ spectator.get("/sessions", async (c) => {
   }
 });
 
+// GET /spectator/sessions/:id — full session detail
+spectator.get("/sessions/:id", async (c) => {
+  const sessionId = c.req.param("id");
+
+  try {
+    // Fetch session with party info
+    const [session] = await db.select({
+      id: gameSessionsTable.id,
+      partyId: gameSessionsTable.partyId,
+      partyName: partiesTable.name,
+      phase: gameSessionsTable.phase,
+      isActive: gameSessionsTable.isActive,
+      summary: gameSessionsTable.summary,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(eq(gameSessionsTable.id, sessionId));
+
+    if (!session) {
+      return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
+    }
+
+    // Fetch party members
+    const members = await db.select({
+      id: charactersTable.id,
+      name: charactersTable.name,
+      class: charactersTable.class,
+      race: charactersTable.race,
+      level: charactersTable.level,
+      xp: charactersTable.xp,
+      hpCurrent: charactersTable.hpCurrent,
+      hpMax: charactersTable.hpMax,
+      ac: charactersTable.ac,
+      isAlive: charactersTable.isAlive,
+      avatarUrl: charactersTable.avatarUrl,
+      description: charactersTable.description,
+    })
+      .from(charactersTable)
+      .where(eq(charactersTable.partyId, session.partyId));
+
+    // Fetch events
+    const events = await db.select({
+      type: sessionEventsTable.type,
+      actorId: sessionEventsTable.actorId,
+      data: sessionEventsTable.data,
+      createdAt: sessionEventsTable.createdAt,
+    })
+      .from(sessionEventsTable)
+      .where(eq(sessionEventsTable.sessionId, sessionId))
+      .orderBy(asc(sessionEventsTable.createdAt));
+
+    // Fetch narrations
+    const sessionNarrations = await db.select({
+      id: narrationsTable.id,
+      content: narrationsTable.content,
+      createdAt: narrationsTable.createdAt,
+    })
+      .from(narrationsTable)
+      .where(eq(narrationsTable.sessionId, sessionId))
+      .orderBy(asc(narrationsTable.createdAt));
+
+    return c.json({
+      id: session.id,
+      partyId: session.partyId,
+      partyName: session.partyName ?? null,
+      phase: session.phase,
+      isActive: session.isActive,
+      summary: sanitizeSummaryForPublic(session.summary ?? null),
+      startedAt: session.startedAt.toISOString(),
+      endedAt: session.endedAt ? session.endedAt.toISOString() : null,
+      members: members.map((m) => ({
+        id: m.id,
+        name: m.name,
+        class: m.class,
+        race: m.race,
+        level: m.level,
+        xp: m.xp,
+        hpCurrent: m.hpCurrent,
+        hpMax: m.hpMax,
+        ac: m.ac,
+        isAlive: m.isAlive,
+        avatarUrl: m.avatarUrl ?? null,
+        description: m.description ?? null,
+      })),
+      events: events.map((e) => ({
+        type: e.type,
+        actorId: e.actorId,
+        data: e.data,
+        timestamp: e.createdAt.toISOString(),
+      })),
+      narrations: sessionNarrations.map((n) => ({
+        id: n.id,
+        content: n.content,
+        createdAt: n.createdAt.toISOString(),
+      })),
+      eventCount: events.length,
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch session detail:", err);
+    return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
+  }
+});
+
 // GET /spectator/sessions/:id/events — all events for a session
 spectator.get("/sessions/:id/events", async (c) => {
   const sessionId = c.req.param("id");
