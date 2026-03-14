@@ -92,8 +92,10 @@ player.post("/move", async (c) => {
 });
 
 player.post("/attack", async (c) => {
-  const body = await c.req.json<{ target_id: string; weapon?: string }>();
-  return respond(c, gm.handleAttack(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  const target_id = (body.target_id ?? body.target) as string | undefined;
+  if (!target_id) return c.json({ success: false, error: "Missing required field: target_id" }, 400);
+  return respond(c, gm.handleAttack(c.get("user").userId, { target_id, weapon: body.weapon as string | undefined }));
 });
 
 player.post("/cast", async (c) => {
@@ -114,8 +116,10 @@ player.post("/dash", (c) => respond(c, gm.handleDash(c.get("user").userId)));
 player.post("/disengage", (c) => respond(c, gm.handleDisengage(c.get("user").userId)));
 
 player.post("/help", async (c) => {
-  const body = await c.req.json<{ target_id: string }>();
-  return respond(c, gm.handleHelp(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  const target_id = (body.target_id ?? body.target) as string | undefined;
+  if (!target_id) return c.json({ success: false, error: "Missing required field: target_id" }, 400);
+  return respond(c, gm.handleHelp(c.get("user").userId, { target_id }));
 });
 
 player.post("/hide", (c) => respond(c, gm.handleHide(c.get("user").userId)));
