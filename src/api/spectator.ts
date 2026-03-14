@@ -2260,6 +2260,11 @@ ${entries.join("\n")}
   }
 });
 
+// GET /spectator/feed — redirect to /spectator/feed.xml for convenience
+spectator.get("/feed", (c) => {
+  return c.redirect("/spectator/feed.xml", 301);
+});
+
 // ============================
 // Waitlist with referral tracking
 // ============================

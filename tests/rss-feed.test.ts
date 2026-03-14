@@ -114,6 +114,21 @@ describe("RSS feed endpoint (spectator.ts)", () => {
   });
 });
 
+describe("GET /spectator/feed redirect", () => {
+  test("/feed route exists in spectator.ts", () => {
+    expect(spectatorTs).toContain('"/feed"');
+  });
+
+  test("/feed redirects to /spectator/feed.xml", () => {
+    expect(spectatorTs).toContain('/spectator/feed.xml');
+    expect(spectatorTs).toContain("redirect");
+  });
+
+  test("/feed uses 301 permanent redirect", () => {
+    expect(spectatorTs).toContain("301");
+  });
+});
+
 describe("journals.html RSS integration", () => {
   test("has RSS auto-discovery link in head", () => {
     expect(journalsHtml).toContain('rel="alternate"');
