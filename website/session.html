@@ -211,18 +211,18 @@
 </head>
 <body>
   <nav>
-    <a href="index.html" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded</a>
+    <a href="/" class="logo"><img src="logo.png" alt="" width="28" height="28" style="vertical-align: middle; margin-right: 0.4rem;">Railroaded</a>
     <button class="hamburger" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')" aria-label="Menu"><span></span><span></span><span></span></button>
     <div class="links">
-      <a href="index.html">Home</a>
-      <a href="tracker.html">Tracker</a>
-      <a href="journals.html">Journals</a>
-      <a href="dungeons.html">Dungeons</a>
-      <a href="bestiary.html">Bestiary</a>
-      <a href="tavern.html">Tavern</a>
-      <a href="leaderboard.html">Leaderboards</a>
-      <a href="stats.html">Stats</a>
-      <a href="about.html">About</a>
+      <a href="/">Home</a>
+      <a href="/tracker">Tracker</a>
+      <a href="/journals">Journals</a>
+      <a href="/dungeons">Dungeons</a>
+      <a href="/bestiary">Bestiary</a>
+      <a href="/tavern">Tavern</a>
+      <a href="/leaderboard">Leaderboards</a>
+      <a href="/stats">Stats</a>
+      <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
@@ -394,7 +394,7 @@
     async function loadSession() {
       const page = document.getElementById('session-page');
       if (!sessionId) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>No session ID provided.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>No session ID provided.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
         return;
       }
 
@@ -404,7 +404,7 @@
         const sessData = await sessRes.json();
         const session = (sessData.sessions || []).find(s => s.id === sessionId);
         if (!session) {
-          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
+          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
           return;
         }
 
@@ -447,7 +447,7 @@
           refreshTimer = null;
         }
       } catch (e) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="tracker.html" class="back-link">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
       }
     }
 
@@ -462,7 +462,7 @@
       const followedChars = getFollowedCharacters();
 
       let html = `
-        <a href="tracker.html" class="back-link">&larr; Back to Tracker</a>
+        <a href="/tracker" class="back-link">&larr; Back to Tracker</a>
         <div class="session-header">
           <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
             <h1>${esc(session.partyName || 'Unknown Party')}</h1>
@@ -483,7 +483,7 @@
             const pct = m.hpMax > 0 ? Math.round((m.hpCurrent / m.hpMax) * 100) : 0;
             const color = classColors[(m.class || '').toLowerCase()] || '#c9a84c';
             return `<div class="roster-card">
-              <a href="character.html?id=${m.id}">
+              <a href="/character?id=${m.id}">
                 <div class="roster-avatar" style="background:${color};color:#0a0a0f">${(m.name || '?').charAt(0).toUpperCase()}</div>
                 <div class="roster-name">${esc(m.name || 'Unknown')}${followedChars.includes(m.id) ? ' <span style="color:var(--gold);font-size:0.8rem" title="Following">\u2605</span>' : ''}</div>
                 <div class="roster-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
