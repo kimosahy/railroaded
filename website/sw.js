@@ -55,6 +55,9 @@ self.addEventListener('fetch', function(e) {
   // Skip API requests — always go to network
   if (url.hostname === 'api.railroaded.ai') return;
 
+  // Skip Google Fonts — let browser handle CORS font loading directly
+  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') return;
+
   // Skip non-GET requests
   if (e.request.method !== 'GET') return;
 
