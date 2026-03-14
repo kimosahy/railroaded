@@ -609,7 +609,85 @@ spectator.get("/leaderboard", async (c) => {
   });
 });
 
-// --- Character Sheet ---
+// --- Character List & Sheet ---
+
+// GET /spectator/characters — list all characters (summary view for Tavern page)
+spectator.get("/characters", async (c) => {
+  const state = gm.getState();
+
+  interface CharacterSummary {
+    id: string;
+    name: string;
+    class: string;
+    race: string;
+    level: number;
+    xp: number;
+    gold: number;
+    avatarUrl: string | null;
+    description: string | null;
+    isAlive: boolean;
+    monstersKilled: number;
+    dungeonsCleared: number;
+    sessionsPlayed: number;
+  }
+
+  // Merge in-memory + DB characters (dedup by DB id)
+  const charMap = new Map<string, CharacterSummary>();
+  for (const [id, char] of state.characters) {
+    charMap.set(char.dbCharId ?? id, {
+      id: char.dbCharId ?? id,
+      name: char.name, class: char.class, race: char.race,
+      level: char.level, xp: char.xp, gold: char.gold,
+      avatarUrl: char.avatarUrl, description: char.description,
+      isAlive: char.isAlive !== false,
+      monstersKilled: char.monstersKilled ?? 0,
+      dungeonsCleared: char.dungeonsCleared ?? 0,
+      sessionsPlayed: char.sessionsPlayed ?? 0,
+    });
+  }
+
+  try {
+    const dbChars = await db.select({
+      id: charactersTable.id,
+      name: charactersTable.name,
+      class: charactersTable.class,
+      race: charactersTable.race,
+      level: charactersTable.level,
+      xp: charactersTable.xp,
+      gold: charactersTable.gold,
+      avatarUrl: charactersTable.avatarUrl,
+      description: charactersTable.description,
+      isAlive: charactersTable.isAlive,
+      monstersKilled: charactersTable.monstersKilled,
+      dungeonsCleared: charactersTable.dungeonsCleared,
+      sessionsPlayed: charactersTable.sessionsPlayed,
+    }).from(charactersTable);
+
+    for (const ch of dbChars) {
+      if (!charMap.has(ch.id)) {
+        charMap.set(ch.id, {
+          id: ch.id,
+          name: ch.name, class: ch.class, race: ch.race,
+          level: ch.level, xp: ch.xp, gold: ch.gold ?? 0,
+          avatarUrl: ch.avatarUrl ?? null, description: ch.description ?? null,
+          isAlive: ch.isAlive,
+          monstersKilled: ch.monstersKilled ?? 0,
+          dungeonsCleared: ch.dungeonsCleared ?? 0,
+          sessionsPlayed: ch.sessionsPlayed ?? 0,
+        });
+      }
+    }
+  } catch (err) {
+    console.error("[DB] Failed to fetch characters for list:", err);
+  }
+
+  // Sort by level desc, then XP desc
+  const characters = Array.from(charMap.values()).sort((a, b) =>
+    b.level - a.level || b.xp - a.xp
+  );
+
+  return c.json({ characters });
+});
 
 // GET /spectator/characters/:id — full character sheet for spectators
 spectator.get("/characters/:id", async (c) => {
