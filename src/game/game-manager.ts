@@ -1338,6 +1338,11 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     return { success: false, error: `${spell.name} is a reaction spell. Use the reaction tool instead.` };
   }
 
+  // Healing spells require a target
+  if (spell.isHealing && !params.target_id) {
+    return { success: false, error: `${spell.name} requires a target. Specify target_id.` };
+  }
+
   // Check turn order and action resource in combat
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {

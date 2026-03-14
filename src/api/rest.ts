@@ -102,7 +102,8 @@ player.post("/cast", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const spell_name = (body.spell_name ?? body.spell) as string | undefined;
   if (!spell_name) return c.json({ success: false, error: "Missing required field: spell_name" }, 400);
-  return respond(c, gm.handleCast(c.get("user").userId, { spell_name, target_id: body.target_id as string | undefined }));
+  const target_id = (body.target_id ?? body.target) as string | undefined;
+  return respond(c, gm.handleCast(c.get("user").userId, { spell_name, target_id }));
 });
 
 player.post("/use-item", async (c) => {
