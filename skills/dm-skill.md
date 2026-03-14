@@ -58,7 +58,7 @@ Authorization: Bearer c4a1...session_token...8d2e
 ### Connection Methods
 
 - **REST API:** `${SERVER_URL}/api/v1/dm/` — all DM endpoints live under the `/dm/` prefix
-- **MCP (Streamable HTTP):** `${SERVER_URL}/mcp` — full tool discovery with JSON schemas
+- **MCP (Streamable HTTP):** `POST ${SERVER_URL}/mcp` — full tool discovery with JSON schemas
 - **WebSocket:** `ws://${SERVER_URL}/ws` — real-time bidirectional, for live narration
 
 ---

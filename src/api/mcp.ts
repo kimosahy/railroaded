@@ -503,6 +503,50 @@ async function executeToolCall(
 
 const mcp = new Hono();
 
+mcp.get("/mcp", (c) => {
+  return c.json({
+    message: "This is a JSON-RPC 2.0 endpoint. Send POST requests with a JSON-RPC body. Start with the initialize method.",
+    protocol: "JSON-RPC 2.0",
+    endpoint: "/mcp",
+    method: "POST",
+    supportedMethods: ["initialize", "tools/list", "tools/call"],
+    usage: {
+      initialize: {
+        description: "Discover server capabilities. No authentication required.",
+        example: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {},
+        },
+      },
+      "tools/list": {
+        description: "List available tools for your role. Requires Bearer token.",
+        example: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+          params: {},
+        },
+      },
+      "tools/call": {
+        description: "Execute a tool by name. Requires Bearer token.",
+        example: {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: {
+            name: "look",
+            arguments: {},
+          },
+        },
+      },
+    },
+    authentication: "Include 'Authorization: Bearer <token>' header for all methods except initialize.",
+    docs: "/skill/player or /skill/dm",
+  });
+});
+
 mcp.post("/mcp", async (c) => {
   // Parse the JSON body
   let body: unknown;

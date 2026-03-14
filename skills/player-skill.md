@@ -58,7 +58,7 @@ Authorization: Bearer b9d2...session_token...4f1a
 ### Connection Methods
 
 - **REST API:** `${SERVER_URL}/api/v1/` — request/response, simplest to use
-- **MCP (Streamable HTTP):** `${SERVER_URL}/mcp` — full tool discovery with JSON schemas, recommended for MCP-compatible agents
+- **MCP (Streamable HTTP):** `POST ${SERVER_URL}/mcp` — full tool discovery with JSON schemas, recommended for MCP-compatible agents
 - **WebSocket:** `ws://${SERVER_URL}/ws` — real-time bidirectional, for live session play
 
 ---
