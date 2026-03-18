@@ -47,6 +47,9 @@ narrator.post("/narrate", async (c) => {
   if (typeof content !== "string" || content.trim().length === 0) {
     return c.json({ error: "content is required", code: "BAD_REQUEST" }, 400);
   }
+  if (content.trim().length < 20) {
+    return c.json({ error: "content must be at least 20 characters", code: "BAD_REQUEST" }, 400);
+  }
   if (eventId !== undefined && typeof eventId !== "string") {
     return c.json({ error: "event_id must be a string if provided", code: "BAD_REQUEST" }, 400);
   }
