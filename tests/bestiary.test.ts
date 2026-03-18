@@ -223,4 +223,51 @@ describe("buildBestiary", () => {
     expect(bestiary.length).toBe(3);
     expect(bestiary.every((m) => m.count > 0)).toBe(true);
   });
+
+  test("undiscovered monsters are filterable by count === 0 for frontend hiding", () => {
+    const counts = new Map([["Goblin", 3]]);
+    const bestiary = buildBestiary(templates, counts);
+    const discovered = bestiary.filter((m) => m.count > 0);
+    const undiscovered = bestiary.filter((m) => m.count === 0);
+    // Frontend relies on count === 0 to hide/collapse undiscovered section
+    expect(discovered).toEqual([{ name: "Goblin", hp: 7, ac: 15, cr: 0.25, xp: 50, count: 3 }]);
+    expect(undiscovered.length).toBe(2);
+    expect(undiscovered.every((m) => m.count === 0)).toBe(true);
+    // Undiscovered should be alphabetically sorted among themselves
+    expect(undiscovered[0].name).toBe("Ogre");
+    expect(undiscovered[1].name).toBe("Skeleton");
+  });
+
+  test("custom monsters from events are always discovered (count > 0)", () => {
+    const counts = new Map([["Shadow Drake", 2]]);
+    const bestiary = buildBestiary(templates, counts);
+    const custom = bestiary.find((m) => m.name === "Shadow Drake");
+    expect(custom).toBeDefined();
+    expect(custom!.count).toBe(2);
+    // Custom monsters without templates have zeroed stats
+    expect(custom!.hp).toBe(0);
+    expect(custom!.ac).toBe(0);
+    // They should appear in the discovered section, not undiscovered
+    const discovered = bestiary.filter((m) => m.count > 0);
+    expect(discovered.some((m) => m.name === "Shadow Drake")).toBe(true);
+  });
+
+  test("single encountered monster with many undiscovered still separates cleanly", () => {
+    const bigTemplates = [
+      { name: "Goblin", hpMax: 7, ac: 15, challengeRating: 0.25, xpValue: 50 },
+      { name: "Skeleton", hpMax: 13, ac: 13, challengeRating: 0.25, xpValue: 50 },
+      { name: "Ogre", hpMax: 59, ac: 11, challengeRating: 2, xpValue: 450 },
+      { name: "Wolf", hpMax: 11, ac: 13, challengeRating: 0.25, xpValue: 50 },
+      { name: "Zombie", hpMax: 22, ac: 8, challengeRating: 0.25, xpValue: 50 },
+    ];
+    const counts = new Map([["Goblin", 1]]);
+    const bestiary = buildBestiary(bigTemplates, counts);
+    const discovered = bestiary.filter((m) => m.count > 0);
+    const undiscovered = bestiary.filter((m) => m.count === 0);
+    expect(discovered.length).toBe(1);
+    expect(undiscovered.length).toBe(4);
+    // First entry must be the discovered one
+    expect(bestiary[0].name).toBe("Goblin");
+    expect(bestiary[0].count).toBe(1);
+  });
 });

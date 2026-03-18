@@ -80,9 +80,14 @@
     .skeleton-card { height: 200px; border-radius: 10px; }
 
     /* Undiscovered section */
-    .section-divider { display: flex; align-items: center; gap: 1rem; margin: 2.5rem 0 1.5rem; }
+    .section-divider { display: flex; align-items: center; gap: 1rem; margin: 2.5rem 0 0; cursor: pointer; user-select: none; }
+    .section-divider:hover h2 { color: var(--gold-dim); }
     .section-divider::before, .section-divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-    .section-divider h2 { font-family: 'Cinzel', serif; font-size: 1rem; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; }
+    .section-divider h2 { font-family: 'Cinzel', serif; font-size: 1rem; color: var(--text-dim); letter-spacing: 0.06em; text-transform: uppercase; white-space: nowrap; transition: color 0.2s; }
+    .section-divider .chevron { display: inline-block; font-size: 0.7rem; margin-left: 0.4rem; transition: transform 0.2s; }
+    .section-divider.expanded .chevron { transform: rotate(90deg); }
+    .undiscovered-grid { display: none; margin-top: 1.5rem; }
+    .undiscovered-grid.visible { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.5rem; }
     .monster-card.undiscovered { opacity: 0.4; filter: grayscale(0.5); cursor: default; }
     .monster-card.undiscovered:hover { border-color: var(--border); transform: none; }
     .monster-card.undiscovered .monster-name { color: var(--text-dim); }
@@ -107,6 +112,7 @@
       nav .links a { font-size: 0.9rem; }
       .container { padding: 0 1rem 3rem; }
       .monster-grid { grid-template-columns: 1fr 1fr; }
+      .undiscovered-grid.visible { grid-template-columns: 1fr 1fr; }
       .page-header h1 { font-size: 1.8rem; }
     }
   </style>
@@ -185,15 +191,28 @@
       var cls = undiscovered ? 'monster-card undiscovered' : 'monster-card';
       var countText = undiscovered ? 'Not yet encountered' : 'Encountered ' + m.count + ' time' + (m.count !== 1 ? 's' : '');
       var icon = undiscovered ? '\uD83D\uDD12' : monsterIcon(m.name);
+      var displayName = undiscovered ? '???' : esc(m.name);
       return '<div class="' + cls + '">' +
         '<div class="monster-icon">' + icon + '</div>' +
-        '<div class="monster-name">' + esc(m.name) + '</div>' +
+        '<div class="monster-name">' + displayName + '</div>' +
         '<div class="monster-count">' + countText + '</div>' +
         '<div class="monster-stats">' +
           (m.hp ? '<div class="monster-stat"><div class="value">' + (undiscovered ? '?' : m.hp) + '</div><div class="label">HP</div></div>' : '') +
           (m.ac ? '<div class="monster-stat"><div class="value">' + (undiscovered ? '?' : m.ac) + '</div><div class="label">AC</div></div>' : '') +
         '</div>' +
       '</div>';
+    }
+
+    var undiscoveredExpanded = false;
+    try { undiscoveredExpanded = localStorage.getItem('bestiary_show_undiscovered') === 'true'; } catch(e) {}
+
+    function toggleUndiscovered() {
+      undiscoveredExpanded = !undiscoveredExpanded;
+      try { localStorage.setItem('bestiary_show_undiscovered', undiscoveredExpanded ? 'true' : 'false'); } catch(e) {}
+      var divider = document.querySelector('.section-divider');
+      var ugrid = document.querySelector('.undiscovered-grid');
+      if (divider) divider.classList.toggle('expanded', undiscoveredExpanded);
+      if (ugrid) ugrid.classList.toggle('visible', undiscoveredExpanded);
     }
 
     function renderGrid() {
@@ -218,8 +237,12 @@
           '</div>';
       }
       if (undiscovered.length > 0) {
-        html += '<div class="section-divider"><h2>' + undiscovered.length + ' creature' + (undiscovered.length !== 1 ? 's' : '') + ' lurk unseen</h2></div>';
+        var expandedClass = undiscoveredExpanded ? ' expanded' : '';
+        var visibleClass = undiscoveredExpanded ? ' visible' : '';
+        html += '<div class="section-divider' + expandedClass + '" onclick="toggleUndiscovered()"><h2>' + undiscovered.length + ' creature' + (undiscovered.length !== 1 ? 's' : '') + ' lurk unseen <span class="chevron">&#9654;</span></h2></div>';
+        html += '<div class="undiscovered-grid' + visibleClass + '">';
         html += undiscovered.map(function(m) { return renderMonsterCard(m, true); }).join('');
+        html += '</div>';
       }
       grid.innerHTML = html;
     }
