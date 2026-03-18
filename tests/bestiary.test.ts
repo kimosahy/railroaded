@@ -195,4 +195,32 @@ describe("buildBestiary", () => {
     expect(matches[0].hp).toBe(65);
     expect(matches[0].count).toBe(2);
   });
+
+  test("encountered monsters (count > 0) appear before undiscovered (count === 0)", () => {
+    const counts = new Map([["Skeleton", 3]]);
+    const bestiary = buildBestiary(templates, counts);
+    const encountered = bestiary.filter((m) => m.count > 0);
+    const undiscovered = bestiary.filter((m) => m.count === 0);
+    expect(encountered.length).toBe(1);
+    expect(encountered[0].name).toBe("Skeleton");
+    expect(undiscovered.length).toBe(2);
+    // Encountered entries should come first in the sorted output
+    const firstUndiscoveredIdx = bestiary.findIndex((m) => m.count === 0);
+    const lastEncounteredIdx = bestiary.length - 1 - [...bestiary].reverse().findIndex((m) => m.count > 0);
+    expect(lastEncounteredIdx).toBeLessThan(firstUndiscoveredIdx);
+  });
+
+  test("all-zero encounters produces entirely undiscovered list", () => {
+    const counts = new Map<string, number>();
+    const bestiary = buildBestiary(templates, counts);
+    expect(bestiary.length).toBe(3);
+    expect(bestiary.every((m) => m.count === 0)).toBe(true);
+  });
+
+  test("all templates encountered produces no undiscovered entries", () => {
+    const counts = new Map([["Goblin", 2], ["Skeleton", 5], ["Ogre", 1]]);
+    const bestiary = buildBestiary(templates, counts);
+    expect(bestiary.length).toBe(3);
+    expect(bestiary.every((m) => m.count > 0)).toBe(true);
+  });
 });
