@@ -3535,6 +3535,15 @@ const DEBUG_PATTERNS: RegExp[] = [
   /endpoint\s+test/i,
   /skeleton\s+test/i,
   /\btest\s+session\b/i,
+  /\bAPI\b/,                      // Technical acronym never in game narrative
+  /works?\s+fine\b/i,            // QA validation language ("works fine", "work fine")
+  /works?\s+(correctly|properly)\b/i, // QA validation language
+  /\bfield\s+alias/i,            // Developer jargon
+  /\bcorrect\s+IDs?\b/i,         // Developer identifier language
+  /\bmonster[_-]attack\b/i,      // Internal tool/function name reference
+  /permanently\s+stuck\b/i,      // Bug description language
+  /\btest\s+(narration|combat|run|scenario)\b/i, // Test run descriptions
+  /\b\d+\s+rooms?,\s/i,          // Clinical room enumeration ("7 rooms, wolf den, ...")
 ];
 
 /**

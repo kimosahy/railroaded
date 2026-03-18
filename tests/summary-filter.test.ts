@@ -41,11 +41,46 @@ describe("summaryContainsDebugText", () => {
     expect(summaryContainsDebugText("Test Session")).toBe(true);
   });
 
+  test("detects technical jargon (API, field alias, correct IDs)", () => {
+    expect(summaryContainsDebugText("Combat API field aliases now work")).toBe(true);
+    expect(summaryContainsDebugText("field alias mapping is broken")).toBe(true);
+    expect(summaryContainsDebugText("Monster-attack works fine with correct IDs")).toBe(true);
+    expect(summaryContainsDebugText("Verified with correct IDs")).toBe(true);
+  });
+
+  test("detects QA validation language (works fine, works correctly)", () => {
+    expect(summaryContainsDebugText("Monster-attack works fine with correct IDs.")).toBe(true);
+    expect(summaryContainsDebugText("Combat system works correctly now")).toBe(true);
+    expect(summaryContainsDebugText("Spells work properly after fix")).toBe(true);
+  });
+
+  test("detects bug description language (permanently stuck)", () => {
+    expect(summaryContainsDebugText("One member permanently stuck unconscious")).toBe(true);
+  });
+
+  test("detects internal tool name references (monster-attack, monster_attack)", () => {
+    expect(summaryContainsDebugText("monster-attack works")).toBe(true);
+    expect(summaryContainsDebugText("monster_attack tool verified")).toBe(true);
+  });
+
+  test("detects test run descriptions (test narration, test combat)", () => {
+    expect(summaryContainsDebugText("test narration output")).toBe(true);
+    expect(summaryContainsDebugText("test combat scenario")).toBe(true);
+    expect(summaryContainsDebugText("test run completed")).toBe(true);
+  });
+
+  test("detects clinical room enumeration", () => {
+    expect(summaryContainsDebugText("Full goblin cave exploration — 7 rooms, wolf den, throne room")).toBe(true);
+    expect(summaryContainsDebugText("Explored 3 rooms, then rested")).toBe(true);
+  });
+
   test("does not flag legitimate summaries", () => {
     expect(summaryContainsDebugText("The party explored the dungeon and fought skeletons")).toBe(false);
     expect(summaryContainsDebugText("A fierce battle in the ruins")).toBe(false);
     expect(summaryContainsDebugText("The heroes tested their mettle against the dragon")).toBe(false);
     expect(summaryContainsDebugText("Quick combat with goblins")).toBe(false);
+    expect(summaryContainsDebugText("The adventurers cleared many rooms and found treasure")).toBe(false);
+    expect(summaryContainsDebugText("The party worked fine together despite their differences")).toBe(false);
   });
 });
 
@@ -88,6 +123,33 @@ describe("filterSummary", () => {
 
   test("preserves summaries with 'test' as part of other words", () => {
     const summary = "The heroes tested their mettle against the dragon";
+    expect(filterSummary(summary)).toBe(summary);
+  });
+
+  test("strips technical debug notes from Unbroken Lanterns summary", () => {
+    const summary = "One member permanently stuck unconscious. Combat API field aliases now work.";
+    const result = filterSummary(summary);
+    expect(result).not.toContain("permanently stuck");
+    expect(result).not.toContain("API");
+    expect(result).not.toContain("field aliases");
+    expect(result.length).toBeLessThan(5);
+  });
+
+  test("strips QA validation from Stalwart Shields summary", () => {
+    const summary = "Monster-attack works fine with correct IDs.";
+    const result = filterSummary(summary);
+    expect(result).not.toContain("works fine");
+    expect(result).not.toContain("correct IDs");
+    expect(result.length).toBeLessThan(5);
+  });
+
+  test("detects clinical enumeration in Stalwart Covenant summary", () => {
+    const summary = "Full goblin cave exploration — 7 rooms, wolf den, throne room, traps, features";
+    expect(summaryContainsDebugText(summary)).toBe(true);
+  });
+
+  test("preserves narrative summaries with 'worked' (past tense)", () => {
+    const summary = "The party worked together to defeat the goblin king";
     expect(filterSummary(summary)).toBe(summary);
   });
 });
