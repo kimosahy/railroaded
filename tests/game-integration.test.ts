@@ -337,6 +337,41 @@ describe("B. Bonus Actions", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Unknown bonus action");
   });
+
+  // Second Wind in exploration
+  test("second_wind works outside combat for fighter", () => {
+    // combat-noenc party is in exploration phase — player 1 is a fighter
+    const char = getCharacterForUser("combat-noenc-p1")!;
+    char.hpCurrent = char.hpMax - 5; // damage the fighter
+    const hpBefore = char.hpCurrent;
+    const result = handleBonusAction("combat-noenc-p1", { action: "second_wind" });
+    expect(result.success).toBe(true);
+    expect(result.data!.action).toBe("second_wind");
+    expect(result.data!.healed).toBeGreaterThan(0);
+    expect(char.hpCurrent).toBeGreaterThan(hpBefore);
+  });
+
+  test("second_wind outside combat fails at full HP", () => {
+    const char = getCharacterForUser("combat-noenc-p2")!;
+    char.hpCurrent = char.hpMax; // ensure full HP
+    const result = handleBonusAction("combat-noenc-p2", { action: "second_wind" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Already at full HP");
+  });
+
+  test("non-fighter second_wind outside combat fails", async () => {
+    // Create a rogue in exploration to test class restriction
+    const setup = await setupParty("sw-explore", ["rogue", "fighter", "cleric", "wizard"]);
+    const result = handleBonusAction(setup.players[0], { action: "second_wind" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Only Fighters with Second Wind");
+  });
+
+  test("non-second_wind bonus actions still fail outside combat", () => {
+    const result = handleBonusAction("combat-noenc-p1", { action: "cast", spell_name: "Healing Word" });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not in combat");
+  });
 });
 
 // ==================== C. Reactions ====================

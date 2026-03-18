@@ -419,7 +419,8 @@ export const playerTools: PlayerToolDefinition[] = [
       "Use your bonus action. Cast a bonus-action spell (Healing Word, Shield of " +
       "Faith, Spiritual Weapon) or use a class feature (Rogue: Cunning Action " +
       "for dash/disengage/hide; Fighter: Second Wind to heal 1d10+level). " +
-      "You get one bonus action per turn, separate from your main action.",
+      "In combat, you get one bonus action per turn. " +
+      "Second Wind can also be used outside combat for recovery.",
     inputSchema: {
       type: "object",
       properties: {

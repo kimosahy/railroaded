@@ -2000,6 +2000,25 @@ export function handleBonusAction(userId: string, params: { action: string; spel
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
+
+  // Second Wind can be used outside combat (exploration/town)
+  if (params.action === "second_wind" && party?.session && party.session.phase !== "combat") {
+    if (!char.features.includes("Second Wind")) {
+      return { success: false, error: "Only Fighters with Second Wind can use this ability." };
+    }
+    if (char.hpCurrent >= char.hpMax) {
+      return { success: false, error: "Already at full HP." };
+    }
+    const healRoll = roll(`1d10+${char.level}`);
+    const hp = applyHealing({ current: char.hpCurrent, max: char.hpMax, temp: 0 }, healRoll.total);
+    char.hpCurrent = hp.current;
+    logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total, outOfCombat: true });
+    return {
+      success: true,
+      data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax },
+    };
+  }
+
   if (!party?.session || party.session.phase !== "combat") {
     return { success: false, error: "Not in combat." };
   }
