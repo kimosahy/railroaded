@@ -3373,6 +3373,39 @@ export function handlePickupItem(userId: string, params: { item_name: string }):
 
   const ground = party.groundItems[groundIdx]!;
   const pickedName = ground.itemName; // preserve original case
+  const isGold = pickedName.toLowerCase() === "gold coins";
+
+  if (isGold) {
+    // Gold Coins are currency — pick up entire stack and add to gold counter
+    const amount = ground.quantity;
+    char.gold += amount;
+    char.goldEarned += amount;
+    party.groundItems.splice(groundIdx, 1);
+
+    logEvent(party, "pickup", char.id, {
+      characterName: char.name,
+      itemName: pickedName,
+      goldAmount: amount,
+    });
+
+    broadcastToParty(party.id, {
+      type: "pickup",
+      characterName: char.name,
+      itemName: pickedName,
+      message: `${char.name} picked up ${amount} Gold Coins.`,
+    });
+
+    return {
+      success: true,
+      data: {
+        picked_up: pickedName,
+        gold_gained: amount,
+        gold_total: char.gold,
+        remaining_on_ground: party.groundItems.map((g) => ({ itemName: g.itemName, quantity: g.quantity })),
+      },
+    };
+  }
+
   char.inventory.push(pickedName);
 
   if (ground.quantity <= 1) {

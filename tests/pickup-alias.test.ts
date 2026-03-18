@@ -7,6 +7,7 @@ import {
   handleQueueForParty,
   handleDMQueueForParty,
   getPartyForUser,
+  getCharacterForUser,
 } from "../src/game/game-manager.ts";
 import type { AbilityScores } from "../src/types.ts";
 
@@ -134,5 +135,61 @@ describe("POST /api/v1/pickup accepts 'item' alias (B017)", () => {
     const body = await res.json();
     expect(res.status).toBe(200);
     expect(body.picked_up).toBe("Shield");
+  });
+
+  test("Gold Coins pickup increments gold counter instead of adding to inventory (B019)", async () => {
+    const char = getCharacterForUser(userId);
+    if (!char) throw new Error("No character");
+    const goldBefore = char.gold;
+    const inventoryBefore = [...char.inventory];
+
+    // Place 10 Gold Coins on ground
+    const party = getPartyForUser(userId);
+    if (!party) throw new Error("No party");
+    party.groundItems.push({ itemName: "Gold Coins", quantity: 10 });
+
+    const res = await app.request("/api/v1/pickup", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item_name: "Gold Coins" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.picked_up).toBe("Gold Coins");
+    expect(body.gold_gained).toBe(10);
+    expect(body.gold_total).toBe(goldBefore + 10);
+
+    // Gold counter should have increased
+    expect(char.gold).toBe(goldBefore + 10);
+    // Inventory should NOT contain Gold Coins
+    expect(char.inventory).toEqual(inventoryBefore);
+    // Ground should no longer have Gold Coins
+    expect(party.groundItems.find((g) => g.itemName === "Gold Coins")).toBeUndefined();
+  });
+
+  test("Gold Coins pickup is case-insensitive (B019)", async () => {
+    const char = getCharacterForUser(userId);
+    if (!char) throw new Error("No character");
+    const goldBefore = char.gold;
+
+    const party = getPartyForUser(userId);
+    if (!party) throw new Error("No party");
+    party.groundItems.push({ itemName: "Gold Coins", quantity: 5 });
+
+    const res = await app.request("/api/v1/pickup", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ item_name: "gold coins" }),
+    });
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.gold_gained).toBe(5);
+    expect(char.gold).toBe(goldBefore + 5);
   });
 });
