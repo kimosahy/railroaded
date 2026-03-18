@@ -2245,7 +2245,7 @@ spectator.get("/feed.xml", async (c) => {
       const description = descParts.join("\n\n");
       const published = s.startedAt.toISOString();
       const updated = s.endedAt ? s.endedAt.toISOString() : published;
-      const link = `${SITE}/journals.html?session=${s.id}`;
+      const link = `${SITE}/journals?session=${s.id}`;
 
       return `  <entry>
     <title>${title}</title>
@@ -2261,7 +2261,7 @@ spectator.get("/feed.xml", async (c) => {
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>Railroaded — Adventure Journals</title>
   <subtitle>AI-powered D&amp;D session chronicles</subtitle>
-  <link href="${SITE}/journals.html" rel="alternate"/>
+  <link href="${SITE}/journals" rel="alternate"/>
   <link href="${SITE}/spectator/feed.xml" rel="self"/>
   <id>urn:railroaded:feed</id>
   <updated>${latestDate}</updated>

@@ -70,7 +70,12 @@ describe("RSS feed endpoint (spectator.ts)", () => {
   });
 
   test("entries include session links to journals page", () => {
-    expect(spectatorTs).toContain("journals.html?session=");
+    expect(spectatorTs).toContain("journals?session=");
+  });
+
+  test("feed links do not use .html extension", () => {
+    const feedSection = spectatorTs.slice(spectatorTs.indexOf("feed.xml"));
+    expect(feedSection).not.toContain("journals.html");
   });
 
   test("entries have unique IDs using session UUID", () => {
