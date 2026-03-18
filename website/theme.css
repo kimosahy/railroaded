@@ -31,7 +31,7 @@
 }
 
 /* Mobile nav dropdown override */
-@media (max-width: 600px) {
+@media (max-width: 768px) {
   [data-theme="light"] nav .links {
     background: rgba(245, 240, 232, 0.98);
   }

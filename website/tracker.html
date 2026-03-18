@@ -622,11 +622,7 @@
       .container { grid-template-columns: 240px 1fr; padding: 1rem 1.5rem; }
       .detail-members { grid-template-columns: 1fr; }
     }
-    @media (max-width: 600px) {
-      .container { grid-template-columns: 1fr; padding: 1rem; }
-      .party-list, .party-detail { grid-column: 1; }
-      .party-detail { position: static; }
-      .detail-members { grid-template-columns: 1fr; }
+    @media (max-width: 768px) {
       nav { padding: 0 1rem; }
       .hamburger { display: flex; }
       nav .links {
@@ -636,6 +632,12 @@
       }
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
+    }
+    @media (max-width: 600px) {
+      .container { grid-template-columns: 1fr; padding: 1rem; }
+      .party-list, .party-detail { grid-column: 1; }
+      .party-detail { position: static; }
+      .detail-members { grid-template-columns: 1fr; }
     }
   </style>
   <link rel="stylesheet" href="theme.css">

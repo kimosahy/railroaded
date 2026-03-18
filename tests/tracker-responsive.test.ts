@@ -33,17 +33,11 @@ describe("tracker.html responsive layout", () => {
     expect(mobileCSS).toMatch(/grid-template-columns:\s*1fr\s*[;}]/);
   });
 
-  test("hamburger menu only shows at mobile breakpoint, not tablet", () => {
-    const tabletBlock = html.match(
-      /@media\s*\(\s*max-width:\s*768px\s*\)\s*\{([\s\S]*?)\n\s*\}/
+  test("hamburger menu shows at tablet breakpoint (768px)", () => {
+    // Hamburger should activate at 768px so nav links don't overflow
+    expect(html).toMatch(
+      /@media\s*\(\s*max-width:\s*768px\s*\)\s*\{[\s\S]*?\.hamburger\s*\{\s*display:\s*flex/
     );
-    const mobileBlock = html.match(
-      /@media\s*\(\s*max-width:\s*600px\s*\)\s*\{([\s\S]*?)\n\s*\}/
-    );
-    // Hamburger should NOT appear in tablet breakpoint
-    expect(tabletBlock![1]).not.toContain(".hamburger");
-    // Hamburger SHOULD appear in mobile breakpoint
-    expect(mobileBlock![1]).toContain(".hamburger");
   });
 
   test("party-detail becomes static position only at mobile breakpoint", () => {
