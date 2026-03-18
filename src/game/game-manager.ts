@@ -2613,8 +2613,10 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   }
 
   // Look up monster templates (case-insensitive, fall back to "name" field from agents)
+  // Support string arrays like ["Goblin","Hobgoblin"] in addition to object arrays
   const toSpawn = monsterList.map((m) => {
-    const rawName = m.template_name ?? (m as any).type ?? (m as Record<string, unknown>).name as string ?? "unknown";
+    const isString = typeof m === "string";
+    const rawName = isString ? m : (m.template_name ?? (m as any).type ?? (m as Record<string, unknown>).name as string ?? "unknown");
     // Try exact match first, then case-insensitive
     let template = monsterTemplates.get(rawName);
     let resolvedName = rawName;
@@ -2633,7 +2635,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
       // Create a default monster if template not loaded
       return {
         templateName: resolvedName,
-        count: m.count ?? 1,
+        count: isString ? 1 : (m.count ?? 1),
         template: {
           hpMax: 10, ac: 12,
           abilityScores: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
@@ -2643,7 +2645,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
         },
       };
     }
-    return { templateName: resolvedName, count: m.count ?? 1, template };
+    return { templateName: resolvedName, count: isString ? 1 : (m.count ?? 1), template };
   });
 
   // Compute everything first

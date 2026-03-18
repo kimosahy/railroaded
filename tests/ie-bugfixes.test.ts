@@ -199,6 +199,72 @@ describe("B016b: hyphenated template names resolve correctly", () => {
   });
 });
 
+// === B024: spawn-encounter with string array creates 'unknown' monsters with wrong stats ===
+describe("B024: spawn-encounter with string array resolves templates", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b024");
+    dm = setup.dm;
+    expect(getPartyForUser(setup.players[0])).not.toBeNull();
+  });
+
+  test("string array ['Goblin','Goblin'] spawns 2 goblins with correct stats", () => {
+    const result = handleSpawnEncounter(dm, { monsters: ["Goblin", "Goblin"] } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(2);
+    for (const m of monsters) {
+      expect(m.name.toLowerCase()).toContain("goblin");
+      expect(m.name.toLowerCase()).not.toContain("unknown");
+      // Goblin stats: HP 7, AC 15 — not default HP 10, AC 12
+      expect(m.hp).not.toBe(10);
+      expect(m.ac).not.toBe(12);
+    }
+  });
+});
+
+describe("B024: string array with mixed monster types", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b024b");
+    dm = setup.dm;
+  });
+
+  test("['Goblin','Hobgoblin','Skeleton'] spawns 3 distinct monsters", () => {
+    const result = handleSpawnEncounter(dm, { monsters: ["Goblin", "Hobgoblin", "Skeleton"] } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(3);
+    // None should be 'unknown'
+    for (const m of monsters) {
+      expect(m.name.toLowerCase()).not.toContain("unknown");
+    }
+  });
+});
+
+describe("B024: case-insensitive string array", () => {
+  let dm: string;
+
+  test("setup party", async () => {
+    const setup = await setupParty("b024c");
+    dm = setup.dm;
+  });
+
+  test("['goblin'] (lowercase) resolves to Goblin template", () => {
+    const result = handleSpawnEncounter(dm, { monsters: ["goblin"] } as any);
+    expect(result.success).toBe(true);
+    const monsters = (result.data as any)?.monsters;
+    expect(monsters).toBeDefined();
+    expect(monsters.length).toBe(1);
+    expect(monsters[0].name).toBe("Goblin");
+    expect(monsters[0].hp).not.toBe(10);
+  });
+});
+
 // === FT002: Actions endpoint distinguishes 'idle' from 'in session' ===
 describe("FT002: actions endpoint idle state", () => {
   test("no character returns idle with create_character action", () => {
