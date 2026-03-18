@@ -2491,18 +2491,29 @@ export function stripMonsterSuffix(name: string): string {
   return name.trim().replace(/\s+[A-Z]$/, "");
 }
 
+/** Normalize monster name: replace hyphens/underscores with spaces, then title-case each word.
+ *  e.g. "bandit-captain" → "Bandit Captain", "GOBLIN" → "Goblin" */
+export function normalizeMonsterName(name: string): string {
+  return name
+    .replace(/[-_]/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\B\w+/g, (c) => c.toLowerCase());
+}
+
 /** Count encounters per base monster name from combat_start event rows. */
 export function countEncountersFromEvents(
   eventRows: { data: Record<string, unknown> }[]
 ): Map<string, number> {
   const counts = new Map<string, number>();
   for (const row of eventRows) {
-    const monsters = row.data.monsters as { name?: string }[] | undefined;
+    const monsters = row.data.monsters as { name?: string; templateName?: string }[] | undefined;
     if (!Array.isArray(monsters)) continue;
     for (const m of monsters) {
-      const raw = (m.name || "").trim();
+      // Prefer templateName (added in fix) over instance name
+      const raw = (m.templateName || m.name || "").trim();
       if (!raw) continue;
-      const baseName = stripMonsterSuffix(raw);
+      const baseName = normalizeMonsterName(stripMonsterSuffix(raw));
+      if (baseName.toLowerCase() === "unknown") continue;
       counts.set(baseName, (counts.get(baseName) || 0) + 1);
     }
   }
@@ -2523,18 +2534,27 @@ export function buildBestiary(
   templates: { name: string; hpMax: number; ac: number; challengeRating: number; xpValue: number }[],
   encounterCounts: Map<string, number>
 ): BestiaryEntry[] {
-  const bestiary: BestiaryEntry[] = templates.map((t) => ({
-    name: t.name,
-    hp: t.hpMax,
-    ac: t.ac,
-    cr: t.challengeRating,
-    xp: t.xpValue,
-    count: encounterCounts.get(t.name) || 0,
-  }));
+  // Build a normalized lookup: normalized name → template name
+  const normalizedTemplateNames = new Map<string, string>();
+  for (const t of templates) {
+    normalizedTemplateNames.set(normalizeMonsterName(t.name), t.name);
+  }
+
+  const bestiary: BestiaryEntry[] = templates.map((t) => {
+    const normalized = normalizeMonsterName(t.name);
+    return {
+      name: t.name,
+      hp: t.hpMax,
+      ac: t.ac,
+      cr: t.challengeRating,
+      xp: t.xpValue,
+      count: encounterCounts.get(normalized) || encounterCounts.get(t.name) || 0,
+    };
+  });
 
   // Add monsters from events that don't have templates (custom monsters)
   for (const [name, cnt] of encounterCounts) {
-    if (!templates.some((t) => t.name === name)) {
+    if (!normalizedTemplateNames.has(name)) {
       bestiary.push({ name, hp: 0, ac: 0, cr: 0, xp: 0, count: cnt });
     }
   }

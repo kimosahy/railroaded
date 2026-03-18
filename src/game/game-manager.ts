@@ -2641,7 +2641,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   party.session = newSession;
 
   logEvent(party, "combat_start", null, {
-    monsters: monsters.map((m) => ({ name: m.name, hp: m.hpMax, ac: m.ac })),
+    monsters: monsters.map((m) => ({ name: m.name, templateName: m.templateName, hp: m.hpMax, ac: m.ac })),
     initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
   });
   notifyTurnChange(party);

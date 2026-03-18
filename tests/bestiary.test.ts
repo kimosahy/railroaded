@@ -1,6 +1,7 @@
 import { describe, test, expect } from "bun:test";
 import {
   stripMonsterSuffix,
+  normalizeMonsterName,
   countEncountersFromEvents,
   buildBestiary,
 } from "../src/api/spectator.ts";
@@ -29,6 +30,26 @@ describe("stripMonsterSuffix", () => {
 
   test("handles empty string", () => {
     expect(stripMonsterSuffix("")).toBe("");
+  });
+});
+
+describe("normalizeMonsterName", () => {
+  test("converts hyphenated names to title case", () => {
+    expect(normalizeMonsterName("bandit-captain")).toBe("Bandit Captain");
+    expect(normalizeMonsterName("giant-fire-beetle")).toBe("Giant Fire Beetle");
+  });
+
+  test("converts underscored names to title case", () => {
+    expect(normalizeMonsterName("dire_wolf")).toBe("Dire Wolf");
+  });
+
+  test("normalizes all-caps to title case", () => {
+    expect(normalizeMonsterName("GOBLIN")).toBe("Goblin");
+  });
+
+  test("leaves properly cased names unchanged", () => {
+    expect(normalizeMonsterName("Bandit Captain")).toBe("Bandit Captain");
+    expect(normalizeMonsterName("Goblin")).toBe("Goblin");
   });
 });
 
@@ -67,6 +88,43 @@ describe("countEncountersFromEvents", () => {
   test("returns empty map for no events", () => {
     const counts = countEncountersFromEvents([]);
     expect(counts.size).toBe(0);
+  });
+
+  test("normalizes hyphenated names to title case", () => {
+    const events = [
+      { data: { monsters: [{ name: "bandit-captain" }] } },
+    ];
+    const counts = countEncountersFromEvents(events);
+    expect(counts.get("Bandit Captain")).toBe(1);
+    expect(counts.has("bandit-captain")).toBe(false);
+  });
+
+  test("merges differently-cased monster names", () => {
+    const events = [
+      { data: { monsters: [{ name: "goblin" }, { name: "Goblin A" }] } },
+      { data: { monsters: [{ name: "GOBLIN B" }] } },
+    ];
+    const counts = countEncountersFromEvents(events);
+    expect(counts.get("Goblin")).toBe(3);
+  });
+
+  test("filters out 'unknown' monsters", () => {
+    const events = [
+      { data: { monsters: [{ name: "unknown" }, { name: "Goblin" }] } },
+      { data: { monsters: [{ name: "Unknown" }] } },
+    ];
+    const counts = countEncountersFromEvents(events);
+    expect(counts.has("Unknown")).toBe(false);
+    expect(counts.has("unknown")).toBe(false);
+    expect(counts.get("Goblin")).toBe(1);
+  });
+
+  test("prefers templateName over name when available", () => {
+    const events = [
+      { data: { monsters: [{ name: "Goblin A", templateName: "Goblin" }] } },
+    ];
+    const counts = countEncountersFromEvents(events);
+    expect(counts.get("Goblin")).toBe(1);
   });
 });
 
@@ -119,5 +177,22 @@ describe("buildBestiary", () => {
   test("returns empty array for no templates and no counts", () => {
     const bestiary = buildBestiary([], new Map());
     expect(bestiary).toEqual([]);
+  });
+
+  test("matches normalized encounter names to templates", () => {
+    const counts = new Map([["Bandit Captain", 3]]);
+    const tmpl = [{ name: "Bandit Captain", hpMax: 65, ac: 15, challengeRating: 2, xpValue: 450 }];
+    const bestiary = buildBestiary(tmpl, counts);
+    expect(bestiary.find((m) => m.name === "Bandit Captain")!.count).toBe(3);
+  });
+
+  test("does not create duplicate entries for normalized names that match templates", () => {
+    const counts = new Map([["Bandit Captain", 2]]);
+    const tmpl = [{ name: "Bandit Captain", hpMax: 65, ac: 15, challengeRating: 2, xpValue: 450 }];
+    const bestiary = buildBestiary(tmpl, counts);
+    const matches = bestiary.filter((m) => m.name.toLowerCase().includes("bandit"));
+    expect(matches.length).toBe(1);
+    expect(matches[0].hp).toBe(65);
+    expect(matches[0].count).toBe(2);
   });
 });
