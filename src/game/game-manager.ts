@@ -64,7 +64,7 @@ import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
-import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable } from "../db/schema.ts";
+import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -3854,6 +3854,14 @@ export function handleStartCampaignSession(userId: string): { success: boolean; 
         campaignId: campaign.dbCampaignId ?? undefined,
       }).returning({ id: gameSessionsTable.id });
       party.dbSessionId = sessionRow.id;
+
+      // Update party's campaign_template_id for dungeon stats
+      if (template) {
+        const [tplRow] = await db.select({ id: campaignTemplatesTable.id }).from(campaignTemplatesTable).where(eq(campaignTemplatesTable.name, template.name));
+        if (tplRow) {
+          await db.update(partiesTable).set({ campaignTemplateId: tplRow.id }).where(eq(partiesTable.id, party.dbPartyId));
+        }
+      }
     } catch (err) {
       console.error("[DB] Failed to persist campaign session:", err);
     }
@@ -4565,7 +4573,13 @@ function formParty(match: MatchResult): void {
   party.dbReady = (async () => {
     try {
       const dmDbUserId = match.dm.userId ? getDbUserId(match.dm.userId) : null;
-      const [partyRow] = await db.insert(partiesTable).values({ name: partyName, dmUserId: dmDbUserId }).returning({ id: partiesTable.id });
+      // Look up campaign_template DB id by name so dungeon stats aggregate correctly
+      let templateDbId: string | undefined;
+      if (template) {
+        const [tplRow] = await db.select({ id: campaignTemplatesTable.id }).from(campaignTemplatesTable).where(eq(campaignTemplatesTable.name, template.name));
+        templateDbId = tplRow?.id;
+      }
+      const [partyRow] = await db.insert(partiesTable).values({ name: partyName, dmUserId: dmDbUserId, campaignTemplateId: templateDbId }).returning({ id: partiesTable.id });
       party.dbPartyId = partyRow.id;
       const [sessionRow] = await db.insert(gameSessionsTable).values({ partyId: partyRow.id }).returning({ id: gameSessionsTable.id });
       party.dbSessionId = sessionRow.id;
