@@ -976,7 +976,9 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
   };
 }
 
-export function handleMonsterAttack(userId: string, params: { monster_id: string; target_id: string; attack_name?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleMonsterAttack(userId: string, params: { monster_id: string; target_id?: string; target?: string; target_name?: string; attack_name?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  // Resolve target from target_id, target, or target_name (supports IDs and character names)
+  const targetIdentifier = params.target_id ?? params.target ?? params.target_name;
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
   if (!party.session || party.session.phase !== "combat") {
@@ -1087,8 +1089,9 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
   // --- Save-based single-target attack (not AoE) ---
   if (attack.save_dc && attack.save_ability) {
-    const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
-    if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+    if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
+    const target = resolveCharacter(targetIdentifier);
+    if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
 
     const ability = attack.save_ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
     const save = savingThrow({
@@ -1143,8 +1146,9 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   }
 
   // --- Standard attack roll path ---
-  const target = [...characters.values()].find((c) => c.id === params.target_id && party.members.includes(c.id));
-  if (!target) return { success: false, error: `Target ${params.target_id} not found in party.` };
+  if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
+  const target = resolveCharacter(targetIdentifier);
+  if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
 
   // D&D 5e: attacks against unconscious targets have advantage, and melee hits auto-crit
   const targetIsUnconscious = target.conditions.includes("unconscious");

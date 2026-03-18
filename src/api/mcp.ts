@@ -360,7 +360,7 @@ async function executeToolCall(
     case "trigger_encounter":
       return gm.handleTriggerEncounter(userId);
     case "monster_attack":
-      return gm.handleMonsterAttack(userId, { monster_id: args.monster_id as string, target_id: args.target_id as string, attack_name: args.attack_name as string | undefined });
+      return gm.handleMonsterAttack(userId, { monster_id: args.monster_id as string, target_id: args.target_id as string | undefined, target: args.target as string | undefined, target_name: args.target_name as string | undefined, attack_name: args.attack_name as string | undefined });
     case "voice_npc":
       return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
     case "interact_with_feature":

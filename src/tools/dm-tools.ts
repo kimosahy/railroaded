@@ -236,7 +236,15 @@ export const dmTools: readonly ToolDefinition[] = [
         target_id: {
           ...playerIdProperty,
           description:
-            "The ID of the player character being attacked. Use get_party_state() to look up IDs.",
+            "The ID or name of the player character being attacked. Accepts char-X IDs, user-X IDs, or character names. Use get_party_state() to look up IDs.",
+        },
+        target: {
+          type: "string",
+          description: "Alias for target_id. Accepts character name or ID.",
+        },
+        target_name: {
+          type: "string",
+          description: "Alias for target_id. Accepts character name or ID.",
         },
         attack_name: {
           type: "string",
@@ -245,7 +253,7 @@ export const dmTools: readonly ToolDefinition[] = [
             "If omitted, the monster uses its first/default attack.",
         },
       },
-      required: ["monster_id", "target_id"],
+      required: ["monster_id"],
     },
     handler: "handleMonsterAttack",
   },

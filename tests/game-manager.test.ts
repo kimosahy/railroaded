@@ -343,6 +343,64 @@ describe("handleMonsterAttack", () => {
     expect(typeof result.data!.hit).toBe("boolean");
   });
 
+  test("DM can target player by character name instead of target_id", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties, characters } = getState();
+    const party = parties.get(partyId)!;
+    const monster = party.monsters[0]!;
+
+    // Set initiative so monster goes first
+    const monsterIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === monster.id);
+    party.session!.currentTurn = monsterIdx;
+
+    const targetCharId = party.members[0]!;
+    const targetChar = characters.get(targetCharId)!;
+    const result = handleMonsterAttack(dmUserId, {
+      monster_id: monster.id,
+      target: targetChar.name,
+    });
+    expect(result.success).toBe(true);
+    expect(typeof result.data!.hit).toBe("boolean");
+  });
+
+  test("DM can target player by target_name instead of target_id", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties, characters } = getState();
+    const party = parties.get(partyId)!;
+    const monster = party.monsters[0]!;
+
+    const monsterIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === monster.id);
+    party.session!.currentTurn = monsterIdx;
+
+    const targetCharId = party.members[0]!;
+    const targetChar = characters.get(targetCharId)!;
+    const result = handleMonsterAttack(dmUserId, {
+      monster_id: monster.id,
+      target_name: targetChar.name,
+    });
+    expect(result.success).toBe(true);
+    expect(typeof result.data!.hit).toBe("boolean");
+  });
+
+  test("monster attack with no target identifier returns error", async () => {
+    const { partyId, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+    const monster = party.monsters[0]!;
+
+    const monsterIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === monster.id);
+    party.session!.currentTurn = monsterIdx;
+
+    const result = handleMonsterAttack(dmUserId, {
+      monster_id: monster.id,
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("target_id is required");
+  });
+
   test.todo("monster attacks unconscious player → death save failures (not yet implemented)");
 });
 
