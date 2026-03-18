@@ -935,6 +935,53 @@ describe("F. DM Checks and Saves", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("Invalid ability");
   });
+
+  // B023: missing player_id / ability should return 400, not crash with 500
+  test("handleRequestCheck returns error when player_id is missing", () => {
+    const result = handleRequestCheck(dm, { player_id: undefined as unknown as string, ability: "str", dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+  });
+
+  test("handleRequestCheck returns error when ability is missing", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestCheck(dm, { player_id: char.id, ability: undefined as unknown as string, dc: 10 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
+
+  test("handleRequestSave returns error when player_id is missing", () => {
+    const result = handleRequestSave(dm, { player_id: undefined as unknown as string, ability: "dex", dc: 12 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+  });
+
+  test("handleRequestSave returns error when ability is missing", () => {
+    const char = getCharacterForUser(players[0])!;
+    const result = handleRequestSave(dm, { player_id: char.id, ability: undefined as unknown as string, dc: 12 });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Invalid ability");
+  });
+
+  test("handleRequestContestedCheck returns error when player_id_1 is missing", () => {
+    const char2 = getCharacterForUser(players[1])!;
+    const result = handleRequestContestedCheck(dm, {
+      player_id_1: undefined as unknown as string, ability_1: "str",
+      player_id_2: char2.id, ability_2: "str",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+  });
+
+  test("handleRequestContestedCheck returns error when player_id_2 is missing", () => {
+    const char1 = getCharacterForUser(players[0])!;
+    const result = handleRequestContestedCheck(dm, {
+      player_id_1: char1.id, ability_1: "str",
+      player_id_2: undefined as unknown as string, ability_2: "str",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
+  });
 });
 
 // ==================== G. Advance Scene ====================

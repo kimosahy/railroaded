@@ -80,6 +80,7 @@ const ABILITY_ALIASES: Record<string, AbilityName> = {
 };
 
 function normalizeAbility(raw: string): AbilityName | null {
+  if (!raw) return null;
   return ABILITY_ALIASES[raw.toLowerCase()] ?? null;
 }
 
@@ -606,6 +607,7 @@ export function getPartyForUser(userId: string): GameParty | null {
  * Resolve a player_id parameter — accepts char-X (character ID), user-X (user ID), or character name.
  */
 function resolveCharacter(playerId: string): GameCharacter | null {
+  if (!playerId) return null;
   // Try by character ID or user ID first
   const byId = characters.get(playerId) ?? characters.get(charactersByUser.get(playerId) ?? "");
   if (byId) return byId;
