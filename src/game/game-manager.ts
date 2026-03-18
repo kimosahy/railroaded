@@ -356,6 +356,48 @@ function resetTurnResources(party: GameParty, entityId: string): void {
   }
 }
 
+// --- Turn Advancement (skip dead combatants) ---
+
+/**
+ * Advance to the next turn, skipping any dead combatants.
+ * Dead monsters (isAlive=false) and dead players (condition "dead") are
+ * removed from initiative and skipped. Prevents combat stalling on a
+ * dead entity's turn.
+ */
+function advanceTurnSkipDead(party: GameParty): void {
+  if (!party.session || party.session.phase !== "combat") return;
+
+  party.session = nextTurn(party.session);
+
+  // Safety limit: never loop more than the initiative order length
+  const maxIterations = party.session.initiativeOrder.length;
+  for (let i = 0; i < maxIterations; i++) {
+    const current = getCurrentCombatant(party.session);
+    if (!current) break;
+
+    if (current.type === "monster") {
+      const monster = party.monsters.find((m) => m.id === current.entityId);
+      if (monster && !monster.isAlive) {
+        party.session = removeCombatant(party.session, current.entityId);
+        // After removal, currentTurn now points to the next entity — don't call nextTurn again
+        continue;
+      }
+    } else if (current.type === "player") {
+      const char = characters.get(current.entityId);
+      if (char && char.conditions.includes("dead")) {
+        party.session = removeCombatant(party.session, current.entityId);
+        continue;
+      }
+    }
+
+    break; // current combatant is alive, stop
+  }
+
+  const nextCombatant = getCurrentCombatant(party.session);
+  resetTurnResources(party, nextCombatant?.entityId ?? "");
+  notifyTurnChange(party);
+}
+
 // --- Unconscious / Incapacitated Guard ---
 
 const UNCONSCIOUS_ERROR = "You are unconscious and cannot take that action.";
@@ -1073,10 +1115,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       totalDamage: damageRoll.total, results,
     });
 
-    party.session = nextTurn(party.session);
+    advanceTurnSkipDead(party);
     const nextAoeCombatant = getCurrentCombatant(party.session);
-    resetTurnResources(party, nextAoeCombatant?.entityId ?? "");
-    notifyTurnChange(party);
 
     return {
       success: true,
@@ -1129,10 +1169,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       saved: save.success, damage: dmg, droppedToZero: saveActuallyDropped,
     });
 
-    party.session = nextTurn(party.session);
+    advanceTurnSkipDead(party);
     const nextSaveCombatant = getCurrentCombatant(party.session);
-    resetTurnResources(party, nextSaveCombatant?.entityId ?? "");
-    notifyTurnChange(party);
 
     return {
       success: true,
@@ -1227,10 +1265,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         dead: isDead,
       });
 
-      party.session = nextTurn(party.session);
+      advanceTurnSkipDead(party);
       const nextZeroCombatant = getCurrentCombatant(party.session);
-      resetTurnResources(party, nextZeroCombatant?.entityId ?? "");
-      notifyTurnChange(party);
 
       return {
         success: true,
@@ -1289,10 +1325,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       critical: result.critical, droppedToZero: hitActuallyDropped,
     });
 
-    party.session = nextTurn(party.session);
+    advanceTurnSkipDead(party);
     const nextHitCombatant = getCurrentCombatant(party.session);
-    resetTurnResources(party, nextHitCombatant?.entityId ?? "");
-    notifyTurnChange(party);
 
     return {
       success: true,
@@ -1312,10 +1346,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     hit: false, fumble: result.fumble,
   });
 
-  party.session = nextTurn(party.session);
+  advanceTurnSkipDead(party);
   const nextMissCombatant = getCurrentCombatant(party.session);
-  resetTurnResources(party, nextMissCombatant?.entityId ?? "");
-  notifyTurnChange(party);
 
   return {
     success: true,
@@ -1952,10 +1984,8 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
     if (!current || current.type !== "monster") {
       return { success: false, error: "It's not a monster's turn." };
     }
-    dmParty.session = nextTurn(dmParty.session);
+    advanceTurnSkipDead(dmParty);
     const nextCombatant = getCurrentCombatant(dmParty.session);
-    resetTurnResources(dmParty, nextCombatant?.entityId ?? "");
-    notifyTurnChange(dmParty);
     return {
       success: true,
       data: {
@@ -1981,10 +2011,8 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
     return { success: false, error: "It's not your turn." };
   }
 
-  party.session = nextTurn(party.session);
+  advanceTurnSkipDead(party);
   const nextCombatant = getCurrentCombatant(party.session);
-  resetTurnResources(party, nextCombatant?.entityId ?? "");
-  notifyTurnChange(party);
 
   return {
     success: true,
