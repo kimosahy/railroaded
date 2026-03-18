@@ -84,12 +84,24 @@ auth.post("/register", async (c) => {
   }
 
   const password = generatePassword();
-  const passwordHash = await hashPassword(password);
   const id = `user-${userIdCounter++}`;
 
-  const user: StoredUser = { id, username: body.username, passwordHash, role, dbUserId: null };
+  // Reserve slot synchronously before async hash — prevents TOCTOU race
+  // where concurrent registrations with the same username both pass the check above
+  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
+
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPassword(password);
+  } catch (err) {
+    // Roll back reservation on hash failure
+    usersByUsername.delete(body.username);
+    usersById.delete(id);
+    return c.json({ error: "registration failed", code: "INTERNAL_ERROR" }, 500);
+  }
+  user.passwordHash = passwordHash;
 
   // Persist to DB (fire-and-forget)
   db.insert(usersTable).values({
