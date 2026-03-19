@@ -2649,7 +2649,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     let template = monsterTemplates.get(rawName);
     let resolvedName = rawName;
     if (!template) {
-      const normalize = (s: string) => s.toLowerCase().replace(/-/g, " ");
+      const normalize = (s: string) => s.toLowerCase().replace(/[-_]/g, " ");
       const normalizedRaw = normalize(rawName);
       for (const [key, val] of monsterTemplates) {
         if (normalize(key) === normalizedRaw) {
