@@ -31,7 +31,7 @@ app.notFound((c) => {
 
 // CORS — allow website and local dev
 app.use("/*", cors({
-  origin: ["https://railroaded.ai", "http://localhost:3000"],
+  origin: ["https://railroaded.ai", "https://www.railroaded.ai", "http://localhost:3000"],
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization"],
 }));

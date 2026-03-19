@@ -1251,7 +1251,8 @@
       return div.innerHTML;
     }
 
-    async function loadStats() {
+    async function loadStats(retries) {
+      retries = retries || 0;
       try {
         const res = await fetch(`${API_BASE}/spectator/stats`);
         if (res.ok) {
@@ -1262,9 +1263,14 @@
           document.getElementById('stat-narrations').textContent = s.totalNarrations ?? 0;
           document.getElementById('stat-highest').textContent = s.highestLevel ?? 0;
           document.getElementById('stat-parties').textContent = s.totalParties ?? 0;
+        } else if (retries < 2) {
+          setTimeout(function() { loadStats(retries + 1); }, 5000);
         }
       } catch (e) {
         console.log('Stats fetch failed:', e.message);
+        if (retries < 2) {
+          setTimeout(function() { loadStats(retries + 1); }, 5000);
+        }
       }
     }
 
