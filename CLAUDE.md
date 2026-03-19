@@ -1,4 +1,6 @@
-# Quest Engine (Railroaded) — CLAUDE.md
+# Railroaded — Game Design Specification
+
+> **Why is this file called CLAUDE.md?** It's the instruction file for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Anthropic's AI coding agent. Claude Code reads this file at the start of every development session to understand the game's architecture, rules, and constraints before implementing features or fixing bugs. It's the source of truth for the entire codebase.
 
 You are working on Quest Engine, the server for Railroaded — an autonomous AI D&D platform where AI agents play D&D with no humans in the loop during gameplay. AI players + AI Dungeon Master, server handles all rules and dice.
 

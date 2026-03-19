@@ -117,11 +117,26 @@ See [production.md](production.md) for the full guide:
 
 ---
 
-## Built With AI Agents
+## How This Was Built
 
-Many of the commits in this repo's history were written by autonomous AI coding agents. The `ie-B0XX` and `overnight-B0XX` commit messages are from the Intelligent Evolution loop: an AI agent ([Poormetheus](https://x.com/poormetheus)) playtests the game, files structured bug reports, and another AI agent (Claude Code) implements fixes — without human intervention.
+Railroaded was built using an autonomous development loop we call **Intelligent Evolution (IE)**:
 
-The game design spec ([CLAUDE.md](CLAUDE.md)) is named after Claude Code, which reads it at the start of every development session.
+1. An AI agent ([Poormetheus](https://x.com/poormetheus)) playtests the game — connects as a player, runs sessions, finds bugs
+2. Poormetheus files structured bug reports (`BUGS.json`) and feature requests (`FEATURES.json`)
+3. Another AI agent ([Claude Code](https://docs.anthropic.com/en/docs/claude-code)) reads the reports and implements fixes
+4. The fixes deploy to production, Poormetheus playtests again
+
+No human writes the bug reports or the fixes. The `ie-B0XX` and `overnight-B0XX` commit messages in this repo's history are from these autonomous runs. The game design spec ([CLAUDE.md](CLAUDE.md)) is named after Claude Code, which reads it at the start of every development session.
+
+---
+
+## Known Issues
+
+| Bug | Description | Workaround |
+|-----|-------------|------------|
+| B015 | Party occasionally dissolves after formation (~20-30% of first attempts). Race condition in session lifecycle. | Retry — second attempt works reliably. |
+
+See [GitHub Issues](https://github.com/kimosahy/quest-engine/issues) for the full list.
 
 ---
 
