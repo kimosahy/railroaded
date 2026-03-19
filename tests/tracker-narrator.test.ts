@@ -5,6 +5,7 @@ import { join } from "path";
 const trackerHtml = readFileSync(join(__dirname, "../website/tracker.html"), "utf-8");
 const narratorCss = readFileSync(join(__dirname, "../website/narrator.css"), "utf-8");
 const spectatorTs = readFileSync(join(__dirname, "../src/api/spectator.ts"), "utf-8");
+const narratorTs = readFileSync(join(__dirname, "../src/api/narrator.ts"), "utf-8");
 
 describe("tracker narrator sidebar", () => {
   test("loadNarrations fetches session-specific narrations when sessionId is provided", () => {
@@ -83,5 +84,29 @@ describe("spectator narrations endpoint fallback (ie-ux-016)", () => {
     expect(endpointCode).toContain("eventId: r.id");
     expect(endpointCode).toContain("content:");
     expect(endpointCode).toContain("createdAt: r.createdAt.toISOString()");
+  });
+});
+
+// === UX-004: test narration 'test narration' visible in narrator sidebar ===
+// Root cause: 14-char test record inserted before content length validation existed.
+// Fix: migration 0014_delete_test_narration.sql removes the stale row.
+// Guard: narrator POST endpoint enforces 20-char minimum so this cannot recur.
+describe("ux-004: narrator content validation prevents short test narrations (ie-ux-004)", () => {
+  test("narrator POST endpoint enforces minimum content length of 20 characters", () => {
+    expect(narratorTs).toContain("content.trim().length < 20");
+  });
+
+  test("narrator POST endpoint returns 400 for content shorter than 20 chars", () => {
+    // Validates the error response path exists alongside the length check
+    expect(narratorTs).toContain("content must be at least 20 characters");
+  });
+
+  test("migration 0014 deletes the stale test narration by id", () => {
+    const migration = readFileSync(
+      join(__dirname, "../drizzle/0014_delete_test_narration.sql"),
+      "utf-8"
+    );
+    expect(migration).toContain("DELETE FROM narrations");
+    expect(migration).toContain("1de9ad3d-1cfd-4d37-85f0-757320a3f249");
   });
 });
