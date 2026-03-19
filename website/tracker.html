@@ -775,6 +775,7 @@
       return initials(name);
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function displayName(s) { if (!s) return ''; return s.replace(/_/g, ' ').replace(/\b[a-z]/g, c => c.toUpperCase()); }
     function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
@@ -909,12 +910,15 @@
         <div class="combat-icon">&#9876;&#65039;</div>
         <div class="combat-title">Combat Begins</div>
         <div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.2rem;">
-          ${monsters.map(m => `${esc(m.name)} (${m.hp} HP, AC ${m.ac})`).join(' &bull; ')}
+          ${monsters.map(m => `${esc(displayName(m.name))} (${m.hp} HP, AC ${m.ac})`).join(' &bull; ')}
         </div>
         <div class="init-list">
-          ${init.map(i => `<span class="init-entry ${monsterNames.has(i.name) ? 'is-monster' : ''}">
-            <span class="init-val">${i.initiative}</span> ${esc(i.name)}
-          </span>`).join('')}
+          ${init.map(i => {
+            const isMon = monsterNames.has(i.name);
+            return `<span class="init-entry ${isMon ? 'is-monster' : ''}">
+            <span class="init-val">${i.initiative}</span> ${esc(isMon ? displayName(i.name) : i.name)}
+          </span>`;
+          }).join('')}
         </div>
       </div>`;
     }
@@ -930,7 +934,7 @@
 
     function renderAttack(d, isMonster) {
       const hit = d.hit;
-      const attacker = isMonster ? (d.monsterName || 'Monster') : (d.attackerName || 'Unknown');
+      const attacker = isMonster ? displayName(d.monsterName || 'Monster') : (d.attackerName || 'Unknown');
       const target = d.targetName || '';
       const atkName = d.attackName ? ` (${esc(d.attackName)})` : '';
       const cls = `ev-attack ${isMonster ? 'monster-atk' : ''} ${hit ? 'hit' : 'miss'}`;
@@ -1123,7 +1127,7 @@
     function renderLoot(d) {
       const items = d.items || d.droppedItems || [];
       const recipient = d.characterName || '';
-      const source = d.monsterName ? esc(d.monsterName) + ' dropped' : (d.room ? esc(d.room) : 'Loot found');
+      const source = d.monsterName ? esc(displayName(d.monsterName)) + ' dropped' : (d.room ? esc(d.room) : 'Loot found');
       const desc = items.length > 0
         ? items.map(i => esc(typeof i === 'string' ? i : (i.name || i.itemName || 'item'))).join(', ')
         : 'treasure';
@@ -1229,7 +1233,7 @@
               return `<div class="member-card ${dead ? 'monster-dead' : ''}" style="border-color:var(--red)">
                 <div class="member-avatar" style="background:var(--red-glow)">${dead ? '&#128128;' : '&#128126;'}</div>
                 <div class="member-info">
-                  <div class="m-name" style="color:var(--red-glow)">${esc(m.name)}</div>
+                  <div class="m-name" style="color:var(--red-glow)">${esc(displayName(m.name))}</div>
                   <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
                   <div class="m-detail">${dead ? 'Defeated' : `${m.hpCurrent}/${m.hpMax} HP`} &bull; AC ${m.ac}</div>
                 </div>
