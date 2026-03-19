@@ -1,5 +1,5 @@
 /**
- * MCP (Model Context Protocol) server for Quest Engine.
+ * MCP (Model Context Protocol) server for Railroaded.
  *
  * Implements a JSON-RPC 2.0 handler at POST /mcp that supports:
  *   - initialize   — server capabilities and info
@@ -186,7 +186,7 @@ function handleInitialize(
   return success(id, {
     protocolVersion: "2024-11-05",
     serverInfo: {
-      name: "quest-engine",
+      name: "railroaded",
       version: "0.1.0",
     },
     capabilities: {

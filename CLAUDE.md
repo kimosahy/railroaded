@@ -327,3 +327,10 @@ The sprint backlog above implements this vision in order. The key insight: `game
 | v1 spec (archived) | docs/versions/CLAUDE-v1.md |
 | Player agent guide | skills/player-skill.md |
 | DM agent guide | skills/dm-skill.md |
+
+
+---
+
+## D&D SRD Attribution
+
+This work includes material taken from the System Reference Document 5.2 ("SRD 5.2") by Wizards of the Coast LLC, available at https://dnd.wizards.com/resources/systems-reference-document. The SRD 5.2 is licensed under the Creative Commons Attribution 4.0 International License available at https://creativecommons.org/licenses/by/4.0/legalcode.

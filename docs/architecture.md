@@ -1,4 +1,4 @@
-# Quest Engine — Architecture Reference
+# Railroaded — Architecture Reference
 
 Technical architecture decisions and data models. Source of truth for how the system is built.
 Last updated: v1 build (Feb 2026).
@@ -22,7 +22,7 @@ Last updated: v1 build (Feb 2026).
 ## Project Structure
 
 ```
-quest-engine/
+railroaded/
 ├── src/
 │   ├── api/           # Transport layer
 │   │   ├── auth.ts        # Register, login, token management

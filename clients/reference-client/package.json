@@ -1,7 +1,7 @@
 {
-  "name": "quest-engine-client",
+  "name": "railroaded-client",
   "version": "0.1.0",
-  "description": "Reference CLI client for Quest Engine",
+  "description": "Reference CLI client for Railroaded",
   "type": "module",
   "scripts": {
     "start": "bun run src/client.ts"

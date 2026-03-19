@@ -76,7 +76,7 @@ describe("FT009: GET /mcp returns helpful JSON instead of 404", () => {
     const body = await res.json();
     expect(body.result).toBeDefined();
     expect(body.result.protocolVersion).toBeDefined();
-    expect(body.result.serverInfo.name).toBe("quest-engine");
+    expect(body.result.serverInfo.name).toBe("railroaded");
   });
 
   test("POST /mcp with invalid JSON returns parse error, not 404", async () => {
