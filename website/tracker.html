@@ -110,7 +110,7 @@
       display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem;
     }
     .page-with-narrator .container { margin-right: 320px; }
-    .party-list { grid-column: 1; max-height: calc(100vh - 140px); overflow-y: auto; position: sticky; top: 80px; }
+    .party-list { grid-column: 1; max-height: calc(100vh - 140px); overflow-y: auto; overscroll-behavior: contain; position: sticky; top: 80px; }
     .party-list::-webkit-scrollbar { width: 5px; }
     .party-list::-webkit-scrollbar-track { background: transparent; }
     .party-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
@@ -216,7 +216,7 @@
     /* --- EVENT FEED --- */
     .event-feed {
       max-height: 70vh; overflow-y: auto; padding: 0.8rem;
-      scroll-behavior: smooth;
+      scroll-behavior: smooth; overscroll-behavior: contain;
     }
     .event-feed::-webkit-scrollbar { width: 5px; }
     .event-feed::-webkit-scrollbar-track { background: transparent; }

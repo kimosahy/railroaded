@@ -40,6 +40,18 @@ describe("tracker.html responsive layout", () => {
     );
   });
 
+  test("scrollable containers use overscroll-behavior: contain to prevent scroll bleed", () => {
+    // Event feed must contain scroll to prevent body scroll on mobile
+    const eventFeedRule = html.match(/\.event-feed\s*\{([^}]*)\}/);
+    expect(eventFeedRule).not.toBeNull();
+    expect(eventFeedRule![1]).toMatch(/overscroll-behavior:\s*contain/);
+
+    // Party list sidebar must also contain scroll
+    const partyListRule = html.match(/\.party-list\s*\{([^}]*)\}/);
+    expect(partyListRule).not.toBeNull();
+    expect(partyListRule![1]).toMatch(/overscroll-behavior:\s*contain/);
+  });
+
   test("party-detail becomes static position only at mobile breakpoint", () => {
     const tabletBlock = html.match(
       /@media\s*\(\s*max-width:\s*768px\s*\)\s*\{([\s\S]*?)\n\s*\}/
