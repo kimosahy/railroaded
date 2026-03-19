@@ -155,6 +155,47 @@ auth.post("/login", async (c) => {
   });
 });
 
+// POST /admin/login-as — scheduler/admin can log in as any user (auto-registers if needed)
+auth.post("/admin/login-as", async (c) => {
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret) return c.json({ error: "Admin endpoint not configured" }, 503);
+
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json<{ username: string; role?: string }>();
+  if (!body.username) return c.json({ error: "username is required" }, 400);
+
+  let user = usersByUsername.get(body.username);
+  if (!user) {
+    const role = (body.role as UserRole) ?? "player";
+    const password = generatePassword();
+    const passwordHash = await hashPassword(password);
+    const id = `user-${userIdCounter++}`;
+    user = { id, username: body.username, passwordHash, role, dbUserId: null };
+    usersByUsername.set(body.username, user);
+    usersById.set(id, user);
+    try {
+      const [row] = await db.insert(usersTable).values({ username: body.username, passwordHash, role })
+        .returning({ id: usersTable.id });
+      user.dbUserId = row.id;
+    } catch (err) { console.error("[DB] Failed to persist auto-registered user:", err); }
+  }
+
+  const token = generateToken();
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+  sessionsByToken.set(token, { userId: user.id, expiresAt });
+
+  if (user.dbUserId) {
+    db.insert(sessionsTable).values({ userId: user.dbUserId, token, expiresAt })
+      .catch((err) => console.error("[DB] Failed to persist admin session:", err));
+  }
+
+  return c.json({ token, expiresAt: expiresAt.toISOString(), userId: user.id, role: user.role });
+});
+
 export default auth;
 
 // Middleware: extract authenticated user from Bearer token
