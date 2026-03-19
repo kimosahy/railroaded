@@ -2360,6 +2360,7 @@ spectator.post("/waitlist", async (c) => {
       email,
       referralCode,
       referredBy,
+      createdAt: sql`now()`,
     });
 
     // Increment referrer's count
