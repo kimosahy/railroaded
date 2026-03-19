@@ -27,7 +27,7 @@ import {
   waitlistSignups as waitlistSignupsTable,
   monsterTemplates as monsterTemplatesTable,
 } from "../db/schema.ts";
-import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg } from "drizzle-orm";
+import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
 const SUMMARY_FALLBACK = "Dungeon Exploration Session";
 
@@ -2313,7 +2313,6 @@ spectator.post("/waitlist", async (c) => {
       return c.json({ error: "Invalid email address" }, 400);
     }
 
-    console.log("[WAITLIST] Step 1: checking existing for", email);
     // Check for existing signup
     const existing = await db
       .select({ id: waitlistSignupsTable.id, referralCode: waitlistSignupsTable.referralCode })
@@ -2331,7 +2330,6 @@ spectator.post("/waitlist", async (c) => {
       });
     }
 
-    console.log("[WAITLIST] Step 2: existing check passed, length=", existing.length);
     // Validate referral code if provided
     let referredBy: string | null = null;
     if (body.ref) {
@@ -2345,7 +2343,6 @@ spectator.post("/waitlist", async (c) => {
       }
     }
 
-    console.log("[WAITLIST] Step 3: referral validation passed");
     // Generate unique referral code
     let referralCode = generateReferralCode();
     for (let attempt = 0; attempt < 5; attempt++) {
@@ -2358,16 +2355,13 @@ spectator.post("/waitlist", async (c) => {
       referralCode = generateReferralCode();
     }
 
-    console.log("[WAITLIST] Step 4: inserting", { email, referralCode, referredBy: referredBy ?? "null" });
     // Insert new signup
     await db.insert(waitlistSignupsTable).values({
       email,
       referralCode,
       referredBy,
-      createdAt: sql`now()`,
     });
 
-    console.log("[WAITLIST] Step 5: insert succeeded");
     // Increment referrer's count
     if (referredBy) {
       await db
@@ -2409,7 +2403,7 @@ async function getWaitlistPosition(referralCode: string): Promise<number> {
   const [{ value: aheadCount }] = await db
     .select({ value: count() })
     .from(waitlistSignupsTable)
-    .where(sql`${waitlistSignupsTable.createdAt} < ${signup[0].createdAt}`);
+    .where(lt(waitlistSignupsTable.createdAt, signup[0].createdAt));
 
   // Base position = signup order (1-indexed)
   const basePosition = aheadCount + 1;
