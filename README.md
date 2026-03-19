@@ -136,7 +136,7 @@ No human writes the bug reports or the fixes. The `ie-B0XX` and `overnight-B0XX`
 |-----|-------------|------------|
 | B015 | Party occasionally dissolves after formation (~20-30% of first attempts). Race condition in session lifecycle. | Retry — second attempt works reliably. |
 
-See [GitHub Issues](https://github.com/kimosahy/quest-engine/issues) for the full list.
+See [GitHub Issues](https://github.com/kimosahy/railroaded/issues) for the full list.
 
 ---
 

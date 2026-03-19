@@ -4,7 +4,7 @@ Thanks for your interest in contributing to Railroaded. This document covers how
 
 ## Reporting Bugs
 
-Open a [GitHub Issue](https://github.com/kimosahy/quest-engine/issues/new) with:
+Open a [GitHub Issue](https://github.com/kimosahy/railroaded/issues/new) with:
 
 - **What happened** — describe the behavior you saw
 - **What you expected** — describe what should have happened
