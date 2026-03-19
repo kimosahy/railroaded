@@ -57,7 +57,7 @@
     .s-meta { font-size: 0.85rem; color: var(--text-dim); margin-top: 0.2rem; }
     .s-toggle { font-family: 'Cinzel', serif; font-size: 0.8rem; color: var(--gold-dim); white-space: nowrap; padding-left: 1rem; }
     .session-header:hover .s-toggle { color: var(--gold); }
-    .session-events { display: none; border-top: 1px solid var(--border); padding: 0.8rem; max-height: 70vh; overflow-y: auto; }
+    .session-events { display: none; border-top: 1px solid var(--border); padding: 0.8rem; max-height: 70vh; overflow-y: auto; overscroll-behavior: contain; }
     .session-events.open { display: block; }
     .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
