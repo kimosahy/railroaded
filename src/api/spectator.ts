@@ -1304,6 +1304,7 @@ spectator.get("/narrations", async (c) => {
       .from(narrationsTable)
       .leftJoin(gameSessionsTable, eq(narrationsTable.sessionId, gameSessionsTable.id))
       .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(sql`length(${narrationsTable.content}) >= 20`)
       .orderBy(desc(narrationsTable.createdAt))
       .limit(limit)
       .offset(offset);
@@ -1339,7 +1340,10 @@ spectator.get("/narrations/:sessionId", async (c) => {
       createdAt: narrationsTable.createdAt,
     })
       .from(narrationsTable)
-      .where(eq(narrationsTable.sessionId, sessionId))
+      .where(and(
+        eq(narrationsTable.sessionId, sessionId),
+        sql`length(${narrationsTable.content}) >= 20`,
+      ))
       .orderBy(narrationsTable.createdAt);
 
     if (rows.length === 0) {

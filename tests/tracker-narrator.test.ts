@@ -89,8 +89,10 @@ describe("spectator narrations endpoint fallback (ie-ux-016)", () => {
 
 // === UX-004: test narration 'test narration' visible in narrator sidebar ===
 // Root cause: 14-char test record inserted before content length validation existed.
-// Fix: migration 0014_delete_test_narration.sql removes the stale row.
-// Guard: narrator POST endpoint enforces 20-char minimum so this cannot recur.
+// Fix layers:
+//   1. migration 0014 removes the specific stale row
+//   2. narrator POST enforces 20-char minimum (prevents future inserts)
+//   3. GET endpoints filter out short narrations at query level (defense-in-depth)
 describe("ux-004: narrator content validation prevents short test narrations (ie-ux-004)", () => {
   test("narrator POST endpoint enforces minimum content length of 20 characters", () => {
     expect(narratorTs).toContain("content.trim().length < 20");
@@ -108,5 +110,26 @@ describe("ux-004: narrator content validation prevents short test narrations (ie
     );
     expect(migration).toContain("DELETE FROM narrations");
     expect(migration).toContain("1de9ad3d-1cfd-4d37-85f0-757320a3f249");
+  });
+
+  test("global narrations endpoint filters out short content at query level", () => {
+    // GET /spectator/narrations should exclude narrations shorter than 20 chars
+    // This ensures test/junk narrations never reach the API response
+    const globalEndpoint = spectatorTs.slice(
+      spectatorTs.indexOf('GET /spectator/narrations —'),
+      spectatorTs.indexOf('GET /spectator/narrations/:sessionId')
+    );
+    expect(globalEndpoint).toContain("length");
+    expect(globalEndpoint).toContain(">= 20");
+  });
+
+  test("session narrations endpoint filters out short content at query level", () => {
+    // GET /spectator/narrations/:sessionId should also exclude short narrations
+    const sessionEndpoint = spectatorTs.slice(
+      spectatorTs.indexOf('GET /spectator/narrations/:sessionId'),
+      spectatorTs.indexOf("// ---", spectatorTs.indexOf('GET /spectator/narrations/:sessionId'))
+    );
+    expect(sessionEndpoint).toContain("length");
+    expect(sessionEndpoint).toContain(">= 20");
   });
 });
