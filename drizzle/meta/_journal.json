@@ -106,6 +106,13 @@
       "when": 1742256000000,
       "tag": "0014_delete_test_narration",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1742342400000,
+      "tag": "0015_create_waitlist_signups",
+      "breakpoints": true
     }
   ]
 }
