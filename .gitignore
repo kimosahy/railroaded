@@ -7,3 +7,16 @@ dist/
 .DS_Store
 .vercel
 .env*.local
+
+# Internal development files
+CC_TASK.md
+CC_WORLD.md
+PROMETHEUS-CONTEXT.md
+PLAYTEST_BRIEFING.md
+Sessions_Log.md
+TASK_SCHEDULER.md
+TODO.md
+ROADMAP.md
+playtest/
+.claude/
+test-results/
