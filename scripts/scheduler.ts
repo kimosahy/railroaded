@@ -466,7 +466,7 @@ async function runDungeonSession(
       const { data: encData } = await api("/api/v1/dm/trigger-encounter", { token: dmToken, body: {} });
       log(`  Encounter response: ${JSON.stringify(encData)}`);
       await sleep(1500); // Let initiative + spawn resolve
-      if (encData?.success === true || encData?.data?.monsters?.length > 0) {
+      if (encData?.monsters?.length > 0 || encData?.phase === "combat") {
         await runCombat(dmToken, players);
       }
     }
