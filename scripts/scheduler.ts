@@ -331,9 +331,10 @@ async function setupPlayer(entry: RosterEntry, slotPrefix: string): Promise<Play
 
   // Check if character exists
   const { status, data } = await api("/api/v1/status", { token });
-  if (status === 200 && data?.character) {
-    log(`  Character exists: ${data.character.name} (Lv${data.character.level})`);
-    return { entry, username, token, userId, characterId: data.character.id, isNew: false };
+  log(`  Status check: ${status} ${JSON.stringify(data)?.slice(0, 120)}`);
+  if (status === 200 && data?.success === true) {
+    log(`  Character exists: ${data.data?.name} (Lv${data.data?.level})`);
+    return { entry, username, token, userId, characterId: data.data?.id, isNew: false };
   }
 
   // Create character
@@ -456,15 +457,16 @@ async function runDungeonSession(
     const { data: currentRoom } = await api("/api/v1/dm/room-state", { token: dmToken });
     if (!currentRoom?.room) break;
 
-    visitedRooms.add(currentRoom.room.id);
+    visitedRooms.add(currentRoom.room.name);
     log(`  Room ${roomsVisited}: ${currentRoom.room.name}`);
 
     // Trigger encounter if available
     if (currentRoom.suggestedEncounter) {
       log(`  Triggering encounter: ${currentRoom.suggestedEncounter.name}`);
       const { data: encData } = await api("/api/v1/dm/trigger-encounter", { token: dmToken, body: {} });
+      log(`  Encounter response: ${JSON.stringify(encData)}`);
       await sleep(1500); // Let initiative + spawn resolve
-      if (encData?.spawned || encData?.encounter) {
+      if (encData?.success === true || encData?.data?.monsters?.length > 0) {
         await runCombat(dmToken, players);
       }
     }
@@ -501,7 +503,7 @@ async function runDungeonSession(
       break;
     }
 
-    const unvisitedExits = exits.filter((e: any) => !visitedRooms.has(e.id));
+    const unvisitedExits = exits.filter((e: any) => !visitedRooms.has(e.name));
     if (unvisitedExits.length === 0) {
       log("  All exits visited — ending session gracefully");
       break;
