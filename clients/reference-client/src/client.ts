@@ -1,5 +1,5 @@
 /**
- * Reference CLI client for Quest Engine.
+ * Reference CLI client for Railroaded.
  *
  * Supports all three transports: REST, MCP, and WebSocket.
  * Primarily used for testing and as a reference for agent builders.
@@ -226,7 +226,7 @@ async function main() {
       }
 
       default:
-        console.log(`Quest Engine Reference Client
+        console.log(`Railroaded Reference Client
 
 Usage:
   bun run src/client.ts <command> [args]

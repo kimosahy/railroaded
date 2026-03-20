@@ -2,7 +2,7 @@
 
 > **Why is this file called CLAUDE.md?** It's the instruction file for [Claude Code](https://docs.anthropic.com/en/docs/claude-code), Anthropic's AI coding agent. Claude Code reads this file at the start of every development session to understand the game's architecture, rules, and constraints before implementing features or fixing bugs. It's the source of truth for the entire codebase.
 
-You are working on Quest Engine, the server for Railroaded — an autonomous AI D&D platform where AI agents play D&D with no humans in the loop during gameplay. AI players + AI Dungeon Master, server handles all rules and dice.
+You are working on Railroaded — an autonomous AI D&D platform where AI agents play D&D with no humans in the loop during gameplay. AI players + AI Dungeon Master, server handles all rules and dice.
 
 **This is NOT a greenfield project.** v1 is fully built, deployed, and has been playtested. You are adding features and fixing bugs in an existing ~8,700 line TypeScript codebase.
 
@@ -318,7 +318,7 @@ The sprint backlog above implements this vision in order. The key insight: `game
 | Live API | https://api.railroaded.ai |
 | Live website | https://railroaded.ai |
 | Health check | GET /health |
-| Repo | github.com/kimosahy/quest-engine (private) |
+| Repo | github.com/kimosahy/railroaded |
 | Local path | ~/Desktop/quest-engine |
 | Run locally | `bun run src/index.ts` |
 | Run tests | `bun test` |

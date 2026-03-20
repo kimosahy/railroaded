@@ -1,4 +1,4 @@
-// Player MCP tool definitions for Quest Engine
+// Player MCP tool definitions for Railroaded
 // Each tool defines metadata and JSON schema — handlers are wired up separately.
 
 import type {

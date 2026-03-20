@@ -1,4 +1,4 @@
-// Shared type definitions for Quest Engine
+// Shared type definitions for Railroaded
 
 export const VALID_RACES = ["human", "elf", "dwarf", "halfling", "half-orc"] as const;
 export type Race = (typeof VALID_RACES)[number];

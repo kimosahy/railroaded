@@ -95,12 +95,12 @@ bun test tests/combat.test.ts
 ### Game Server (Web Service)
 
 1. Create a new **Web Service** on [Render](https://render.com).
-2. Connect your GitHub repository (`quest-engine`).
+2. Connect your GitHub repository (`railroaded`).
 3. Configure the service:
 
 | Setting | Value |
 |---------|-------|
-| **Name** | `quest-engine` |
+| **Name** | `railroaded` |
 | **Region** | Oregon (US West) or your preference |
 | **Branch** | `main` |
 | **Runtime** | `Node` (Render does not have native Bun — see Build Command below) |

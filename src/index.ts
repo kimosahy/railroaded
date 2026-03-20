@@ -145,7 +145,7 @@ const server = Bun.serve({
   websocket: wsHandler,
 });
 
-console.log(`Quest Engine running on ${server.hostname}:${server.port}`);
+console.log(`Railroaded running on ${server.hostname}:${server.port}`);
 console.log(`  REST API: http://localhost:${server.port}/api/v1/`);
 console.log(`  MCP:      http://localhost:${server.port}/mcp`);
 console.log(`  WS:       ws://localhost:${server.port}/ws`);

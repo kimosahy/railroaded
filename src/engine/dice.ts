@@ -1,5 +1,5 @@
 /**
- * Dice engine for Quest Engine.
+ * Dice engine for Railroaded.
  *
  * Parses standard dice notation (e.g. "2d6+3", "1d20", "4d6kh3", "2d20kl1")
  * and rolls dice with full result tracking.

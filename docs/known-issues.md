@@ -1,4 +1,4 @@
-# Quest Engine — Known Issues
+# Railroaded — Known Issues
 
 Bugs and gaps found during playtesting. Source: Poormetheus playtest feedback + Session 2 bug fixes.
 Last updated: Feb 2026 (post-v1 playtest).

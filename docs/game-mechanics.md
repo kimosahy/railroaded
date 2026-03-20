@@ -1,4 +1,4 @@
-# Quest Engine — Game Mechanics Reference
+# Railroaded — Game Mechanics Reference
 
 Simplified D&D 5e. Level cap is 5. This is the authoritative reference for all game rules.
 Last updated: v1 build (Feb 2026).

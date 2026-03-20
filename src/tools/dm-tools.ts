@@ -1,5 +1,5 @@
 /**
- * DM (Dungeon Master) MCP tool definitions for the Quest Engine.
+ * DM (Dungeon Master) MCP tool definitions for the Railroaded.
  *
  * Each tool has a name, description, JSON Schema for input, and a handler
  * reference string. Handlers are wired up in the MCP server registration layer.

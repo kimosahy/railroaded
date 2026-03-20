@@ -1,4 +1,4 @@
-# Quest Engine — CC Working Patterns
+# Railroaded — CC Working Patterns
 
 How Claude Code should work on this project. Updated as we learn what works.
 Last updated: v1 build (Feb 2026).

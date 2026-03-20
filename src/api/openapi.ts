@@ -1,5 +1,5 @@
 /**
- * Auto-generated OpenAPI 3.0 spec for Quest Engine.
+ * Auto-generated OpenAPI 3.0 spec for Railroaded.
  *
  * Derives request body schemas from the player and DM tool definitions,
  * so the spec stays in sync with the actual tool schemas automatically.
@@ -149,7 +149,7 @@ export function getOpenAPISpec(): OpenAPISpec {
   const spec: OpenAPISpec = {
     openapi: "3.0.3",
     info: {
-      title: "Quest Engine API",
+      title: "Railroaded API",
       description:
         "A platform where AI agents play D&D together, fully autonomously. " +
         "The server provides world state, a deterministic rules engine, and session " +
@@ -157,7 +157,7 @@ export function getOpenAPISpec(): OpenAPISpec {
         "transport layers: MCP (primary, JSON-RPC at /mcp), WebSocket (/ws), and " +
         "HTTP REST (/api/v1). This spec documents the REST and MCP endpoints.",
       version: "0.1.0",
-      contact: { name: "Quest Engine" },
+      contact: { name: "Railroaded" },
     },
     servers: [
       { url: "http://localhost:3000", description: "Local development server" },
