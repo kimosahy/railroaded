@@ -444,22 +444,26 @@ async function runDungeonSession(
     token: dmToken,
     body: { text: `The party enters ${roomName}. ${roomData.room.description ?? ""}` },
   });
+  await sleep(1500); // Let event propagate
 
   // Walk through rooms
   let roomsVisited = 0;
-  const maxRooms = 5;
+  const maxRooms = 20;
+  const visitedRooms = new Set<string>();
 
   while (roomsVisited < maxRooms) {
     roomsVisited++;
     const { data: currentRoom } = await api("/api/v1/dm/room-state", { token: dmToken });
     if (!currentRoom?.room) break;
 
+    visitedRooms.add(currentRoom.room.id);
     log(`  Room ${roomsVisited}: ${currentRoom.room.name}`);
 
     // Trigger encounter if available
     if (currentRoom.suggestedEncounter) {
       log(`  Triggering encounter: ${currentRoom.suggestedEncounter.name}`);
       const { data: encData } = await api("/api/v1/dm/trigger-encounter", { token: dmToken, body: {} });
+      await sleep(1500); // Let initiative + spawn resolve
       if (encData?.spawned || encData?.encounter) {
         await runCombat(dmToken, players);
       }
@@ -473,6 +477,23 @@ async function runDungeonSession(
       log("  Looted room");
     }
 
+    // Exploration actions between rooms
+    const rogue = players.find((p) => p.entry.class === "rogue");
+    const cleric = players.find((p) => p.entry.class === "cleric");
+    if (currentRoom.interactables?.length > 0) {
+      const obj = randomPick(currentRoom.interactables);
+      await api("/api/v1/dm/interact", { token: dmToken, body: { object_id: obj.id } });
+      log(`  Interacted with: ${obj.name ?? obj.id}`);
+    }
+    if (rogue) {
+      await api("/api/v1/skill-check", { token: rogue.token, body: { skill: "perception", dc: 12 } });
+      log(`  ${rogue.entry.name} checks for traps`);
+    }
+    if (cleric) {
+      await api("/api/v1/skill-check", { token: cleric.token, body: { skill: "religion", dc: 10 } });
+      log(`  ${cleric.entry.name} checks for undead`);
+    }
+
     // Advance to next room
     const exits = currentRoom.exits ?? [];
     if (exits.length === 0) {
@@ -480,9 +501,15 @@ async function runDungeonSession(
       break;
     }
 
-    const nextExit = exits[0];
+    const unvisitedExits = exits.filter((e: any) => !visitedRooms.has(e.id));
+    if (unvisitedExits.length === 0) {
+      log("  All exits visited — ending session gracefully");
+      break;
+    }
+    const nextExit = randomPick(unvisitedExits);
     log(`  Advancing to: ${nextExit.name} (${nextExit.id})`);
     await api("/api/v1/dm/advance-scene", { token: dmToken, body: { exit_id: nextExit.id } });
+    await sleep(1500); // Let room transition process
 
     // Brief narration
     const { data: newRoom } = await api("/api/v1/dm/room-state", { token: dmToken });
@@ -491,6 +518,7 @@ async function runDungeonSession(
         token: dmToken,
         body: { text: `The party moves into ${newRoom.room.name}. ${newRoom.room.description ?? ""}` },
       });
+      await sleep(1500); // Let event propagate
     }
   }
 
@@ -506,40 +534,40 @@ async function runDungeonSession(
 }
 
 async function runCombat(dmToken: string, players: PlayerSlot[]): Promise<void> {
-  const maxRounds = 10;
-  let round = 0;
+  await sleep(2000); // Let initiative resolve
 
-  while (round < maxRounds) {
-    round++;
+  const maxTurns = 40; // ~10 rounds x 4 players
+  let turns = 0;
 
-    // Check current state
+  while (turns < maxTurns) {
+    turns++;
+
+    // Check if still in combat
     const { data: partyState } = await api("/api/v1/dm/party-state", { token: dmToken });
     if (partyState?.phase !== "combat") {
-      log(`    Combat ended (phase: ${partyState?.phase})`);
+      log(`    Combat ended after ${turns} turns`);
       break;
     }
 
+    // Check monsters
     const { data: roomState } = await api("/api/v1/dm/room-state", { token: dmToken });
     const aliveMonsters = (roomState?.monsters ?? []).filter((m: any) => m.hp > 0);
     if (aliveMonsters.length === 0) {
-      log("    All monsters dead — combat should end");
-      // Advance scene to exit combat
-      await api("/api/v1/dm/advance-scene", { token: dmToken, body: {} });
+      log("    All monsters defeated");
       break;
     }
 
-    // Process turns — check each player and monster
-    // Players act by attacking first alive monster
+    // Find which player (if any) has the turn
+    let acted = false;
     for (const p of players) {
       const { data: actions } = await api("/api/v1/actions", { token: p.token });
       if (!actions?.isYourTurn) continue;
 
       const target = aliveMonsters[0];
-      if (!target) break;
+      let turnTaken = false;
 
-      // Fighters and rogues attack, clerics heal or attack, wizards cast or attack
+      // Clerics heal wounded allies first
       if (p.entry.class === "cleric") {
-        // Check if any party member is hurt
         const members = partyState?.members ?? [];
         const hurt = members.find((m: any) => m.hp.current < m.hp.max * 0.5);
         if (hurt) {
@@ -547,49 +575,56 @@ async function runCombat(dmToken: string, players: PlayerSlot[]): Promise<void> 
           if (castRes?.success !== false) {
             log(`    ${p.entry.name} heals ${hurt.name}`);
             await api("/api/v1/end-turn", { token: p.token, body: {} });
-            continue;
+            turnTaken = true;
           }
         }
       }
 
-      if (p.entry.class === "wizard") {
+      // Wizards cast magic missile
+      if (!turnTaken && p.entry.class === "wizard") {
         const { data: castRes } = await api("/api/v1/cast", { token: p.token, body: { spell_name: "magic missile", target_id: target.id } });
         if (castRes?.success !== false) {
           log(`    ${p.entry.name} casts magic missile at ${target.name}`);
           await api("/api/v1/end-turn", { token: p.token, body: {} });
-          continue;
+          turnTaken = true;
         }
       }
 
       // Default: attack
-      await api("/api/v1/attack", { token: p.token, body: { target_id: target.id } });
-      log(`    ${p.entry.name} attacks ${target.name}`);
-      await api("/api/v1/end-turn", { token: p.token, body: {} });
+      if (!turnTaken) {
+        await api("/api/v1/attack", { token: p.token, body: { target_id: target.id } });
+        log(`    ${p.entry.name} attacks ${target.name}`);
+        await api("/api/v1/end-turn", { token: p.token, body: {} });
+      }
+
+      acted = true;
+      await sleep(1000); // Let server process
+      break; // Only one player acts per loop iteration
     }
 
-    // Monster turns — DM resolves
-    const { data: roomAfterPlayers } = await api("/api/v1/dm/room-state", { token: dmToken });
-    const monstersNow = (roomAfterPlayers?.monsters ?? []).filter((m: any) => m.hp > 0);
-    for (const monster of monstersNow) {
+    // If no player had a turn, it might be a monster turn
+    if (!acted) {
       const { data: partyNow } = await api("/api/v1/dm/party-state", { token: dmToken });
-      if (partyNow?.phase !== "combat") break;
+      const alivePlayers = (partyNow?.members ?? []).filter((m: any) => m.hp?.current > 0);
+      if (alivePlayers.length === 0) {
+        log("    TPK — party wiped");
+        break;
+      }
 
-      const alivePlayers = (partyNow.members ?? []).filter((m: any) => m.hp.current > 0);
-      if (alivePlayers.length === 0) break;
-
-      const target = randomPick(alivePlayers);
-      await api("/api/v1/dm/monster-attack", {
-        token: dmToken,
-        body: { monster_id: monster.id, target_id: target.id },
-      });
-      log(`    ${monster.name} attacks ${target.name}`);
+      for (const monster of aliveMonsters) {
+        const target = randomPick(alivePlayers);
+        await api("/api/v1/dm/monster-attack", {
+          token: dmToken,
+          body: { monster_id: monster.id, target_id: target.id },
+        });
+        log(`    ${monster.name} attacks ${target.name}`);
+        await sleep(500);
+      }
+      await sleep(1000);
     }
-
-    // Small delay between rounds
-    await sleep(500);
   }
 
-  if (round >= maxRounds) {
+  if (turns >= maxTurns) {
     log("    Combat timeout — forcing advance");
     await api("/api/v1/dm/advance-scene", { token: dmToken, body: {} });
   }
