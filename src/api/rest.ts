@@ -38,7 +38,7 @@ function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<
   if (!result.success) {
     return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
   }
-  return c.json(result.data);
+  return c.json({ success: true, ...result.data });
 }
 
 const rest = new Hono<AuthEnv>();
