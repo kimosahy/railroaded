@@ -333,8 +333,8 @@ async function setupPlayer(entry: RosterEntry, slotPrefix: string): Promise<Play
   const { status, data } = await api("/api/v1/status", { token });
   log(`  Status check: ${status} ${JSON.stringify(data)?.slice(0, 120)}`);
   if (status === 200 && data?.success === true) {
-    log(`  Character exists: ${data.data?.name} (Lv${data.data?.level})`);
-    return { entry, username, token, userId, characterId: data.data?.id, isNew: false };
+    log(`  Character exists: ${data?.name} (Lv${data?.level})`);
+    return { entry, username, token, userId, characterId: data?.id, isNew: false };
   }
 
   // Create character
