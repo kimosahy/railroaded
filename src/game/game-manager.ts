@@ -471,7 +471,7 @@ export async function handleCreateCharacter(userId: string, params: {
   backstory?: string;
   personality?: string;
   playstyle?: string;
-  avatar_url?: string;
+  avatar_url: string;
   description?: string;
 }): Promise<{ success: boolean; character?: GameCharacter; error?: string }> {
   // Check if user already has a character
@@ -497,12 +497,13 @@ export async function handleCreateCharacter(userId: string, params: {
     return { success: false, error: `Invalid class. Must be one of: ${VALID_CLASSES.join(", ")}` };
   }
 
-  // Validate avatar URL if provided
-  if (params.avatar_url) {
-    const avatarCheck = await validateAvatarUrl(params.avatar_url);
-    if (!avatarCheck.valid) {
-      return { success: false, error: avatarCheck.error };
-    }
+  // Avatar URL is REQUIRED — no character without a face
+  if (!params.avatar_url) {
+    return { success: false, error: "avatar_url is required. Generate a portrait for your character and provide a permanent image URL. DALL-E URLs expire — upload to a permanent host first." };
+  }
+  const avatarCheck = await validateAvatarUrl(params.avatar_url);
+  if (!avatarCheck.valid) {
+    return { success: false, error: avatarCheck.error };
   }
 
   const validation = validateAbilityScores(params.ability_scores);

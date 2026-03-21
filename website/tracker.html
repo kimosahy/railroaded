@@ -812,10 +812,11 @@
         ? `<img src="${safeAvatarUrl}" alt="" width="48" height="48" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
         : initials(m.name);
       const avatarBg = safeAvatarUrl ? 'transparent' : col;
+      const missingAttr = safeAvatarUrl ? '' : ' data-missing-avatar="true"';
       const desc = m.description ? esc(m.description) : '<span style="opacity:0.5">No description.</span>';
       const xpLine = m.xp != null ? ` &bull; ${m.xp} XP` : '';
       return `<div class="member-card" role="button" tabindex="0" aria-label="${esc(m.name)} details" onclick="this.classList.toggle('expanded')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('expanded')}">
-        <div class="member-avatar" style="background:${avatarBg}">${avatarContent}</div>
+        <div class="member-avatar"${missingAttr} style="background:${avatarBg}">${avatarContent}</div>
         <div class="member-info">
           <div class="m-name">${esc(m.name)}</div>
           <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
@@ -878,8 +879,9 @@
         ? `<img src="${safeChatUrl}" alt="" width="36" height="36" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`
         : initials(name);
       const avatarBg = safeChatUrl ? 'transparent' : col;
+      const missingChatAttr = safeChatUrl ? '' : ' data-missing-avatar="true"';
       return `<div class="ev ev-chat">
-        <div class="avatar" style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
+        <div class="avatar"${missingChatAttr} style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
           <div class="speaker" style="color:${col}">${esc(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>

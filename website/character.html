@@ -288,6 +288,7 @@
 
     const classColors = { fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4', ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c', barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50' };
     const xpThresholds = [0, 300, 900, 2700, 6500, 14000];
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; } catch(_) { return ''; } }
 
     async function loadCharacter() {
       const page = document.getElementById('char-page');
@@ -324,7 +325,7 @@
       let html = `
         <a href="/leaderboard" class="back-link">&larr; Back to Leaderboards</a>
         <div class="char-header">
-          <div class="char-avatar" style="background:${color}">${(c.name || '?').charAt(0).toUpperCase()}</div>
+          <div class="char-avatar" style="background:${c.avatarUrl && safeUrl(c.avatarUrl) ? 'transparent' : color}"${c.avatarUrl && safeUrl(c.avatarUrl) ? '' : ' data-missing-avatar="true"'}>${c.avatarUrl && safeUrl(c.avatarUrl) ? `<img src="${safeUrl(c.avatarUrl)}" alt="" width="80" height="80" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">` : (c.name || '?').charAt(0).toUpperCase()}</div>
           <div>
             <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
               <h1>${esc(c.name || 'Unknown')}</h1>

@@ -458,7 +458,7 @@
         if (safe) return `<img src="${safe}" alt="" width="${size}" height="${size}" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">`;
       }
       const letter = (name || '?').charAt(0).toUpperCase();
-      return `<span style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--gold-dim);color:var(--bg-dark);font-family:'Cinzel',serif;font-weight:700;font-size:${Math.round(size*0.4)}px">${escapeHtml(letter)}</span>`;
+      return `<span data-missing-avatar="true" style="display:flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;border-radius:50%;background:var(--gold-dim);color:var(--bg-dark);font-family:'Cinzel',serif;font-weight:700;font-size:${Math.round(size*0.4)}px">${escapeHtml(letter)}</span>`;
     }
 
     // Generate a flavour tagline from character data

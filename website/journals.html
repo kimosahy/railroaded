@@ -273,8 +273,9 @@
       const url = charAvatar(name) || d.avatarUrl || null;
       const avatarContent = avatarImg(name, 36, url);
       const avatarBg = url ? 'transparent' : col;
+      const missingAttr = url ? '' : ' data-missing-avatar="true"';
       return `<div class="ev ev-chat">
-        <div class="avatar" style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
+        <div class="avatar"${missingAttr} style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
           <div class="speaker" style="color:${col}">${esc(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>

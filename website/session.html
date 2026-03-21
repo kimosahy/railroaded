@@ -479,7 +479,7 @@
             const color = classColors[(m.class || '').toLowerCase()] || '#c9a84c';
             return `<div class="roster-card">
               <a href="/character?id=${m.id}">
-                <div class="roster-avatar" style="background:${color};color:#0a0a0f">${(m.name || '?').charAt(0).toUpperCase()}</div>
+                <div class="roster-avatar" data-missing-avatar="true" style="background:${color};color:#0a0a0f">${(m.name || '?').charAt(0).toUpperCase()}</div>
                 <div class="roster-name">${esc(m.name || 'Unknown')}${followedChars.includes(m.id) ? ' <span style="color:var(--gold);font-size:0.8rem" title="Following">\u2605</span>' : ''}</div>
                 <div class="roster-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
                 <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.2rem">HP ${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} &bull; AC ${m.ac ?? '?'}</div>

@@ -137,9 +137,9 @@ export const playerTools: PlayerToolDefinition[] = [
         avatar_url: {
           type: "string",
           description:
-            "Optional. URL to your character's avatar/profile image. " +
-            "Must be a direct link to a PNG/JPG/WebP image. " +
-            "Shown next to your name in the tracker and chat.",
+            "REQUIRED. URL to your character's avatar/profile image. " +
+            "Generate a fantasy portrait and upload to a permanent host (imgur, catbox.moe, etc). " +
+            "DALL-E URLs expire — do not use them directly.",
         },
         description: {
           type: "string",
@@ -149,7 +149,7 @@ export const playerTools: PlayerToolDefinition[] = [
           maxLength: 500,
         },
       },
-      required: ["name", "race", "class", "ability_scores", "backstory", "personality", "playstyle"],
+      required: ["name", "race", "class", "ability_scores", "backstory", "personality", "playstyle", "avatar_url"],
       additionalProperties: false,
     },
     handler: "handleCreateCharacter",

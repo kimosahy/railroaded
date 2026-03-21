@@ -129,6 +129,78 @@ const CLASS_SCORES: Record<string, { str: number; dex: number; con: number; int:
   wizard:  { str: 8,  dex: 14, con: 12, int: 16, wis: 14, cha: 10 },
 };
 
+// ── Avatar Generation ─────────────────────────────────────────────
+
+const AVATAR_STYLE_PROMPT = `Fantasy character portrait, painterly style, dramatic lighting, dark background, shoulders-up framing, highly detailed, digital painting, concept art style. D&D fantasy world.`;
+
+async function generateAvatarUrl(name: string, race: string, characterClass: string): Promise<string | null> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    console.error("[Avatar] OPENAI_API_KEY not set");
+    return null;
+  }
+
+  try {
+    const prompt = `${AVATAR_STYLE_PROMPT} Portrait of ${name}, a ${race} ${characterClass}.`;
+    const response = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "dall-e-3",
+        prompt,
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json",
+        quality: "standard",
+      }),
+    });
+
+    if (!response.ok) {
+      console.error(`[Avatar] DALL-E error: ${response.status}`);
+      return null;
+    }
+
+    const data = await response.json();
+    const b64 = data.data[0].b64_json;
+
+    // Upload to catbox.moe for permanent hosting
+    const formData = new FormData();
+    formData.append("reqtype", "fileupload");
+    const blob = new Blob([Buffer.from(b64, "base64")], { type: "image/png" });
+    formData.append("fileToUpload", blob, `${name.replace(/\s+/g, "_")}.png`);
+
+    const uploadResp = await fetch("https://catbox.moe/user/api.php", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!uploadResp.ok) {
+      console.error(`[Avatar] Catbox upload failed: ${uploadResp.status}`);
+      return null;
+    }
+
+    const url = await uploadResp.text();
+    log(`  Avatar generated for ${name}: ${url.trim()}`);
+    return url.trim();
+  } catch (err) {
+    console.error(`[Avatar] Error: ${err}`);
+    return null;
+  }
+}
+
+const FALLBACK_AVATARS: Record<string, string[]> = {
+  fighter: [],
+  rogue: [],
+  cleric: [],
+  wizard: [],
+};
+
+function getFallbackAvatar(characterClass: string): string | null {
+  const pool = FALLBACK_AVATARS[characterClass] ?? Object.values(FALLBACK_AVATARS).flat();
+  if (pool.length === 0) return null;
+  return randomPick(pool);
+}
+
 // ── Curated Roster (Slot 1) ────────────────────────────────────────
 
 const CURATED_ROSTER: RosterEntry[] = [
@@ -289,14 +361,14 @@ function generateFreshCharacter(cls: string): RosterEntry {
   const last = randomPick(parts.last);
   const race = randomPick(RACE_POOL[cls]);
   const name = `${first} ${last}`;
-  const avatarUrl = `https://api.dicebear.com/7.x/adventurer/png?seed=${encodeURIComponent(name)}&size=200`;
+  // Avatar generated in setupPlayer after character details are known
   return {
     name,
     class: cls as RosterEntry["class"],
     race,
     personality: randomPick(PERSONALITY_POOL[cls]),
     playstyle: cls === "cleric" ? "support" : cls === "wizard" ? "tactical" : randomPick(["aggressive", "defensive", "stealth"]),
-    avatarUrl,
+    avatarUrl: null,
     description: `A ${race} ${cls} known as ${name}.`,
     backstory: randomPick(BACKSTORY_POOL[cls]),
   };
@@ -372,8 +444,19 @@ async function setupPlayer(entry: RosterEntry, slotPrefix: string): Promise<Play
     return { entry, username, token, userId, characterId: data?.id, isNew: false };
   }
 
+  // Generate avatar if needed
+  let avatarUrl = entry.avatarUrl;
+  if (!avatarUrl) {
+    avatarUrl = await generateAvatarUrl(entry.name, entry.race, entry.class);
+    if (!avatarUrl) {
+      avatarUrl = getFallbackAvatar(entry.class);
+    }
+    if (!avatarUrl) {
+      log(`  WARNING: No avatar for ${entry.name} — character creation will fail`);
+    }
+  }
+
   // Create character
-  const avatarUrl = entry.avatarUrl ?? `https://api.dicebear.com/7.x/adventurer/png?seed=${encodeURIComponent(entry.name)}&size=200`;
   const scores = CLASS_SCORES[entry.class];
   const { status: cStatus, data: cData } = await api("/api/v1/character", {
     token,

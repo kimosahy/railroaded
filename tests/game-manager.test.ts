@@ -80,6 +80,7 @@ describe("Character creation", () => {
       race: "human",
       class: "fighter",
       ability_scores: { str: 20, dex: 20, con: 20, int: 20, wis: 20, cha: 20 },
+      avatar_url: "https://example.com/avatar.png",
     });
     expect(result.success).toBe(false);
     expect(result.error).toBeDefined();
