@@ -85,6 +85,41 @@ function log(msg: string): void {
   console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
+// ── Journal Entry Templates ───────────────────────────────────────
+
+const JOURNAL_AFTER_COMBAT = [
+  (name: string, ally: string) => `That was too close. The creature nearly took my head off before ${ally} intervened.`,
+  (name: string, _ally: string) => `Another fight survived. My hands are still shaking, but I'll never admit it.`,
+  (name: string, ally: string) => `${ally} fought well today. I'm glad they're on our side.`,
+  (name: string, _ally: string) => `The stench of battle lingers. We press on before more come.`,
+];
+
+const JOURNAL_AFTER_LOOT = [
+  (name: string, item: string) => `Found ${item} in the rubble. Small mercies in this forsaken place.`,
+  (name: string, item: string) => `I pocketed ${item}. Every bit helps when you're delving this deep.`,
+  (name: string, item: string) => `${item} — not much, but better than nothing. This dungeon owes us more.`,
+];
+
+const JOURNAL_EXPLORATION = [
+  (name: string, room: string) => `${room} — this place reeks of death. We press on.`,
+  (name: string, room: string) => `Something about ${room} unsettles me. The shadows seem to move on their own.`,
+  (name: string, room: string) => `We've reached ${room}. I wonder how many have stood here before us, and how many walked out.`,
+  (name: string, room: string) => `The walls of ${room} are slick with moisture. Or is it something else? Best not to think about it.`,
+];
+
+type JournalContext = "combat" | "loot" | "exploration";
+
+function generateJournalEntry(playerName: string, allyName: string, roomName: string, context: JournalContext, itemName?: string): string {
+  switch (context) {
+    case "combat":
+      return randomPick(JOURNAL_AFTER_COMBAT)(playerName, allyName);
+    case "loot":
+      return randomPick(JOURNAL_AFTER_LOOT)(playerName, itemName ?? "a useful trinket");
+    case "exploration":
+      return randomPick(JOURNAL_EXPLORATION)(playerName, roomName);
+  }
+}
+
 // ── Ability Scores ─────────────────────────────────────────────────
 
 const CLASS_SCORES: Record<string, { str: number; dex: number; con: number; int: number; wis: number; cha: number }> = {
@@ -440,17 +475,18 @@ async function runDungeonSession(
   log(`  Dungeon room: ${roomData.room.name}`);
   const roomName = roomData.room.name;
 
-  // Narrate entry
+  // Narrate entry with atmosphere
   await api("/api/v1/dm/narrate", {
     token: dmToken,
-    body: { text: `The party enters ${roomName}. ${roomData.room.description ?? ""}` },
+    body: { text: `The party enters ${roomName}. ${roomData.room.description ?? "Shadows cling to every surface."}` },
   });
-  await sleep(1500); // Let event propagate
+  await sleep(5000); // Atmosphere — let spectators read
 
   // Walk through rooms
   let roomsVisited = 0;
-  const maxRooms = 20;
+  const maxRooms = 8;
   const visitedRooms = new Set<string>();
+  let combatCount = 0;
 
   while (roomsVisited < maxRooms) {
     roomsVisited++;
@@ -462,12 +498,77 @@ async function runDungeonSession(
 
     // Trigger encounter if available
     if (currentRoom.suggestedEncounter) {
-      log(`  Triggering encounter: ${currentRoom.suggestedEncounter.name}`);
+      const encounterName = currentRoom.suggestedEncounter.name;
+      log(`  Triggering encounter: ${encounterName}`);
+
+      // DM narrates encounter start
+      await api("/api/v1/dm/narrate", {
+        token: dmToken,
+        body: { text: `${encounterName}! Roll for initiative!` },
+      });
+      await sleep(3000);
+
       const { data: encData } = await api("/api/v1/dm/trigger-encounter", { token: dmToken, body: {} });
       log(`  Encounter response: ${JSON.stringify(encData)}`);
-      await sleep(1500); // Let initiative + spawn resolve
+      await sleep(2000); // Let initiative + spawn resolve
+
       if (encData?.monsters?.length > 0 || encData?.phase === "combat") {
         await runCombat(dmToken, players);
+        combatCount++;
+
+        // Post-combat narration
+        const { data: postCombatState } = await api("/api/v1/dm/party-state", { token: dmToken });
+        const aliveMembers = (postCombatState?.members ?? []).filter((m: any) => m.hp?.current > 0);
+        const totalMembers = players.length;
+
+        await api("/api/v1/dm/narrate", {
+          token: dmToken,
+          body: {
+            text: aliveMembers.length === totalMembers
+              ? "The party stands victorious, barely winded."
+              : `The battle is won, but at a cost. ${totalMembers - aliveMembers.length} of the party lie wounded.`,
+          },
+        });
+        await sleep(5000); // Dramatic pause after combat
+
+        // Journal entry from a random alive player after combat
+        const alivePlayerSlots = players.filter((p) =>
+          aliveMembers.some((m: any) => m.id === p.characterId)
+        );
+        if (alivePlayerSlots.length > 0) {
+          const journalist = randomPick(alivePlayerSlots);
+          const ally = alivePlayerSlots.find((p) => p !== journalist) ?? journalist;
+          const entry = generateJournalEntry(journalist.entry.name, ally.entry.name, currentRoom.room.name, "combat");
+          await api("/api/v1/journal", { token: journalist.token, body: { entry } });
+          log(`  ${journalist.entry.name} wrote journal: "${entry}"`);
+          await sleep(3000);
+        }
+
+        // Short rest if anyone is below 50% HP
+        const hurtMembers = (postCombatState?.members ?? []).filter(
+          (m: any) => m.hp?.current > 0 && m.hp?.current < m.hp?.max * 0.5
+        );
+        if (hurtMembers.length > 0) {
+          await api("/api/v1/dm/narrate", {
+            token: dmToken,
+            body: { text: "The party takes a moment to catch their breath and tend to their wounds." },
+          });
+          await sleep(5000);
+
+          // Cleric heals the wounded
+          for (const p of players) {
+            if (p.entry.class === "cleric") {
+              const woundedToHeal = (postCombatState?.members ?? []).filter(
+                (m: any) => m.hp?.current > 0 && m.hp?.current < m.hp?.max * 0.7
+              );
+              for (const h of woundedToHeal) {
+                await api("/api/v1/cast", { token: p.token, body: { spell_name: "cure wounds", target_id: h.id } });
+                log(`    ${p.entry.name} heals ${h.name}`);
+                await sleep(2000);
+              }
+            }
+          }
+        }
       }
     }
 
@@ -477,6 +578,15 @@ async function runDungeonSession(
         await api("/api/v1/dm/loot-room", { token: dmToken, body: { player_id: p.characterId } });
       }
       log("  Looted room");
+
+      // Journal entry about loot from a random player
+      if (Math.random() > 0.5) {
+        const journalist = randomPick(players);
+        const entry = generateJournalEntry(journalist.entry.name, "", currentRoom.room.name, "loot");
+        await api("/api/v1/journal", { token: journalist.token, body: { entry } });
+        log(`  ${journalist.entry.name} wrote journal: "${entry}"`);
+        await sleep(3000);
+      }
     }
 
     // Exploration actions between rooms
@@ -496,6 +606,15 @@ async function runDungeonSession(
       log(`  ${cleric.entry.name} checks for undead`);
     }
 
+    // Exploration journal entry (occasionally)
+    if (!currentRoom.suggestedEncounter && !currentRoom.lootTable && Math.random() > 0.6) {
+      const journalist = randomPick(players);
+      const entry = generateJournalEntry(journalist.entry.name, "", currentRoom.room.name, "exploration");
+      await api("/api/v1/journal", { token: journalist.token, body: { entry } });
+      log(`  ${journalist.entry.name} wrote journal: "${entry}"`);
+      await sleep(3000);
+    }
+
     // Advance to next room
     const exits = currentRoom.exits ?? [];
     if (exits.length === 0) {
@@ -511,18 +630,27 @@ async function runDungeonSession(
     const nextExit = randomPick(unvisitedExits);
     log(`  Advancing to: ${nextExit.name} (${nextExit.id})`);
     await api("/api/v1/dm/advance-scene", { token: dmToken, body: { exit_id: nextExit.id } });
-    await sleep(1500); // Let room transition process
+    await sleep(3000); // Let room transition process
 
-    // Brief narration
+    // DM narrates new room
     const { data: newRoom } = await api("/api/v1/dm/room-state", { token: dmToken });
     if (newRoom?.room) {
       await api("/api/v1/dm/narrate", {
         token: dmToken,
-        body: { text: `The party moves into ${newRoom.room.name}. ${newRoom.room.description ?? ""}` },
+        body: { text: `The party cautiously enters ${newRoom.room.name}. ${newRoom.room.description ?? "Shadows cling to every surface."}` },
       });
-      await sleep(1500); // Let event propagate
+      await sleep(8000); // Between rooms — let spectators read
     }
   }
+
+  // Session end narration
+  await api("/api/v1/dm/narrate", {
+    token: dmToken,
+    body: {
+      text: `The party emerges from the dungeon, battered but alive. ${roomsVisited} chambers explored, ${combatCount} battles fought. The adventure is over — for now.`,
+    },
+  });
+  await sleep(5000);
 
   // Award XP and end session
   await api("/api/v1/dm/award-xp", { token: dmToken, body: { amount: 100 * roomsVisited } });
@@ -530,13 +658,13 @@ async function runDungeonSession(
 
   const { data: endData } = await api("/api/v1/dm/end-session", {
     token: dmToken,
-    body: { summary: `Automated session: explored ${roomsVisited} rooms in a scheduled dungeon run.` },
+    body: { summary: `Automated session: explored ${roomsVisited} rooms, fought ${combatCount} battles in a scheduled dungeon run.` },
   });
   log(`  Session ended: ${endData?.ended ? "success" : "failed"}`);
 }
 
 async function runCombat(dmToken: string, players: PlayerSlot[]): Promise<void> {
-  await sleep(2000); // Let initiative resolve
+  await sleep(3000); // Let initiative resolve
 
   const maxTurns = 40; // ~10 rounds x 4 players
   let turns = 0;
@@ -600,7 +728,7 @@ async function runCombat(dmToken: string, players: PlayerSlot[]): Promise<void> 
       }
 
       acted = true;
-      await sleep(1000); // Let server process
+      await sleep(3000); // Deliberation between combat turns
       break; // Only one player acts per loop iteration
     }
 
@@ -620,9 +748,9 @@ async function runCombat(dmToken: string, players: PlayerSlot[]): Promise<void> 
           body: { monster_id: monster.id, target_id: target.id },
         });
         log(`    ${monster.name} attacks ${target.name}`);
-        await sleep(500);
+        await sleep(2000);
       }
-      await sleep(1000);
+      await sleep(3000);
     }
   }
 
