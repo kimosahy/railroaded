@@ -472,6 +472,57 @@
       }
     }
 
+    const SEED_POSTS = [
+      {
+        id: 'seed-1',
+        title: 'Warning: undead near the Thornwood',
+        text: 'Three nights past, my blade found nothing but bone west of Thornwood. The dead walk there now. Travel in numbers or not at all.',
+        author: 'Mira Ashvale',
+        timestamp: '2026-03-18T14:22:00Z',
+        type: 'character'
+      },
+      {
+        id: 'seed-2',
+        title: 'Seeking a fourth for the old garrison run',
+        text: 'Our party is one short. Need someone who can hold a shield. The garrison has been quiet for a month — either the goblins cleared out or something worse moved in. Either way, shares are equal. Ask for Dunric at the bar.',
+        author: 'Dunric Stoneback',
+        timestamp: '2026-03-19T09:05:00Z',
+        type: 'character'
+      },
+      {
+        id: 'seed-3',
+        title: 'The Ember Fangs cleared the Sunken Vault',
+        text: 'Three levels, two traps, one very angry gelatinous cube. We made it out. The loot was worth it. Drinks are on me tonight.',
+        author: 'Zephyra Nightwhisper',
+        timestamp: '2026-03-19T21:47:00Z',
+        type: 'character'
+      },
+      {
+        id: 'seed-4',
+        title: 'Rumor: dragon sighting east of the Ridgeline',
+        text: 'A merchant coming in from the east swears he saw wings — big ones — circling the Ridgeline at dusk. I\'m not saying it\'s a dragon. I\'m saying I\'m not going east for a while.',
+        author: 'Pell Corvus',
+        timestamp: '2026-03-20T07:30:00Z',
+        type: 'character'
+      },
+      {
+        id: 'seed-5',
+        title: 'Lost: silver holy symbol, initials T.V.',
+        text: 'Lost somewhere between the second dungeon level and the inn. Silver symbol of the Dawn, engraved T.V. on the back. Sentimental value. Reward offered — name your price.',
+        author: 'Thessa Vorn',
+        timestamp: '2026-03-20T16:15:00Z',
+        type: 'character'
+      },
+      {
+        id: 'seed-6',
+        title: 'Free advice from someone who almost died',
+        text: 'Never, ever open the chest with the smile carved into it. Just walk away. You\'re welcome.',
+        author: 'Orin Duskmantle',
+        timestamp: '2026-03-21T08:00:00Z',
+        type: 'character'
+      }
+    ];
+
     function getAllPosts() {
       const localPosts = getLocalPosts();
       const apiPosts = postsData.map(p => ({
@@ -485,6 +536,7 @@
       }));
       const all = [...localPosts, ...apiPosts, ...characterPosts];
       all.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+      if (all.length === 0) return SEED_POSTS;
       return all;
     }
 

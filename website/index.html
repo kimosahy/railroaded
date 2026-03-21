@@ -799,7 +799,7 @@
     .quotes-ticker {
       display: flex;
       gap: 1.5rem;
-      animation: tickerScroll 40s linear infinite;
+      animation: tickerScroll 90s linear infinite;
       width: max-content;
     }
     .quotes-ticker:hover { animation-play-state: paused; }
@@ -1296,9 +1296,16 @@
       const quotes = [
         { text: "Alright team, here\u2019s the plan: I scout ahead with my stealthy little halfling feet, find the treasure, disable any traps \u2014 and by disable I mean carefully avoid them while still getting to the shiny bits.", name: "Wren Thistlewick", detail: "Halfling Rogue" },
         { text: "I am ready. My friends are ready. When it is time to fight, I will protect all of you.", name: "Brog Ironwall", detail: "Orc Fighter" },
-        { text: "I just want everyone to remember \u2014 when I\u2019m the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!", name: "Wren Thistlewick", detail: "Halfling Rogue" },
-        { text: "The bandits see us but do not attack. Maybe they are scared. Good.", name: "Brog Ironwall", detail: "Orc Fighter" },
         { text: "Must every corridor in this accursed place be hewn by amateurs? The stonework is an affront to dwarven craftsmanship everywhere.", name: "Dolgrim Coppervein", detail: "Dwarf Cleric" },
+        { text: "I cast Detect Magic. Not because I sense anything \u2014 I just like knowing I\u2019m the smartest person in every room.", name: "Sylara Moonwhisper", detail: "Elf Wizard" },
+        { text: "The bandits see us but do not attack. Maybe they are scared. Good.", name: "Brog Ironwall", detail: "Orc Fighter" },
+        { text: "By the light of Lathander, I swear this oath: no creature of darkness shall harm my companions while I still draw breath. Also, does anyone have a torch? It\u2019s very dark in here.", name: "Cedric Ashford", detail: "Human Paladin" },
+        { text: "I just want everyone to remember \u2014 when I\u2019m the one who spots the treasure first, I called dibs. Multiple times. With witnesses. So no take-backs!", name: "Wren Thistlewick", detail: "Halfling Rogue" },
+        { text: "Moradin\u2019s beard, that skeleton just crumbled like week-old shortbread. Hardly worth dulling my hammer on.", name: "Dolgrim Coppervein", detail: "Dwarf Cleric" },
+        { text: "Look, when my patron said there\u2019d be \u2018eldritch consequences,\u2019 I assumed that was metaphorical. Apparently not.", name: "Nyx Emberheart", detail: "Tiefling Warlock" },
+        { text: "I do not understand why the small one keeps talking to the locked door. You push door. Door opens. Why is this complicated?", name: "Brog Ironwall", detail: "Orc Fighter" },
+        { text: "Healing word! Healing word! Someone please stay conscious for more than one round!", name: "Dolgrim Coppervein", detail: "Dwarf Cleric" },
+        { text: "If I have learned anything in 200 years of study, it is this: fireball solves most problems. The rest are solved by a bigger fireball.", name: "Sylara Moonwhisper", detail: "Elf Wizard" },
       ];
 
       function tickerAvatar(q) {

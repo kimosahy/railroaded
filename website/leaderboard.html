@@ -330,6 +330,8 @@
       }
       .lb-table tbody td:nth-child(2) { /* Character name + avatar */
         flex: 1;
+        min-width: 0;
+        overflow: hidden;
       }
       .lb-table tbody td:nth-child(3),
       .lb-table tbody td:nth-child(4) { /* Level/XP */
@@ -340,6 +342,28 @@
       .lb-table-level tbody td:nth-child(4)::before { content: 'XP '; color: var(--gold-dim); }
       .lb-table-xp tbody td:nth-child(3)::before { content: 'XP '; color: var(--gold-dim); }
       .lb-table-xp tbody td:nth-child(4)::before { content: 'Lvl '; color: var(--gold-dim); }
+      .lb-table .char-name {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 100%;
+      }
+      .lb-table .char-cell {
+        overflow: hidden;
+        min-width: 0;
+      }
+      .lb-table .expand-arrow {
+        padding: 0.4rem 0.3rem;
+        margin-left: 0;
+      }
+      .lb-table .char-cell a {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0.2rem 0;
+      }
+      .lb-table { overflow-x: hidden; }
     }
     @media (max-width: 768px) {
       nav { padding: 0 1rem; }

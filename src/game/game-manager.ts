@@ -721,6 +721,7 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
   return {
     success: true,
     data: {
+      id: char.id,
       name: char.name,
       race: char.race,
       class: char.class,
@@ -4855,7 +4856,8 @@ function snapshotCharacters(party: GameParty): void {
         if (dbUserId) {
           db.insert(charactersTable).values({
             userId: dbUserId,
-            name: char.name,
+            id: char.id,
+      name: char.name,
             race: char.race,
             class: char.class,
             partyId: party.dbPartyId,

@@ -263,10 +263,13 @@
 
   // Init on DOMContentLoaded
   document.addEventListener('DOMContentLoaded', function () {
-    var themeBtn = document.querySelector('.theme-toggle');
-    if (themeBtn && themeBtn.parentNode) {
-      createToggle(themeBtn.parentNode);
+    // Prefer dedicated mount point outside nav to avoid overflowing the nav flex layout
+    var mount = document.querySelector('.audio-mount');
+    if (!mount) {
+      var themeBtn = document.querySelector('.theme-toggle');
+      if (themeBtn && themeBtn.parentNode) mount = themeBtn.parentNode;
     }
+    if (mount) createToggle(mount);
     updateToggleUI();
   });
 

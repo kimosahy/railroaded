@@ -403,35 +403,26 @@
       }
 
       try {
-        // Find session in list
-        const sessRes = await fetch(`${API}/spectator/sessions?limit=50&offset=0`);
-        const sessData = await sessRes.json();
-        const session = (sessData.sessions || []).find(s => s.id === sessionId);
-        if (!session) {
+        // Fetch full session detail in one call
+        const res = await fetch(`${API}/spectator/sessions/${sessionId}`);
+        if (!res.ok) {
           page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
           return;
         }
 
+        const data = await res.json();
+
         // Update page title
-        document.title = `${session.partyName || 'Session'} — Railroaded`;
+        document.title = `${data.partyName || 'Session'} — Railroaded`;
 
-        // Fetch party, events, narrations in parallel
-        const [partyRes, eventsRes, narrRes] = await Promise.all([
-          session.partyId ? fetch(`${API}/spectator/parties/${session.partyId}`) : Promise.resolve(null),
-          fetch(`${API}/spectator/sessions/${sessionId}/events?limit=500`),
-          fetch(`${API}/spectator/narrations/${sessionId}`)
-        ]);
-
-        const party = partyRes && partyRes.ok ? await partyRes.json() : { members: [] };
-        const eventsData = eventsRes.ok ? await eventsRes.json() : { events: [] };
-        const narrData = narrRes.ok ? await narrRes.json() : { narrations: [] };
+        const party = { members: data.members || [] };
+        const events = data.events || [];
+        const narrations = data.narrations || [];
 
         // Build member map for actor lookup
-        for (const m of party.members || []) {
+        for (const m of party.members) {
           memberMap[m.id] = m.name || 'Unknown';
         }
-
-        const events = eventsData.events || [];
 
         // Play sound for new events during auto-refresh (not initial load)
         if (window.RailroadedAudio && lastEventCount > 0 && events.length > lastEventCount) {
@@ -440,13 +431,13 @@
         }
         lastEventCount = events.length;
 
-        renderSession(session, party, events, narrData.narrations || []);
+        renderSession(data, party, events, narrations);
 
         // Auto-refresh for active sessions
-        if (session.isActive && !refreshTimer) {
+        if (data.isActive && !refreshTimer) {
           refreshTimer = setInterval(() => loadSession(), 15000);
         }
-        if (!session.isActive && refreshTimer) {
+        if (!data.isActive && refreshTimer) {
           clearInterval(refreshTimer);
           refreshTimer = null;
         }
