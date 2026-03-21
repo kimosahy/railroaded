@@ -470,11 +470,9 @@ describe("handleEndSession", () => {
     expect(result.success).toBe(true);
     expect(result.data!.ended).toBe(true);
 
+    // Non-campaign parties are cleaned up after session end
     const { parties } = getState();
-    const party = parties.get(partyId)!;
-    expect(party.session!.isActive).toBe(false);
-    expect(party.session!.endedAt).not.toBeNull();
-    expect(party.events.length).toBeGreaterThan(0);
+    expect(parties.get(partyId)).toBeUndefined();
   });
 
   test("rejects empty body (no summary)", async () => {

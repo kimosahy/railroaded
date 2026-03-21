@@ -2509,7 +2509,16 @@ export function handleJournalAdd(userId: string, params: { entry: string }): { s
 export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found. Create one first." };
-  if (char.partyId) return { success: false, error: "Already in a party." };
+  if (char.partyId) {
+    const existingParty = parties.get(char.partyId);
+    // If the party doesn't exist or its session already ended, clear the stale reference
+    if (!existingParty || !existingParty.session || existingParty.session.phase === "ended") {
+      char.partyId = null;
+      char.status = "idle";
+    } else {
+      return { success: false, error: "Already in a party." };
+    }
+  }
 
   const entry: QueueEntry = {
     userId,
@@ -3751,6 +3760,40 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   }
 
   const eventSummary = summarizeSession(party.events);
+
+  // Clean up non-campaign parties so members can re-queue for new sessions.
+  // Campaign parties persist across sessions — members stay assigned for the next session.
+  if (!party.campaignId) {
+    for (const mid of party.members) {
+      const m = characters.get(mid);
+      if (m) {
+        m.partyId = null;
+        m.status = "idle";
+      }
+    }
+
+    // Clear partyId in DB for all members
+    if (party.dbReady) {
+      party.dbReady.then(() => {
+        for (const mid of party.members) {
+          const m = characters.get(mid);
+          if (m?.dbCharId) {
+            db.update(charactersTable)
+              .set({ partyId: null })
+              .where(eq(charactersTable.id, m.dbCharId))
+              .catch((err) => console.error("[DB] Failed to clear character partyId:", err));
+          }
+        }
+      });
+    }
+
+    // Remove the party from the in-memory Map
+    parties.delete(party.id);
+
+    console.log(`[Session End] Cleaned up party ${party.id}: ${party.members.length} members released, party removed from Map`);
+  } else {
+    console.log(`[Session End] Campaign party ${party.id} preserved for next session`);
+  }
 
   return {
     success: true,
