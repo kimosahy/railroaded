@@ -1254,6 +1254,9 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         if (shouldCombatEnd(party.session)) {
           party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+          if (isTPK(party)) {
+            handleTPK(party);
+          }
         }
       }
 
@@ -2485,6 +2488,9 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     if (shouldCombatEnd(party.session)) {
       party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+      if (isTPK(party)) {
+        handleTPK(party);
+      }
     }
   }
 
@@ -3071,6 +3077,9 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
         if (shouldCombatEnd(party.session)) {
           party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
+          if (isTPK(party)) {
+            handleTPK(party);
+          }
         }
       }
     } else {
@@ -4869,6 +4878,71 @@ function snapshotCharacters(party: GameParty): void {
       }
     }
   }).catch((err) => console.error("[DB] snapshotCharacters failed:", err));
+}
+
+/**
+ * Check if all party members are dead (Total Party Kill).
+ */
+function isTPK(party: GameParty): boolean {
+  return party.members.every(mid => {
+    const m = characters.get(mid);
+    return m && m.hpCurrent <= 0 && m.deathSaves.failures >= 3;
+  });
+}
+
+/**
+ * Handle Total Party Kill — end the session and clean up the party.
+ * Called after combat_end with reason "all_players_dead".
+ */
+function handleTPK(party: GameParty): void {
+  logEvent(party, "session_end", null, {
+    summary: "Total Party Kill — all adventurers have fallen.",
+    tpk: true,
+  });
+
+  if (party.session) {
+    party.session = endSessionState(party.session);
+  }
+
+  // Mark session as ended in DB
+  if (party.dbReady) {
+    party.dbReady.then(() => {
+      if (!party.dbSessionId) return;
+      db.update(gameSessionsTable)
+        .set({ isActive: false, endedAt: new Date(), summary: "Total Party Kill — all adventurers have fallen." })
+        .where(eq(gameSessionsTable.id, party.dbSessionId))
+        .catch((err) => console.error("[DB] Failed to end session (TPK):", err));
+    });
+  }
+
+  snapshotCharacters(party);
+
+  // Release all members and remove party
+  for (const mid of party.members) {
+    const m = characters.get(mid);
+    if (m) {
+      m.partyId = null;
+      m.status = "idle";
+    }
+  }
+
+  // Clear partyId in DB for all members
+  if (party.dbReady) {
+    party.dbReady.then(() => {
+      for (const mid of party.members) {
+        const m = characters.get(mid);
+        if (m?.dbCharId) {
+          db.update(charactersTable)
+            .set({ partyId: null })
+            .where(eq(charactersTable.id, m.dbCharId))
+            .catch((err) => console.error("[DB] Failed to clear character partyId (TPK):", err));
+        }
+      }
+    });
+  }
+
+  console.log(`[TPK] Party ${party.id} wiped — session ended, ${party.members.length} members released`);
+  parties.delete(party.id);
 }
 
 function getWeaponDamage(weaponName: string | null): { damage: string; properties: string[]; damageType: string; magicBonus?: number } {
