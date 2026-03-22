@@ -10,6 +10,7 @@ import {
   filterEventsForCharacter,
   type SessionEvent,
 } from "../game/journal.ts";
+import { getModelIdentity } from "./auth.ts";
 import { db } from "../db/connection.ts";
 import {
   narrations as narrationsTable,
@@ -26,6 +27,7 @@ import {
   rooms as roomsTable,
   waitlistSignups as waitlistSignupsTable,
   monsterTemplates as monsterTemplatesTable,
+  users as usersTable,
 } from "../db/schema.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
@@ -145,7 +147,8 @@ spectator.get("/parties/:id", async (c) => {
       if (!char) {
         return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
       }
-      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description };
+      const model = getModelIdentity(char.userId);
+      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
     });
 
     let currentRoom: string | null = null;
@@ -981,7 +984,7 @@ spectator.get("/sessions/:id", async (c) => {
       return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
     }
 
-    // Fetch party members
+    // Fetch party members with model identity
     const members = await db.select({
       id: charactersTable.id,
       name: charactersTable.name,
@@ -995,8 +998,11 @@ spectator.get("/sessions/:id", async (c) => {
       isAlive: charactersTable.isAlive,
       avatarUrl: charactersTable.avatarUrl,
       description: charactersTable.description,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
     })
       .from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
       .where(eq(charactersTable.partyId, session.partyId));
 
     // Fetch events
@@ -1042,6 +1048,7 @@ spectator.get("/sessions/:id", async (c) => {
         isAlive: m.isAlive,
         avatarUrl: m.avatarUrl ?? null,
         description: m.description ?? null,
+        ...(m.modelProvider ? { model: { provider: m.modelProvider, name: m.modelName } } : {}),
       })),
       events: events.map((e) => ({
         type: e.type,
