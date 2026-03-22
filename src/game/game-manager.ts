@@ -65,7 +65,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
-import { getDbUserId, findUserIdByDbId, getModelIdentity } from "../api/auth.ts";
+import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
 import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
@@ -4761,20 +4761,7 @@ function formParty(match: MatchResult): void {
 function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
   if (!party) return;
   const timestamp = new Date();
-
-  // Tag event with model identity if the acting user has one set
-  let eventData = data;
-  if (actorId) {
-    const char = characters.get(actorId);
-    if (char) {
-      const modelId = getModelIdentity(char.userId);
-      if (modelId) {
-        eventData = { ...data, modelIdentity: modelId };
-      }
-    }
-  }
-
-  party.events.push({ type, actorId, data: eventData, timestamp });
+  party.events.push({ type, actorId, data, timestamp });
 
   // Persist to DB (fire-and-forget, chained after session row exists)
   if (party.dbReady) {
@@ -4784,7 +4771,7 @@ function logEvent(party: GameParty | null, type: string, actorId: string | null,
         sessionId: party.dbSessionId,
         type,
         actorId,
-        data: eventData,
+        data,
         createdAt: timestamp,
       }).catch((err) => console.error("[DB] Failed to persist event:", err));
     }).catch((err) => console.error("[DB] logEvent: dbReady rejected:", err));

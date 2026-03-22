@@ -19,8 +19,6 @@ interface StoredUser {
   passwordHash: string;
   role: UserRole;
   dbUserId: string | null; // UUID from users table
-  modelProvider: string | null;
-  modelName: string | null;
 }
 
 interface StoredSession {
@@ -90,7 +88,7 @@ auth.post("/register", async (c) => {
 
   // Reserve slot synchronously before async hash — prevents TOCTOU race
   // where concurrent registrations with the same username both pass the check above
-  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null };
+  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
 
@@ -176,7 +174,7 @@ auth.post("/admin/login-as", async (c) => {
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
     const id = `user-${userIdCounter++}`;
-    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null };
+    user = { id, username: body.username, passwordHash, role, dbUserId: null };
     usersByUsername.set(body.username, user);
     usersById.set(id, user);
     try {
@@ -196,46 +194,6 @@ auth.post("/admin/login-as", async (c) => {
   }
 
   return c.json({ token, expiresAt: expiresAt.toISOString(), userId: user.id, role: user.role });
-});
-
-// POST /admin/register-model-identity — register which LLM model a user is powered by
-auth.post("/admin/register-model-identity", async (c) => {
-  const adminSecret = process.env.ADMIN_SECRET;
-  if (!adminSecret) return c.json({ error: "Admin endpoint not configured" }, 503);
-
-  const authHeader = c.req.header("Authorization");
-  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
-    return c.json({ error: "Unauthorized" }, 401);
-  }
-
-  const body = await c.req.json<{ userId?: string; modelProvider?: string; modelName?: string }>();
-  if (!body.userId || !body.modelProvider || !body.modelName) {
-    return c.json({ error: "userId, modelProvider, and modelName are required" }, 400);
-  }
-
-  // Find user by in-memory ID or DB UUID
-  let user = usersById.get(body.userId);
-  if (!user) {
-    for (const u of usersById.values()) {
-      if (u.dbUserId === body.userId) { user = u; break; }
-    }
-  }
-  if (!user) return c.json({ error: "User not found" }, 404);
-
-  // Update in-memory
-  user.modelProvider = body.modelProvider;
-  user.modelName = body.modelName;
-
-  // Persist to DB
-  if (user.dbUserId) {
-    db.update(usersTable).set({
-      modelProvider: body.modelProvider,
-      modelName: body.modelName,
-    }).where(eq(usersTable.id, user.dbUserId))
-      .catch((err) => console.error("[DB] Failed to persist model identity:", err));
-  }
-
-  return c.json({ ok: true, userId: user.id, modelProvider: body.modelProvider, modelName: body.modelName });
 });
 
 export default auth;
@@ -309,8 +267,6 @@ export async function loadPersistedUsers(): Promise<number> {
         passwordHash: row.passwordHash,
         role: row.role,
         dbUserId: row.id,
-        modelProvider: row.modelProvider ?? null,
-        modelName: row.modelName ?? null,
       };
       usersByUsername.set(row.username, user);
       usersById.set(id, user);
@@ -348,13 +304,6 @@ export async function loadPersistedSessions(): Promise<number> {
     console.error("[DB] Failed to load persisted sessions:", err);
     return 0;
   }
-}
-
-/** Get model identity for a user (by in-memory ID). Returns null if not set. */
-export function getModelIdentity(userId: string): { provider: string; name: string } | null {
-  const user = usersById.get(userId);
-  if (!user || !user.modelProvider || !user.modelName) return null;
-  return { provider: user.modelProvider, name: user.modelName };
 }
 
 /** Exposed for testing — clears in-memory session maps */

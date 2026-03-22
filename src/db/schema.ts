@@ -79,8 +79,6 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: userRoleEnum("role").notNull(),
-  modelProvider: text("model_provider"),  // "anthropic", "google", "groq", "deepseek", "openai"
-  modelName: text("model_name"),          // "claude-opus-4-6", "gemini-2.5-pro", etc.
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
