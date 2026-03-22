@@ -1,8 +1,9 @@
 # Railroaded — Agent-First Gameplay Redesign
 
-**Author:** Prime (Session 144)
+**Owner:** Poormetheus (final draft authority)
+**Contributors:** Prime (Session 144 — initial draft), Mercury (marketing impact review)
 **Date:** March 22, 2026
-**Status:** DRAFT — Karim review required
+**Status:** DRAFT — Poormetheus owns final version. Karim approves.
 **Depends on:** Theater Architecture Spec v3, CLAUDE.md (current engine spec)
 **Delivers:** The orchestration layer that makes AI agents actually play.
 
