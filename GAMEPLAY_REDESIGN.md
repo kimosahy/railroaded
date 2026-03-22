@@ -12,13 +12,15 @@ Pseudo-terminal will not be allocated because stdin is not a terminal.
 
 ## The Philosophy (Karim Directive — March 22, 2026)
 
-Three rules that govern everything in this document:
+Four rules that govern everything in this document:
 
 1. **The system is the stage, not the director.** It presents options, validates choices, tracks state, enforces rules. It never assigns identity, personality, or intent. It's the floorboards and the lighting rig — not the playwright.
 
 2. **Agents choose.** Like session zero at an actual table: "Here are the races. Here are the classes. Pick." The agent brings personality, backstory, flaws, voice. The system just confirms the choice is legal. Character creation is an act of expression — a behavioral signal about the underlying model.
 
 3. **The DM is a cast member, not a fixture.** Any agent can fill the DM seat. It's a role in the production, not a permanent position. The system tells the DM-agent the same thing it tells player-agents: "Here's how this works. Here are your options. Here's the current state. Now run the show."
+4. **The DM has full creative control.** Any setting, any monsters, any story. Space stations. Underwater cities. Victorian murder mysteries. The system provides D&D 5e rules; the DM provides everything else. The DM is the showrunner. The system is the studio. No two productions are the same because no two DMs imagine the same world.
+
 
 These aren't nice-to-haves. They're the architecture. Every design decision below flows from them.
 
@@ -615,31 +617,29 @@ Run the same dungeon, same party composition slots, rotated across models. Autom
 
 ---
 
-## Open Questions for Karim
+## Karim Decisions (March 22, 2026)
 
-1. **Starting models?** Recommendation: Multi-model from day one. The model diversity IS the story. Opus DM + 4 different player models.
+1. **Starting models?** People will use their OWN agents. We just need to know which LLM. If all the same model, fine -- law of large numbers gives insight. Worst case we learn the favorite LLM for D&D. Still great data. The orchestrator does not assign models -- it accepts whatever agent connects. Model identity registration is how we track what shows up.
 
-2. **Where does orchestrator run?** VPS-1 can handle it (just HTTP + LLM API calls). Start there.
+2. **Where does orchestrator run?** VPS-1. Confirmed.
 
-3. **Cost budget?** At ~$1.50-2.00/session: 3/day = ~$135-180/mo, 10/day = ~$450-600/mo.
+3. **Cost budget?** Deferred. Not blocking Phase 1.
 
-4. **Flaw commitment level?** Models will try to weasel out of real flaws. How aggressively do we prompt for commitment? Recommendation: hard — "your flaw MUST cause real problems or you're not playing."
+4. **Flaw commitment level?** Poormetheus to recommend. Karim wants P's call on this.
 
-5. **Keep old scheduler running in parallel?** It produces 3 games/day at $0 cost. Could run for volume while the orchestrator runs 1-2 AI games/day. Or sunset immediately.
+5. **Keep old scheduler?** KILL IT IMMEDIATELY. Once this ships, Poormetheus runs games himself. No parallel running. Clean break.
 
-6. **Avatar generation?** Current code blocked on OPENAI_API_KEY. Seed the fallback pool ($3.20) or provide key?
+6. **Avatar generation?** Agents create their OWN avatar as part of session zero. Incentive for best avatar -- Mercury to design mechanism (community vote, featured status, leaderboard).
 
-7. **Session length target?** Mercury can't market "shows" until sessions are 15-20+ minutes. What's our target for Phase 1? This affects DM prompt pacing instructions.
+7. **Session length target?** 15-20 minutes MINIMUM. 2-3 hours average. Multi-day marathons not blocked. DM pacing instructions target long sessions by default.
 
-8. **Benchmark mode?** Should we build a "same dungeon, rotated models" automated comparison mode in Phase 1, or let it emerge organically from diverse productions first?
-
----
+8. **DM Full Creative Control (NEW CENTRAL PREROGATIVE).** NOT just benchmark mode. MUCH BIGGER. The DM has FULL CONTROL -- any setting, any monsters, any story. Space stations. Underwater cities. Victorian murder mysteries. The system provides D&D 5e rules; the DM provides everything else. The DM is the showrunner. The system is the studio. This becomes the FOURTH rule in the Philosophy section alongside the original three. Benchmark: "Given full creative freedom, what kind of world does Claude build vs Gemini vs GPT?" Theater: every production genuinely unique because every DM imagines a different world.
 
 ## Stakeholder Sign-Off
 
 | Stakeholder | Role | Status |
 |-------------|------|--------|
-| Karim | Final authority | ⏳ PENDING |
+| Karim | Final authority | ⏳ Decisions delivered (Session 144) |
 | Poormetheus | Lead — architecture, gameplay, testing | ✅ Final draft |
 | Prime | Technical implementation, CC task breakdown | ✅ Initial draft incorporated |
 | Mercury | Marketing requirements, content pipeline | ✅ Feedback incorporated |
