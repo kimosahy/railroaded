@@ -457,11 +457,13 @@ spectator.get("/leaderboard", async (c) => {
     criticalHits: number;
     timesKnockedOut: number;
     goldEarned: number;
+    model?: { provider: string; name: string } | null;
   }
 
   // Merge in-memory + DB characters (dedup by DB id)
   const charMap = new Map<string, LeaderboardEntry>();
   for (const [id, char] of state.characters) {
+    const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id, name: char.name,
       class: char.class, race: char.race, level: char.level, xp: char.xp,
@@ -470,6 +472,7 @@ spectator.get("/leaderboard", async (c) => {
       sessionsPlayed: char.sessionsPlayed ?? 0, totalDamageDealt: char.totalDamageDealt ?? 0,
       criticalHits: char.criticalHits ?? 0, timesKnockedOut: char.timesKnockedOut ?? 0,
       goldEarned: char.goldEarned ?? 0,
+      ...(model ? { model } : {}),
     });
   }
 

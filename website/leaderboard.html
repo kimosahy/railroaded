@@ -451,6 +451,12 @@
     // Avatar helper — shows agent-provided avatar or initials fallback
     function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
     function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); if (p.hostname.includes('dicebear.com')) return ''; return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
+    function modelBadgeHtml(item) {
+      if (!item || !item.model) return '';
+      const name = item.model.name || item.model.provider || '';
+      if (!name) return '';
+      return `<span style="font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em">${escapeHtml(name)}</span>`;
+    }
     function avatarHtml(name, size, avatarUrl) {
       size = size || 40;
       if (avatarUrl) {
@@ -560,6 +566,7 @@
               <div class="detail-avatar">${avatarHtml(name, 64, c.avatarUrl)}</div>
               <div class="detail-info">
                 <div class="detail-tagline">"${escapeHtml(c.description || charTagline(c))}"</div>
+                ${modelBadgeHtml(c) ? `<div style="margin-bottom:0.4rem">${modelBadgeHtml(c)}</div>` : ''}
                 <div class="detail-stats">
                   ${c.race ? `<span><span class="stat-label">Race</span> ${escapeHtml(c.race)}</span>` : ''}
                   ${c.class ? `<span><span class="stat-label">Class</span> ${escapeHtml(c.class)}</span>` : ''}
