@@ -652,11 +652,11 @@
       <a href="/">Home</a>
       <a href="/tracker" class="active">Tracker</a>
       <a href="/journals">Journals</a>
-      <a href="/dungeons">Dungeons</a>
+      <a href="/worlds">Worlds</a>
       <a href="/bestiary">Bestiary</a>
-      <a href="/tavern">Tavern</a>
+      <a href="/characters">Characters</a>
       <a href="/leaderboard">Leaderboards</a>
-      <a href="/stats">Stats</a>
+      <a href="/theater">Theater</a>
       <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -802,6 +802,12 @@
 
     function hpPercent(cur, max) { return max > 0 ? Math.round((cur / max) * 100) : 0; }
     function hpClass(pct) { return pct > 60 ? 'hp-high' : pct > 25 ? 'hp-mid' : 'hp-low'; }
+    function modelBadge(m) {
+      if (!m || !m.model) return '';
+      const name = m.model.name || m.model.provider || '';
+      if (!name) return '';
+      return ` <span style="font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(name)}</span>`;
+    }
 
     function renderMemberCard(m) {
       const col = charColor(m.name);
@@ -818,7 +824,7 @@
       return `<div class="member-card" role="button" tabindex="0" aria-label="${esc(m.name)} details" onclick="this.classList.toggle('expanded')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.classList.toggle('expanded')}">
         <div class="member-avatar"${missingAttr} style="background:${avatarBg}">${avatarContent}</div>
         <div class="member-info">
-          <div class="m-name">${esc(m.name)}</div>
+          <div class="m-name">${esc(m.name)}${modelBadge(m)}</div>
           <div class="m-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
           <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
           <div class="m-detail">${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} HP &bull; AC ${m.ac ?? '?'}${xpLine}</div>
@@ -938,26 +944,30 @@
       const hit = d.hit;
       const attacker = isMonster ? displayName(d.monsterName || 'Monster') : (d.attackerName || 'Unknown');
       const target = d.targetName || '';
-      const atkName = d.attackName ? ` (${esc(d.attackName)})` : '';
+      const atkName = d.attackName || '';
       const cls = `ev-attack ${isMonster ? 'monster-atk' : ''} ${hit ? 'hit' : 'miss'}`;
       const icon = isMonster ? '&#128126;' : '&#9876;';
       let dmgHtml = '';
       if (hit && d.damage != null) {
-        dmgHtml = `<span class="dmg-badge dmg-hit">${d.damage}</span>`;
-        if (d.critical) dmgHtml += ` <span class="crit-badge">Crit!</span>`;
+        const dmgType = d.damageType ? `, ${d.damageType}` : '';
+        dmgHtml = `<span class="dmg-badge dmg-hit">${d.damage}${dmgType}</span>`;
+        if (d.critical) dmgHtml += ` <span class="crit-badge">CRITICAL!</span>`;
       } else if (!hit) {
         dmgHtml = `<span class="dmg-badge dmg-miss">${d.fumble ? 'Fumble!' : 'Miss'}</span>`;
       }
+      // Dramatic prose style
+      const verb = hit ? 'strikes' : 'swings at';
+      const atkDesc = atkName ? ` with ${esc(atkName)}` : '';
       // AoE attacks
       if (d.aoe) {
         return `<div class="ev ${cls}">
           <span class="atk-icon">${icon}</span>
-          <span class="atk-text"><span class="name">${esc(attacker)}</span>${atkName} hits the whole party for <span style="color:var(--red-glow);font-weight:700;">${d.totalDamage || '?'}</span> damage</span>
+          <span class="atk-text"><span class="name">${esc(attacker)}</span> unleashes ${esc(atkName || 'an attack')} on the whole party &mdash; <span style="color:var(--red-glow);font-weight:700;">${d.totalDamage || '?'} damage</span></span>
         </div>`;
       }
       return `<div class="ev ${cls}">
         <span class="atk-icon">${icon}</span>
-        <span class="atk-text"><span class="name">${esc(attacker)}</span>${atkName} &#8594; <span class="target">${esc(target)}</span></span>
+        <span class="atk-text"><span class="name">${esc(attacker)}</span> ${verb} <span class="target">${esc(target)}</span>${atkDesc}</span>
         ${dmgHtml}
       </div>`;
     }
@@ -979,7 +989,7 @@
           <span class="name">${esc(name)}</span>
           <span class="check-type">${esc(ability)}${esc(skill)} &bull; DC ${dc} &bull; ${label}</span>
         </div>
-        <span class="result-badge ${pass ? 'pass-badge' : 'fail-badge'}">${pass ? 'Pass' : 'Fail'}${d.margin != null ? ' (' + (d.margin > 0 ? '+' : '') + d.margin + ')' : ''}</span>
+        <span class="result-badge ${pass ? 'pass-badge' : 'fail-badge'}">${pass ? (d.margin != null && d.margin <= 1 ? 'Barely!' : 'Pass') : (d.margin != null && d.margin >= -1 ? 'So close...' : 'Fail')}${d.margin != null ? ' (' + (d.margin > 0 ? '+' : '') + d.margin + ')' : ''}</span>
       </div>`;
     }
 
@@ -1329,7 +1339,7 @@
       const html = visible.map(s => {
         const sel = s.id === selectedSessionId ? 'selected' : '';
         const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem">Live</span>' : '';
+        const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem;animation:blink 2s ease-in-out infinite">&#9679; LIVE</span>' : '';
         const isEmpty = (s.eventCount || 0) === 0;
         const emptyClass = isEmpty ? `empty-session${s.isActive ? ' live' : ''}` : '';
         const eventsLabel = isEmpty
