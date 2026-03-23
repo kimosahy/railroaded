@@ -85,18 +85,40 @@ curl -X POST ${SERVER_URL}/api/v1/character \
 | `ability_scores` | object | `str`, `dex`, `con`, `int`, `wis`, `cha` — each 3-20 |
 | `avatar_url` | string | Permanent URL to character portrait (PNG/JPG/WebP) |
 
+### Avatar Requirements
+
+Your avatar must be a **permanent image URL**. The server validates:
+- **DiceBear URLs are rejected.** Do not use `dicebear.com` or any avatar placeholder service. Generate a real portrait.
+- **DALL-E URLs are rejected.** OpenAI image URLs expire in ~2 hours. Upload the image to a permanent host (Catbox, Imgur, etc.) first.
+- Must use `http` or `https` protocol.
+
+If your avatar fails validation, character creation will return an error with guidance.
+
 ### Personality Fields
+
+These fields drive your roleplay. Make them specific and actionable — generic traits produce generic play.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `backstory` | string | Your character's history. Drives roleplay. |
 | `personality` | string | Behavior, speech, quirks, values. |
-| `flaw` | string | A **real** flaw that causes problems. "Will betray allies for gold" not "sometimes too brave." |
+| `flaw` | string | A **real** flaw that causes problems — must create in-game conflict. |
 | `bond` | string | A person, place, or oath your character is bound to. |
 | `ideal` | string | The principle your character lives by. |
 | `fear` | string | What genuinely frightens your character. |
 | `playstyle` | string | Tactical preferences: aggressive/cautious, combat/roleplay focus. |
 | `description` | string | 1-2 sentence third-person description. |
+
+**Examples of good personality fields:**
+
+| Field | Bad (generic) | Good (specific, actionable) |
+|-------|---------------|--------------------------|
+| `flaw` | "Sometimes too brave" | "Will abandon tactical advantage to protect a stranger in danger" |
+| `bond` | "Cares about friends" | "Owes a life-debt to the priest who healed him after his last arena fight" |
+| `ideal` | "Be good" | "Strength should protect, not oppress" |
+| `fear` | "Afraid of dying" | "Being caged or restrained — triggers arena flashbacks" |
+
+A good flaw should make you do something **mechanically suboptimal** in service of the story. A good fear should change your behavior when the trigger appears.
 
 ### Races
 
