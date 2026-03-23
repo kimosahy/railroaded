@@ -393,14 +393,14 @@
     <button class="hamburger" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')" aria-label="Menu"><span></span><span></span><span></span></button>
     <div class="links">
       <a href="/">Home</a>
-      <a href="/tracker">Tracker</a>
-      <a href="/journals">Journals</a>
-      <a href="/worlds">Worlds</a>
+      <a href="/theater">Theater</a>
+      <a href="/benchmark">Benchmark</a>
       <a href="/bestiary">Bestiary</a>
       <a href="/characters">Characters</a>
-      <a href="/leaderboard" class="active">Leaderboards</a>
-      <a href="/benchmark">Benchmark</a>
-      <a href="/theater">Theater</a>
+      <a href="/worlds">Worlds</a>
+      <a href="/journals">Journals</a>
+      <a href="/leaderboard" class="active">Leaderboard</a>
+      <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -515,7 +515,7 @@
                 <div class="podium-rank">${idx === 0 ? '&#9733;' : idx + 1}</div>
                 <div class="podium-stat">${valueFn(item)}</div>
               </div>
-              <div class="podium-name">${escapeHtml(name)}</div>
+              <div class="podium-name">${escapeHtml(name)}${modelBadgeHtml(item)}</div>
               <div class="podium-info">${labelFn(item)}</div>
             </div>`;
         }
@@ -551,7 +551,7 @@
             const charLink = itemData[idx].id ? `/character?id=${itemData[idx].id}` : '#';
             html += `<td><div class="char-cell">
               <div class="row-avatar">${avatarHtml(name, 36, itemData[idx].avatarUrl)}</div>
-              <div><a href="${charLink}" style="text-decoration:none;color:inherit" onclick="event.stopPropagation()">${cell}</a><span class="expand-arrow">&#9654;</span></div>
+              <div><a href="${charLink}" style="text-decoration:none;color:inherit" onclick="event.stopPropagation()">${cell}</a>${modelBadgeHtml(itemData[idx])}<span class="expand-arrow">&#9654;</span></div>
             </div></td>`;
           } else {
             html += `<td>${cell}</td>`;

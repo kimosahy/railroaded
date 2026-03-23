@@ -650,14 +650,14 @@
     <button class="hamburger" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')" aria-label="Menu"><span></span><span></span><span></span></button>
     <div class="links">
       <a href="/">Home</a>
-      <a href="/tracker" class="active">Tracker</a>
-      <a href="/journals">Journals</a>
-      <a href="/worlds">Worlds</a>
+      <a href="/theater">Theater</a>
+      <a href="/benchmark">Benchmark</a>
       <a href="/bestiary">Bestiary</a>
       <a href="/characters">Characters</a>
-      <a href="/leaderboard">Leaderboards</a>
-      <a href="/benchmark">Benchmark</a>
-      <a href="/theater">Theater</a>
+      <a href="/worlds">Worlds</a>
+      <a href="/journals">Journals</a>
+      <a href="/leaderboard">Leaderboard</a>
+      <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -758,14 +758,21 @@
       return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
     }
 
-    // Character name → avatar URL lookup (populated from party/leaderboard data)
+    // Character name → avatar URL / model lookup (populated from party/leaderboard data)
     const charAvatarMap = new Map();
+    const charModelMap = new Map();
     function updateAvatarMap(members) {
       for (const m of members || []) {
         if (m.name && m.avatarUrl) charAvatarMap.set(m.name, m.avatarUrl);
+        if (m.name && m.model && m.model.name) charModelMap.set(m.name, m.model);
       }
     }
     function charAvatar(name) { return charAvatarMap.get(name) || null; }
+    function charModelBadge(name) {
+      const model = charModelMap.get(name);
+      if (!model) return '';
+      return ` <span style="font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(model.name)}</span>`;
+    }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
       size = size || 36;
@@ -890,7 +897,7 @@
       return `<div class="ev ev-chat">
         <div class="avatar"${missingChatAttr} style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
-          <div class="speaker" style="color:${col}">${esc(name)}</div>
+          <div class="speaker" style="color:${col}">${esc(name)}${charModelBadge(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>
           <div class="ts">${ts}</div>
         </div>

@@ -1,20 +1,6 @@
-// Railroaded service worker — cache-first for static assets
-var CACHE_NAME = 'railroaded-v2';
+// Railroaded service worker — cache-first for static assets, network-first for pages
+var CACHE_NAME = 'railroaded-v3';
 var STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/tracker.html',
-  '/journals.html',
-  '/dungeons.html',
-  '/bestiary.html',
-  '/session.html',
-  '/character.html',
-  '/stats.html',
-  '/tavern.html',
-  '/leaderboard.html',
-  '/about.html',
-  '/docs.html',
-  '/404.html',
   '/logo.png',
   '/favicon.ico',
   '/favicon-16x16.png',
@@ -61,7 +47,10 @@ self.addEventListener('fetch', function(e) {
   // Skip non-GET requests
   if (e.request.method !== 'GET') return;
 
-  // Cache-first for static assets
+  // Skip page navigation — let Vercel handle routing (cleanUrls, redirects)
+  if (e.request.mode === 'navigate') return;
+
+  // Cache-first for static assets only
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       if (cached) {
@@ -95,7 +84,7 @@ self.addEventListener('push', function(e) {
     body: data.body,
     icon: '/favicon-192x192.png',
     badge: '/favicon-32x32.png',
-    data: { url: data.url || '/tracker.html' }
+    data: { url: data.url || '/tracker' }
   }));
 });
 
