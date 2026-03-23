@@ -690,6 +690,16 @@ function resolveCharacter(playerId: string): GameCharacter | null {
   return null;
 }
 
+// --- Perception filter ---
+
+function describeMonsterCondition(m: MonsterInstance): string {
+  if (!m.isAlive || m.hpCurrent <= 0) return "dead";
+  const ratio = m.hpCurrent / m.hpMax;
+  if (ratio > 0.75) return "seems healthy";
+  if (ratio > 0.25) return "looking battered";
+  return "barely standing";
+}
+
 // --- Player Tool Handlers ---
 
 export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -715,7 +725,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
       type: room.type,
       features: room.features,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.isAlive ? "alive" : "dead", conditions: m.conditions })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, condition: describeMonsterCondition(m), conditions: m.conditions })),
       partyMembers: party.members
         .map((mid) => characters.get(mid))
         .filter(Boolean)
