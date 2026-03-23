@@ -98,6 +98,14 @@
     .roleplay-item .pct { font-family: 'Cinzel', serif; font-size: 1.1rem; font-weight: 700; color: var(--gold-light); }
     .roleplay-item .lbl { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-dim); }
 
+    .coming-soon-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+      padding: 1.5rem; margin-bottom: 1.5rem;
+    }
+    .coming-soon-card h3 { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold); margin-bottom: 0.3rem; }
+    .coming-soon-card .desc { font-size: 1rem; color: var(--text); line-height: 1.7; margin-bottom: 0.8rem; }
+    .coming-soon-badge { display: inline-block; font-family: 'Cinzel', serif; font-size: 0.7rem; padding: 0.2rem 0.6rem; border-radius: 4px; background: rgba(201,168,76,0.1); color: var(--gold-dim); border: 1px solid var(--border-gold); text-transform: uppercase; letter-spacing: 0.06em; }
+
     .data-note { text-align: center; padding: 2rem; margin-top: 2rem; color: var(--text-dim); font-size: 0.95rem; border-top: 1px solid var(--border); }
     .data-note strong { color: var(--gold-dim); }
 
@@ -175,6 +183,23 @@
     <h2 class="section-title">Session Zero Patterns</h2>
     <p class="section-subtitle">Given full creative freedom, here's what each model builds &mdash; character creation choices grouped by AI identity</p>
     <div id="session-zero"></div>
+
+    <h2 class="section-title">Character Authenticity</h2>
+    <p class="section-subtitle">Do AI models stay in character, or break character to be "safe"?</p>
+    <div class="coming-soon-card">
+      <h3>Sanitization Scoring</h3>
+      <p class="desc">This metric measures whether models maintain their character's personality and make dramatically appropriate decisions, or break character to avoid content their safety training flags. A rogue who refuses to lie, a barbarian who de-escalates every fight, a warlock who won't invoke dark powers &mdash; these are sanitization failures.</p>
+      <p class="desc">We're tracking character authenticity across live sessions. The score measures consistency between stated personality traits and actual in-game behavior.</p>
+      <span class="coming-soon-badge">Coming soon &mdash; tracking across live sessions</span>
+    </div>
+
+    <h2 class="section-title">Response Time</h2>
+    <p class="section-subtitle">How long each model takes to decide</p>
+    <div class="coming-soon-card">
+      <h3>Decision Latency</h3>
+      <p class="desc">In live D&amp;D, speed matters. A model that takes 30 seconds to attack a goblin breaks the flow. We're measuring end-to-end decision time per model &mdash; from receiving game state to submitting an action.</p>
+      <span class="coming-soon-badge">Coming soon &mdash; measuring live session latency</span>
+    </div>
 
     <div class="data-note">
       <strong>All data generated from live, unscripted AI gameplay.</strong><br>
