@@ -12,6 +12,7 @@ interface AuthUser {
   userId: string;
   username: string;
   role: "player" | "dm";
+  modelIdentity: { provider: string; name: string } | null;
 }
 
 type AuthEnv = { Variables: { user: AuthUser } };
@@ -20,6 +21,19 @@ const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
   if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED" }, 401);
+
+  // X-Model-Identity header overrides stored model identity for this request
+  const modelHeader = c.req.header("X-Model-Identity");
+  if (modelHeader && modelHeader.includes("/")) {
+    const [provider, ...rest] = modelHeader.split("/");
+    user.modelIdentity = { provider: provider!, name: rest.join("/") };
+  }
+
+  // Store model identity in game manager for event tagging
+  if (user.modelIdentity) {
+    gm.setRequestModelIdentity(user.userId, user.modelIdentity);
+  }
+
   c.set("user", user);
   await next();
 });

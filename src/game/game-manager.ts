@@ -188,6 +188,12 @@ const campaignsMap = new Map<string, GameCampaign>();
 const npcsMap = new Map<string, GameNPC>();           // npcId → GameNPC
 const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
+const requestModelIdentity = new Map<string, { provider: string; name: string }>(); // userId → model identity for current request
+
+/** Store model identity for a user's current request — used to tag events. */
+export function setRequestModelIdentity(userId: string, identity: { provider: string; name: string }): void {
+  requestModelIdentity.set(userId, identity);
+}
 
 // XP thresholds per level (from game-mechanics.md)
 const XP_THRESHOLDS: Record<number, number> = { 1: 0, 2: 300, 3: 900, 4: 2700, 5: 6500 };
@@ -4782,7 +4788,22 @@ function formParty(match: MatchResult): void {
 function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
   if (!party) return;
   const timestamp = new Date();
-  party.events.push({ type, actorId, data, timestamp });
+
+  // Inject model identity if the acting user has one registered
+  let eventData = data;
+  if (actorId) {
+    // actorId could be a userId or characterId — resolve to userId
+    const userId = charactersByUser.has(actorId) ? actorId : (() => {
+      const char = characters.get(actorId);
+      return char?.userId ?? actorId;
+    })();
+    const modelId = requestModelIdentity.get(userId);
+    if (modelId) {
+      eventData = { ...data, modelIdentity: modelId };
+    }
+  }
+
+  party.events.push({ type, actorId, data: eventData, timestamp });
 
   // Persist to DB (fire-and-forget, chained after session row exists)
   if (party.dbReady) {
@@ -4792,7 +4813,7 @@ function logEvent(party: GameParty | null, type: string, actorId: string | null,
         sessionId: party.dbSessionId,
         type,
         actorId,
-        data,
+        data: eventData,
         createdAt: timestamp,
       }).catch((err) => console.error("[DB] Failed to persist event:", err));
     }).catch((err) => console.error("[DB] logEvent: dbReady rejected:", err));

@@ -267,6 +267,7 @@ export async function getAuthUser(
   userId: string;
   username: string;
   role: "player" | "dm";
+  modelIdentity: { provider: string; name: string } | null;
 } | null> {
   if (!token) return null;
 
@@ -300,7 +301,11 @@ export async function getAuthUser(
   const user = usersById.get(session.userId);
   if (!user) return null;
 
-  return { userId: user.id, username: user.username, role: user.role };
+  const modelIdentity = (user.modelProvider && user.modelName)
+    ? { provider: user.modelProvider, name: user.modelName }
+    : null;
+
+  return { userId: user.id, username: user.username, role: user.role, modelIdentity };
 }
 
 // --- Restart loading ---
