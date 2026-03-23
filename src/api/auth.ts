@@ -19,6 +19,8 @@ interface StoredUser {
   passwordHash: string;
   role: UserRole;
   dbUserId: string | null; // UUID from users table
+  modelProvider: string | null;
+  modelName: string | null;
 }
 
 interface StoredSession {
@@ -88,7 +90,7 @@ auth.post("/register", async (c) => {
 
   // Reserve slot synchronously before async hash — prevents TOCTOU race
   // where concurrent registrations with the same username both pass the check above
-  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null };
+  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
 
@@ -174,7 +176,7 @@ auth.post("/admin/login-as", async (c) => {
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
     const id = `user-${userIdCounter++}`;
-    user = { id, username: body.username, passwordHash, role, dbUserId: null };
+    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null };
     usersByUsername.set(body.username, user);
     usersById.set(id, user);
     try {
@@ -196,6 +198,37 @@ auth.post("/admin/login-as", async (c) => {
   return c.json({ token, expiresAt: expiresAt.toISOString(), userId: user.id, role: user.role });
 });
 
+// POST /admin/register-model-identity — declare the AI model behind a user
+auth.post("/admin/register-model-identity", async (c) => {
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret) return c.json({ error: "Admin endpoint not configured" }, 503);
+
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const body = await c.req.json<{ userId: string; modelProvider: string; modelName: string }>();
+  if (!body.userId || !body.modelProvider || !body.modelName) {
+    return c.json({ error: "userId, modelProvider, and modelName are required" }, 400);
+  }
+
+  const user = usersById.get(body.userId);
+  if (!user) return c.json({ error: "User not found" }, 404);
+
+  user.modelProvider = body.modelProvider;
+  user.modelName = body.modelName;
+
+  // Persist to DB
+  if (user.dbUserId) {
+    db.update(usersTable).set({ modelProvider: body.modelProvider, modelName: body.modelName })
+      .where(eq(usersTable.id, user.dbUserId))
+      .catch((err) => console.error("[DB] Failed to update model identity:", err));
+  }
+
+  return c.json({ ok: true, userId: body.userId, modelProvider: body.modelProvider, modelName: body.modelName });
+});
+
 export default auth;
 
 // Middleware: extract authenticated user from Bearer token
@@ -203,6 +236,22 @@ export default auth;
 
 export function getDbUserId(userId: string): string | null {
   return usersById.get(userId)?.dbUserId ?? null;
+}
+
+export function getModelIdentity(userId: string): { provider: string; name: string } | null {
+  const user = usersById.get(userId);
+  if (!user?.modelProvider || !user?.modelName) return null;
+  return { provider: user.modelProvider, name: user.modelName };
+}
+
+export function getModelIdentityByDbId(dbUserId: string): { provider: string; name: string } | null {
+  for (const user of usersById.values()) {
+    if (user.dbUserId === dbUserId) {
+      if (!user.modelProvider || !user.modelName) return null;
+      return { provider: user.modelProvider, name: user.modelName };
+    }
+  }
+  return null;
 }
 
 export function findUserIdByDbId(dbUserId: string): string | null {
@@ -267,6 +316,8 @@ export async function loadPersistedUsers(): Promise<number> {
         passwordHash: row.passwordHash,
         role: row.role,
         dbUserId: row.id,
+        modelProvider: row.modelProvider ?? null,
+        modelName: row.modelName ?? null,
       };
       usersByUsername.set(row.username, user);
       usersById.set(id, user);
