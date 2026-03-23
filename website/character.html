@@ -288,7 +288,7 @@
 
     const classColors = { fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4', ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c', barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50' };
     const xpThresholds = [0, 300, 900, 2700, 6500, 14000];
-    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; } catch(_) { return ''; } }
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); if (p.hostname.includes('dicebear.com')) return ''; return (p.protocol === 'https:' || p.protocol === 'http:') ? u.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;') : ''; } catch(_) { return ''; } }
 
     async function loadCharacter() {
       const page = document.getElementById('char-page');

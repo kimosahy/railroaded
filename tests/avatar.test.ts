@@ -172,4 +172,31 @@ describe("handleUpdateCharacter", () => {
     expect(after.name).toBe("StableFields");
     expect(after.description).toBe("An even sneakier halfling.");
   });
+
+  test("DiceBear URLs are rejected on create", async () => {
+    const result = await handleCreateCharacter("dicebear-user-1", {
+      name: "DiceBearBanned",
+      race: "human",
+      class: "fighter",
+      ability_scores: scores,
+      avatar_url: "https://api.dicebear.com/7.x/adventurer/png?seed=test",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("DiceBear");
+  });
+
+  test("DiceBear URLs are rejected on update", async () => {
+    await handleCreateCharacter("dicebear-user-2", {
+      name: "DiceBearUpdate",
+      race: "elf",
+      class: "wizard",
+      ability_scores: scores,
+      avatar_url: "https://example.com/valid.png",
+    });
+    const result = await handleUpdateCharacter("dicebear-user-2", {
+      avatar_url: "https://avatars.dicebear.com/api/human/test.svg",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("DiceBear");
+  });
 });

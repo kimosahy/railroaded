@@ -209,7 +209,7 @@
     }
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); if (p.hostname.includes('dicebear.com')) return ''; return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function timeStr(ts) { return ts ? new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : ''; }
 
     function phaseClass(p) {

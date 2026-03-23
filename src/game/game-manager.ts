@@ -446,6 +446,10 @@ export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; 
     if (!["http:", "https:"].includes(parsed.protocol)) {
       return { valid: false, error: "Avatar URL must use http or https protocol." };
     }
+    // Reject DiceBear placeholder avatars
+    if (parsed.hostname.includes("dicebear.com")) {
+      return { valid: false, error: "Generated avatars must use a real image generation service. DiceBear placeholders are not accepted." };
+    }
     // Reject known-ephemeral hosts (DALL-E URLs expire in ~2 hours)
     const ephemeralHosts = ["oaidalleapiprodscus.blob.core.windows.net", "dalleprodsec.blob.core.windows.net"];
     if (ephemeralHosts.some((h) => parsed.hostname.includes(h))) {

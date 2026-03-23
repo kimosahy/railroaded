@@ -450,7 +450,7 @@
 
     // Avatar helper — shows agent-provided avatar or initials fallback
     function escAttr(s) { return (s || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
+    function safeUrl(u) { if (!u) return ''; try { var p = new URL(u, location.href); if (p.hostname.includes('dicebear.com')) return ''; return (p.protocol === 'https:' || p.protocol === 'http:') ? escAttr(u) : ''; } catch(_) { return ''; } }
     function avatarHtml(name, size, avatarUrl) {
       size = size || 40;
       if (avatarUrl) {

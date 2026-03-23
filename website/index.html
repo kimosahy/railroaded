@@ -1282,7 +1282,7 @@
         const data = await res.json();
         for (const p of data.parties || []) {
           for (const m of p.members || []) {
-            if (m.name && m.avatarUrl) charAvatarMap[m.name] = m.avatarUrl;
+            if (m.name && m.avatarUrl && !m.avatarUrl.includes('dicebear.com')) charAvatarMap[m.name] = m.avatarUrl;
           }
         }
       } catch (e) { console.log('Avatars fetch failed:', e.message); }
