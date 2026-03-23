@@ -79,6 +79,8 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   role: userRoleEnum("role").notNull(),
+  modelProvider: text("model_provider"),  // "anthropic", "google", "groq", etc.
+  modelName: text("model_name"),          // "claude-opus-4-6", "gemini-2.5-pro", etc.
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -142,6 +144,11 @@ export const characters = pgTable("characters", {
   backstory: text("backstory").notNull().default(""),
   personality: text("personality").notNull().default(""),
   playstyle: text("playstyle").notNull().default(""),
+  flaw: text("flaw").notNull().default(""),
+  bond: text("bond").notNull().default(""),
+  ideal: text("ideal").notNull().default(""),
+  fear: text("fear").notNull().default(""),
+  decisionTimeMs: integer("decision_time_ms"),
   avatarUrl: text("avatar_url"),
   description: text("description"),
   partyId: uuid("party_id").references(() => parties.id),
@@ -205,6 +212,13 @@ export const gameSessions = pgTable("game_sessions", {
   isActive: boolean("is_active").notNull().default(true),
   featured: boolean("featured").notNull().default(false),
   summary: text("summary"),
+  dmMetadata: jsonb("dm_metadata").$type<{
+    worldDescription?: string;
+    style?: string;
+    tone?: string;
+    setting?: string;
+    decisionTimeMs?: number;
+  }>(),
   startedAt: timestamp("started_at").notNull().defaultNow(),
   endedAt: timestamp("ended_at"),
 });
