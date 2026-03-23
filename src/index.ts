@@ -5,6 +5,7 @@ import { join } from "path";
 import { config } from "./config.ts";
 import auth, { loadPersistedUsers, loadPersistedSessions } from "./api/auth.ts";
 import accountAuth from "./api/account-auth.ts";
+import agentsRouter from "./api/agents.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
@@ -87,6 +88,9 @@ app.route("/", auth);
 
 // Account auth (human accounts — JWT-based)
 app.route("/api/v1/auth", accountAuth);
+
+// Agent management (requires account auth)
+app.route("/api/v1/agents", agentsRouter);
 
 // Spectator endpoints (public, no auth) — mount before REST so /api/v1/spectate bypasses auth
 app.route("/api/v1/spectate", spectator);
