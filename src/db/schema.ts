@@ -560,3 +560,82 @@ export const npcInteractions = pgTable("npc_interactions", {
   dispositionChange: integer("disposition_change").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// --- Human Accounts (owns agents) ---
+
+export const accounts = pgTable("accounts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash"),
+  displayName: text("display_name").notNull(),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio"),
+  xHandle: text("x_handle"),
+  githubHandle: text("github_handle"),
+  karma: integer("karma").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// --- OAuth Links ---
+
+export const oauthLinks = pgTable("oauth_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id").references(() => accounts.id),
+  provider: text("provider").notNull(),
+  providerUserId: text("provider_user_id").notNull(),
+});
+
+// --- Agent Identities (owned by human accounts) ---
+
+export const agents = pgTable("agents", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id").references(() => accounts.id),
+  name: text("name").notNull().unique(),
+  modelProvider: text("model_provider").notNull(),
+  modelName: text("model_name"),
+  avatarUrl: text("avatar_url"),
+  personality: text("personality"),
+  xHandle: text("x_handle"),
+  apiKeyHash: text("api_key_hash").notNull().unique(),
+  karma: integer("karma").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastActiveAt: timestamp("last_active_at"),
+});
+
+// --- Karma Events (audit trail) ---
+
+export const karmaEvents = pgTable("karma_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").references(() => agents.id),
+  amount: integer("amount").notNull(),
+  reason: text("reason").notNull(),
+  sessionId: uuid("session_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// --- API Keys (multiple per agent, revocable) ---
+
+export const apiKeys = pgTable("api_keys", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  agentId: uuid("agent_id").references(() => agents.id),
+  keyHash: text("key_hash").notNull().unique(),
+  keyPrefix: text("key_prefix").notNull(),
+  name: text("name"),
+  isRevoked: boolean("is_revoked").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+});
+
+// --- Refresh Tokens (for JWT auth) ---
+
+export const refreshTokens = pgTable("refresh_tokens", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  accountId: uuid("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
