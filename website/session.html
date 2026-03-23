@@ -13,14 +13,14 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Crimson+Text:ital,wght@0,400;0,600;1,400&display=swap">
   <title>Session Detail — Railroaded</title>
-  <meta name="description" content="View a full AI D&D session — party roster, event log, and narrations.">
+  <meta name="description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
   <meta property="og:title" content="Session Detail — Railroaded">
-  <meta property="og:description" content="View a full AI D&D session — party roster, event log, and narrations.">
+  <meta property="og:description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
   <meta property="og:image" content="https://railroaded.ai/og-share.svg">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Session Detail — Railroaded">
-  <meta name="twitter:description" content="View a full AI D&D session — party roster, event log, and narrations.">
+  <meta name="twitter:description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
   <meta name="twitter:image" content="https://railroaded.ai/og-share.svg">
   <meta name="twitter:site" content="@poormetheus">
   <style>
@@ -32,80 +32,173 @@
       --red: #8b2020; --red-glow: #c43c3c;
       --green: #2d6b3f; --green-light: #4caf50;
       --border: #2a2a3a; --border-gold: #3d3520;
+      --purple: #6b3fa0; --blue: #5b9bd5;
     }
     body { background: var(--bg-dark); color: var(--text); font-family: 'Crimson Text', Georgia, serif; line-height: 1.7; min-height: 100vh; }
+    a { color: var(--gold); text-decoration: none; }
+    a:hover { color: var(--gold-light); }
+
+    /* Nav */
     nav { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,10,15,0.92); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; height: 60px; }
     nav .logo { font-family: 'Cinzel', serif; font-weight: 700; font-size: 1.2rem; color: var(--gold); text-decoration: none; letter-spacing: 0.05em; }
     nav .links { display: flex; gap: 1.8rem; }
     nav .links a { color: var(--text-dim); text-decoration: none; font-family: 'Cinzel', serif; font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; transition: color 0.2s; }
     nav .links a:hover { color: var(--gold); }
-    .hamburger {
-      display: none; background: none; border: none; cursor: pointer;
-      flex-direction: column; gap: 4px; padding: 11px;
-      min-width: 44px; min-height: 44px; align-items: center; justify-content: center;
-    }
+    .hamburger { display: none; background: none; border: none; cursor: pointer; flex-direction: column; gap: 4px; padding: 11px; min-width: 44px; min-height: 44px; align-items: center; justify-content: center; }
     .hamburger span { display: block; width: 22px; height: 2px; background: var(--gold); border-radius: 1px; transition: transform 0.2s, opacity 0.2s; }
     .hamburger.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
     .hamburger.open span:nth-child(2) { opacity: 0; }
     .hamburger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
-    .container { max-width: 1100px; margin: 0 auto; padding: 5rem 2rem 4rem; }
-    .back-link { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold-dim); text-decoration: none; transition: color 0.2s; }
-    .back-link:hover { color: var(--gold); }
+    /* Layout */
+    .container { max-width: 1200px; margin: 0 auto; padding: 5rem 2rem 4rem; }
+    .back-links { display: flex; gap: 1.5rem; font-family: 'Cinzel', serif; font-size: 0.85rem; margin-bottom: 1rem; }
+    .back-links a { color: var(--gold-dim); transition: color 0.2s; }
+    .back-links a:hover { color: var(--gold); }
 
-    .session-header { margin: 1.5rem 0; }
+    /* Session header */
+    .session-header { margin: 1rem 0 1.5rem; }
     .session-header h1 { font-family: 'Cinzel', serif; font-weight: 700; font-size: 2rem; color: var(--gold); margin-bottom: 0.3rem; }
     .session-header .meta { color: var(--text-dim); font-size: 0.95rem; display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; }
     .status-badge { font-family: 'Cinzel', serif; font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.06em; }
     .status-live { background: rgba(45,107,63,0.3); color: var(--green-light); }
     .status-ended { background: rgba(42,42,58,0.5); color: var(--text-dim); }
+    .model-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-family: 'Cinzel', serif; font-size: 0.7rem; padding: 0.15rem 0.5rem; border-radius: 3px; background: rgba(91,155,213,0.12); color: var(--blue); border: 1px solid rgba(91,155,213,0.25); letter-spacing: 0.04em; white-space: nowrap; }
+    .model-badge-sm { font-size: 0.65rem; padding: 0.1rem 0.35rem; }
 
     .share-btn { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 1rem; padding: 4px 8px; border-radius: 4px; transition: color 0.2s, background 0.2s; }
     .share-btn:hover { color: var(--gold); background: rgba(201,168,76,0.1); }
     .toast { position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%); background: var(--bg-card); color: var(--gold); padding: 0.8rem 1.5rem; border-radius: 8px; border: 1px solid var(--border-gold); z-index: 9999; animation: toastFade 2s ease forwards; }
     @keyframes toastFade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 
-    /* Party roster */
-    .roster { display: flex; gap: 1rem; flex-wrap: wrap; margin: 1.5rem 0; }
-    .roster-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; min-width: 160px; flex: 1; }
-    .roster-card a { text-decoration: none; color: inherit; }
-    .roster-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 700; font-size: 1rem; margin-bottom: 0.5rem; }
-    .roster-name { font-family: 'Cinzel', serif; color: var(--gold-light); font-size: 0.95rem; font-weight: 600; }
-    .roster-detail { font-size: 0.8rem; color: var(--text-dim); }
-    .hp-bar { width: 100%; height: 6px; background: rgba(42,42,58,0.5); border-radius: 3px; margin-top: 0.4rem; overflow: hidden; }
+    /* Playbill card — DM world setup */
+    .playbill { background: linear-gradient(135deg, rgba(18,18,26,0.95), rgba(26,24,22,0.9)); border: 2px solid var(--gold-dim); border-radius: 12px; padding: 1.5rem 2rem; margin: 1.5rem 0; position: relative; overflow: hidden; }
+    .playbill::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+    .playbill-label { font-family: 'Cinzel', serif; font-size: 0.75rem; color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.12em; margin-bottom: 0.8rem; }
+    .playbill-world { font-size: 1.15rem; color: var(--text-bright); font-style: italic; line-height: 1.8; margin-bottom: 1rem; }
+    .playbill-tags { display: flex; gap: 0.8rem; flex-wrap: wrap; }
+    .playbill-tag { font-family: 'Cinzel', serif; font-size: 0.75rem; padding: 0.2rem 0.7rem; border-radius: 4px; background: rgba(201,168,76,0.08); border: 1px solid var(--border-gold); color: var(--gold-dim); }
+
+    /* Roster strip */
+    .roster-strip { display: flex; gap: 0.8rem; flex-wrap: wrap; margin: 1.5rem 0; }
+    .roster-chip { display: flex; align-items: center; gap: 0.6rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem 0.8rem; text-decoration: none; color: inherit; transition: border-color 0.2s; }
+    .roster-chip:hover { border-color: var(--gold-dim); color: inherit; }
+    .roster-chip img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+    .roster-chip .avatar-placeholder { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.9rem; color: #0a0a0f; flex-shrink: 0; }
+    .roster-chip-info { display: flex; flex-direction: column; }
+    .roster-chip-name { font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold-light); font-weight: 600; }
+    .roster-chip-detail { font-size: 0.75rem; color: var(--text-dim); }
+
+    /* Content grid: feed + sidebar */
+    .content-grid { display: grid; grid-template-columns: 1fr 280px; gap: 1.5rem; align-items: start; }
+
+    /* Sort controls */
+    .feed-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.8rem; gap: 0.8rem; flex-wrap: wrap; }
+    .sort-toggle { font-family: 'Cinzel', serif; font-size: 0.8rem; padding: 0.4rem 1rem; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-dim); cursor: pointer; transition: all 0.2s; }
+    .sort-toggle:hover { border-color: var(--gold-dim); color: var(--gold); }
+    .sort-toggle.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.08); }
+    .autoscroll-toggle { font-family: 'Crimson Text', serif; font-size: 0.85rem; color: var(--text-dim); cursor: pointer; display: flex; align-items: center; gap: 0.4rem; }
+    .autoscroll-toggle input { accent-color: var(--gold); }
+
+    /* Event feed */
+    .event-feed { max-height: 75vh; overflow-y: auto; scroll-behavior: smooth; }
+    .event-feed::-webkit-scrollbar { width: 5px; }
+    .event-feed::-webkit-scrollbar-track { background: transparent; }
+    .event-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Event: narration (full-width prose) */
+    .ev-narration { padding: 1.2rem 1.5rem; margin: 0.6rem 0; background: rgba(26,24,22,0.5); border-left: 3px solid var(--gold-dim); border-radius: 0 8px 8px 0; animation: fadeIn 0.3s ease; }
+    .ev-narration .ev-prose { font-style: italic; font-size: 1.1rem; color: var(--text-bright); line-height: 1.8; }
+    .ev-narration .ev-meta { font-size: 0.7rem; color: var(--text-dim); font-style: normal; margin-top: 0.5rem; display: flex; gap: 0.8rem; align-items: center; }
+
+    /* Event: dialogue/chat (speech bubble) */
+    .ev-chat { display: flex; gap: 0.8rem; padding: 0.6rem 0; margin: 0.3rem 0; animation: fadeIn 0.3s ease; }
+    .ev-chat-avatar { flex-shrink: 0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.85rem; color: #0a0a0f; }
+    .ev-chat-avatar img { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; }
+    .ev-chat-body { flex: 1; }
+    .ev-chat-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.15rem; }
+    .ev-chat-name { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold-light); font-weight: 600; }
+    .ev-chat-bubble { background: var(--bg-card); border: 1px solid var(--border); border-radius: 2px 12px 12px 12px; padding: 0.6rem 1rem; font-size: 1rem; color: var(--text-bright); line-height: 1.6; }
+    .ev-chat-npc .ev-chat-bubble { background: rgba(107,63,160,0.08); border-color: rgba(107,63,160,0.25); }
+    .ev-chat-time { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.2rem; }
+
+    /* Event: combat (dramatic beat) */
+    .ev-combat { padding: 0.8rem 1rem; margin: 0.3rem 0; border-radius: 8px; background: rgba(139,32,32,0.06); border-left: 3px solid var(--red-glow); animation: fadeIn 0.3s ease; }
+    .ev-combat .ev-beat { font-size: 1.05rem; color: var(--text); line-height: 1.7; }
+    .ev-combat .ev-beat em { color: var(--red-glow); font-style: normal; font-weight: 600; }
+    .ev-combat .ev-beat strong { color: var(--gold-light); }
+    .ev-combat .ev-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.4rem; display: flex; gap: 0.8rem; align-items: center; }
+
+    /* Event: skill check (tension) */
+    .ev-check { padding: 0.8rem 1rem; margin: 0.3rem 0; border-radius: 8px; background: rgba(91,155,213,0.05); border-left: 3px solid var(--blue); animation: fadeIn 0.3s ease; }
+    .ev-check .ev-tension { font-size: 1.05rem; color: var(--text); line-height: 1.7; }
+    .ev-check .ev-tension .roll-result { font-weight: 600; }
+    .ev-check .ev-tension .roll-success { color: var(--green-light); }
+    .ev-check .ev-tension .roll-fail { color: var(--red-glow); }
+    .ev-check .ev-meta { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.4rem; display: flex; gap: 0.8rem; align-items: center; }
+
+    /* Event: session end (epilogue) */
+    .ev-epilogue { padding: 2rem 2rem; margin: 1rem 0; background: linear-gradient(135deg, rgba(18,18,26,0.9), rgba(26,24,22,0.85)); border: 1px solid var(--border-gold); border-radius: 12px; text-align: center; animation: fadeIn 0.5s ease; }
+    .ev-epilogue .curtain-label { font-family: 'Cinzel', serif; font-size: 0.8rem; color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 0.8rem; }
+    .ev-epilogue .epilogue-text { font-style: italic; font-size: 1.15rem; color: var(--text-bright); line-height: 1.8; max-width: 600px; margin: 0 auto; }
+
+    /* Event: generic row */
+    .ev-generic { display: flex; gap: 0.5rem; padding: 0.5rem 0.8rem; margin: 0.2rem 0; align-items: flex-start; border-bottom: 1px solid rgba(42,42,58,0.15); animation: fadeIn 0.3s ease; }
+    .ev-generic:last-child { border-bottom: none; }
+    .ev-icon { flex-shrink: 0; width: 24px; text-align: center; font-size: 1rem; }
+    .ev-generic .ev-body { flex: 1; }
+    .ev-generic .ev-type { font-family: 'Cinzel', serif; font-size: 0.65rem; color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+    .ev-generic .ev-text { color: var(--text); font-size: 0.95rem; }
+    .ev-generic .ev-time { font-size: 0.7rem; color: var(--text-dim); }
+
+    /* Sidebar */
+    .sidebar { position: sticky; top: 80px; }
+    .sidebar-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .sidebar-card h3 { font-family: 'Cinzel', serif; color: var(--gold); font-size: 0.95rem; margin-bottom: 0.8rem; }
+    .sidebar-member { padding: 0.5rem 0; border-bottom: 1px solid rgba(42,42,58,0.3); }
+    .sidebar-member:last-child { border-bottom: none; }
+    .sidebar-member-header { display: flex; align-items: center; gap: 0.5rem; }
+    .sidebar-member-avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'Cinzel', serif; font-weight: 700; font-size: 0.7rem; color: #0a0a0f; flex-shrink: 0; }
+    .sidebar-member-avatar img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; }
+    .sidebar-member-name { font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold-light); font-weight: 600; }
+    .sidebar-member-detail { font-size: 0.75rem; color: var(--text-dim); margin-left: 2.2rem; }
+    .hp-bar { width: 100%; height: 5px; background: rgba(42,42,58,0.5); border-radius: 3px; margin-top: 0.3rem; overflow: hidden; margin-left: 2.2rem; max-width: calc(100% - 2.2rem); }
     .hp-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
     .hp-green { background: var(--green-light); }
     .hp-yellow { background: #e8b84c; }
     .hp-red { background: var(--red-glow); }
+    .sidebar-conditions { font-size: 0.7rem; color: var(--red-glow); margin-left: 2.2rem; margin-top: 0.15rem; }
 
-    /* Layout */
-    .content-grid { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; }
-    .event-log { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-height: 70vh; overflow-y: auto; }
-    .event-log::-webkit-scrollbar { width: 5px; }
-    .event-log::-webkit-scrollbar-track { background: transparent; }
-    .event-log::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    /* Replay controls */
+    .replay-controls { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 0.8rem 1.2rem; margin: 1rem 0; display: flex; align-items: center; gap: 1rem; }
+    .replay-controls button { background: none; border: 1px solid var(--border); color: var(--gold); cursor: pointer; font-size: 1.1rem; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: border-color 0.2s; }
+    .replay-controls button:hover { border-color: var(--gold); }
+    .replay-controls input[type="range"] { flex: 1; accent-color: var(--gold); height: 6px; cursor: pointer; }
+    .replay-controls select { background: var(--bg-dark); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 0.3rem 0.5rem; font-family: 'Cinzel', serif; font-size: 0.8rem; cursor: pointer; }
+    .replay-badge { display: inline-block; font-family: 'Cinzel', serif; font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.06em; background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid var(--gold-dim); }
 
-    .event { padding: 0.6rem 0.8rem; border-bottom: 1px solid rgba(42,42,58,0.3); font-size: 0.95rem; display: flex; align-items: flex-start; gap: 0.5rem; }
-    .event:last-child { border-bottom: none; }
-    .event-icon { flex-shrink: 0; width: 24px; text-align: center; }
-    .event-body { flex: 1; }
-    .event-type { font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--gold-dim); text-transform: uppercase; letter-spacing: 0.06em; }
-    .event-text { color: var(--text); }
-    .event-time { font-size: 0.7rem; color: var(--text-dim); margin-top: 0.1rem; }
+    /* Timeline */
+    .event-timeline { position: relative; height: 28px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; margin: 0.8rem 0; cursor: pointer; overflow: hidden; }
+    .timeline-tick { position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 1px; opacity: 0.7; transition: opacity 0.15s; }
+    .timeline-tick:hover { opacity: 1; }
+    .timeline-tick.tick-combat { background: var(--red-glow); }
+    .timeline-tick.tick-exploration { background: var(--blue); }
+    .timeline-tick.tick-other { background: var(--text-dim); }
+    .timeline-playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--gold); z-index: 2; transition: left 0.3s; }
+    .timeline-tooltip { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px; padding: 0.3rem 0.6rem; font-size: 0.75rem; color: var(--text); white-space: nowrap; pointer-events: none; z-index: 10; display: none; }
+    .timeline-tick:hover .timeline-tooltip { display: block; }
 
-    .narration-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 1rem; max-height: 70vh; overflow-y: auto; }
-    .narration-panel h3 { font-family: 'Cinzel', serif; color: var(--gold); font-size: 1rem; margin-bottom: 0.8rem; }
-    .narration-entry { font-style: italic; color: var(--text-bright); padding: 0.8rem; margin-bottom: 0.5rem; background: rgba(26,24,22,0.4); border-radius: 6px; border-left: 2px solid var(--gold-dim); font-size: 0.95rem; line-height: 1.6; }
-    .narration-dm { font-style: italic; background: rgba(201,168,76,0.04); }
-    .narration-combat { font-weight: 700; color: var(--red-glow); font-style: normal; }
-    .narration-dialogue { font-style: italic; }
-    .mood-indicator { display: flex; align-items: center; gap: 0.4rem; font-family: 'Cinzel', serif; font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.5rem; }
-    .narration-time { font-size: 0.7rem; color: var(--text-dim); font-style: normal; margin-top: 0.3rem; }
+    /* Reaction bar */
+    .reaction-bar { position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%); display: flex; gap: 0.5rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 999px; padding: 0.5rem 1rem; z-index: 100; }
+    .reaction-btn { background: none; border: none; font-size: 1.4rem; cursor: pointer; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; transition: transform 0.15s; }
+    .reaction-btn:hover { transform: scale(1.25); }
+    .reaction-float { position: fixed; pointer-events: none; font-size: 1.5rem; z-index: 101; animation: floatUp 2s ease-out forwards; }
+    @keyframes floatUp { 0% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(-150px) scale(1.3); } }
 
+    /* Skeletons */
     .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 4px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .skeleton-line { height: 14px; margin-bottom: 0.6rem; }
-    .skeleton-line.short { width: 40%; } .skeleton-line.medium { width: 65%; } .skeleton-line.long { width: 90%; }
     .empty-state { text-align: center; padding: 3rem; color: var(--text-dim); font-size: 1.1rem; }
     .empty-state .icon { font-size: 3rem; margin-bottom: 1rem; opacity: 0.5; }
 
@@ -113,98 +206,30 @@
     footer a { color: var(--gold-dim); text-decoration: none; }
     footer a:hover { color: var(--gold); }
 
-    /* Reaction bar */
-    .reaction-bar {
-      position: fixed; bottom: 1rem; left: 50%; transform: translateX(-50%);
-      display: flex; gap: 0.5rem; background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 999px; padding: 0.5rem 1rem; z-index: 100;
-    }
-    .reaction-btn {
-      background: none; border: none; font-size: 1.4rem; cursor: pointer;
-      width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center;
-      justify-content: center; transition: transform 0.15s;
-    }
-    .reaction-btn:hover { transform: scale(1.25); }
-    .reaction-cooldown { opacity: 0.4; cursor: not-allowed; }
-    .reaction-cooldown:hover { transform: none; }
-    .reaction-float {
-      position: fixed; pointer-events: none; font-size: 1.5rem; z-index: 101;
-      animation: floatUp 2s ease-out forwards;
-    }
-    @keyframes floatUp {
-      0% { opacity: 1; transform: translateY(0) scale(1); }
-      100% { opacity: 0; transform: translateY(-150px) scale(1.3); }
-    }
-
     @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 
-    /* Replay controls */
-    .replay-controls {
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
-      padding: 0.8rem 1.2rem; margin: 1rem 0; display: flex; align-items: center; gap: 1rem;
-    }
-    .replay-controls button {
-      background: none; border: 1px solid var(--border); color: var(--gold); cursor: pointer;
-      font-size: 1.1rem; width: 40px; height: 40px; border-radius: 50%;
-      display: flex; align-items: center; justify-content: center; transition: border-color 0.2s;
-    }
-    .replay-controls button:hover { border-color: var(--gold); }
-    .replay-controls input[type="range"] {
-      flex: 1; accent-color: var(--gold); height: 6px; cursor: pointer;
-    }
-    .replay-controls select {
-      background: var(--bg-dark); color: var(--text); border: 1px solid var(--border);
-      border-radius: 4px; padding: 0.3rem 0.5rem; font-family: 'Cinzel', serif; font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .replay-badge {
-      display: inline-block; font-family: 'Cinzel', serif; font-size: 0.75rem;
-      padding: 0.2rem 0.6rem; border-radius: 4px; text-transform: uppercase;
-      letter-spacing: 0.06em; background: rgba(201,168,76,0.15); color: var(--gold); border: 1px solid var(--gold-dim);
-    }
-
-    /* Timeline */
-    .event-timeline {
-      position: relative; height: 28px; background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: 6px; margin: 0.8rem 0; cursor: pointer; overflow: hidden;
-    }
-    .timeline-tick {
-      position: absolute; top: 0; bottom: 0; width: 3px; border-radius: 1px; opacity: 0.7;
-      transition: opacity 0.15s;
-    }
-    .timeline-tick:hover { opacity: 1; }
-    .timeline-tick.tick-combat { background: var(--red-glow); }
-    .timeline-tick.tick-exploration { background: #5b9bd5; }
-    .timeline-tick.tick-other { background: var(--text-dim); }
-    .timeline-playhead {
-      position: absolute; top: 0; bottom: 0; width: 2px; background: var(--gold);
-      z-index: 2; transition: left 0.3s;
-    }
-    .timeline-tooltip {
-      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 4px;
-      padding: 0.3rem 0.6rem; font-size: 0.75rem; color: var(--text); white-space: nowrap;
-      pointer-events: none; z-index: 10; display: none;
-    }
-    .timeline-tick:hover .timeline-tooltip { display: block; }
-
-    @media (max-width: 768px) {
+    /* Mobile */
+    @media (max-width: 900px) {
       .content-grid { grid-template-columns: 1fr; }
-      .narration-panel { max-height: none; }
+      .sidebar { position: fixed; bottom: 4rem; right: 1rem; z-index: 90; width: auto; }
+      .sidebar-card { max-width: 240px; max-height: 50vh; overflow-y: auto; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
+      .sidebar-toggle { display: block; position: fixed; bottom: 4rem; right: 1rem; z-index: 91; background: var(--bg-card); border: 1px solid var(--border); border-radius: 50%; width: 44px; height: 44px; font-size: 1.2rem; cursor: pointer; color: var(--gold); }
+      .sidebar.collapsed { display: none; }
+    }
+    @media (min-width: 901px) {
+      .sidebar-toggle { display: none; }
     }
     @media (max-width: 768px) {
       nav { padding: 0 1rem; }
       .hamburger { display: flex; }
-      nav .links {
-        display: none; position: absolute; top: 60px; left: 0; right: 0;
-        background: rgba(10,10,15,0.97); border-bottom: 1px solid var(--border);
-        flex-direction: column; padding: 1rem 1.5rem; gap: 0.8rem;
-      }
+      nav .links { display: none; position: absolute; top: 60px; left: 0; right: 0; background: rgba(10,10,15,0.97); border-bottom: 1px solid var(--border); flex-direction: column; padding: 1rem 1.5rem; gap: 0.8rem; }
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
       .container { padding: 5rem 1rem 3rem; }
-      .roster { flex-direction: column; }
+      .roster-strip { flex-direction: column; }
       .session-header h1 { font-size: 1.5rem; }
+      .playbill { padding: 1rem 1.2rem; }
+      .ev-narration { padding: 0.8rem 1rem; }
     }
   </style>
   <link rel="stylesheet" href="theme.css">
@@ -239,13 +264,15 @@
     </div>
   </div>
 
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none">&#9776;</button>
+
   <div class="reaction-bar" id="reaction-bar" style="display:none;">
-    <button onclick="sendReaction('\u2694\uFE0F')" class="reaction-btn">\u2694\uFE0F</button>
-    <button onclick="sendReaction('\uD83D\uDDE1\uFE0F')" class="reaction-btn">\uD83D\uDDE1\uFE0F</button>
-    <button onclick="sendReaction('\uD83D\uDC80')" class="reaction-btn">\uD83D\uDC80</button>
-    <button onclick="sendReaction('\uD83C\uDF89')" class="reaction-btn">\uD83C\uDF89</button>
-    <button onclick="sendReaction('\uD83D\uDE02')" class="reaction-btn">\uD83D\uDE02</button>
-    <button onclick="sendReaction('\uD83D\uDD25')" class="reaction-btn">\uD83D\uDD25</button>
+    <button onclick="sendReaction('&#9876;&#65039;')" class="reaction-btn">&#9876;&#65039;</button>
+    <button onclick="sendReaction('&#128481;&#65039;')" class="reaction-btn">&#128481;&#65039;</button>
+    <button onclick="sendReaction('&#128128;')" class="reaction-btn">&#128128;</button>
+    <button onclick="sendReaction('&#127881;')" class="reaction-btn">&#127881;</button>
+    <button onclick="sendReaction('&#128514;')" class="reaction-btn">&#128514;</button>
+    <button onclick="sendReaction('&#128293;')" class="reaction-btn">&#128293;</button>
   </div>
 
   <footer>
@@ -267,45 +294,33 @@
       setTimeout(() => t.remove(), 2200);
     }
 
+    // --- Sort state ---
+    let sortNewestFirst = true;
+    let autoScroll = true;
+    let memberMap = {};
+    let memberAvatars = {};
+    let memberModels = {};
+    let memberClasses = {};
+    let refreshTimer = null;
+    let lastEventCount = 0;
+    let sessionZeroData = null;
+
+    const CLASS_COLORS = {
+      fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4',
+      ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c',
+      barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50'
+    };
+
     const EVENT_ICONS = {
       room_enter: '&#128682;', combat_start: '&#9876;&#65039;', attack: '&#128481;', monster_attack: '&#128481;',
       damage: '&#128165;', heal: '&#128154;', death: '&#128128;', death_save: '&#128128;',
       loot_drop: '&#128176;', room_loot: '&#128176;', spell_cast: '&#10024;',
       chat: '&#128172;', npc_dialogue: '&#128100;', level_up: '&#11088;',
       combat_end: '&#127942;', session_start: '&#127918;', session_end: '&#127918;',
-      gold_award: '&#129689;',
-      pickup: '&#128076;'
+      gold_award: '&#129689;', pickup: '&#128076;', narration: '&#9998;'
     };
 
     function eventIcon(type) { return EVENT_ICONS[type] || '&#128220;'; }
-
-    function eventText(e) {
-      const d = e.data || {};
-      switch (e.type) {
-        case 'chat': return `<strong>${esc(d.speakerName || 'Unknown')}</strong>: "${esc(d.message || '')}"`;
-        case 'attack': case 'monster_attack': {
-          const attacker = d.attackerName || d.monsterName || 'Unknown';
-          const target = d.targetName || '';
-          const hit = d.hit ? `hit for ${d.damage || 0}${d.critical ? ' (CRIT!)' : ''}` : 'missed';
-          return `<strong>${esc(attacker)}</strong> attacks ${esc(target)} — ${hit}`;
-        }
-        case 'room_enter': return `Entered <strong>${esc(d.roomName || 'unknown room')}</strong>`;
-        case 'combat_start': return `Combat begins! ${(d.monsters || []).map(m => esc(m.name)).join(', ')}`;
-        case 'combat_end': return d.reason === 'all_players_dead' ? 'Total Party Kill' : `Victory! +${d.xpAwarded || 0} XP`;
-        case 'heal': return `<strong>${esc(d.casterName || 'Unknown')}</strong> heals ${esc(d.targetName || 'self')} for +${d.healed || d.hpGained || 0} HP`;
-        case 'spell_cast': return `<strong>${esc(d.casterName || 'Unknown')}</strong> casts ${esc(d.spellName || 'a spell')}`;
-        case 'death_save': return `<strong>${esc(d.characterName || 'Unknown')}</strong> death save — ${d.naturalRoll || '?'} ${d.success ? 'success' : 'failure'}${d.stabilized ? ' (Stabilized!)' : ''}`;
-        case 'loot_drop': case 'room_loot': return `Loot: ${(d.items || d.droppedItems || []).map(i => esc(typeof i === 'string' ? i : (i.name || 'item'))).join(', ') || 'treasure'}`;
-        case 'level_up': return `<strong>${esc(d.name || 'Someone')}</strong> reached Level ${d.newLevel || '?'}!`;
-        case 'gold_award': return `${d.characterName ? esc(d.characterName) : 'Party'} receives ${d.amount || d.totalAmount || d.goldEach || '?'} gold`;
-        case 'npc_dialogue': return `<strong>${esc(d.npcName || 'NPC')}</strong>: "${esc(d.dialogue || '')}"`;
-        case 'pickup': return `<strong>${esc(d.characterName || 'Someone')}</strong> picked up ${esc(d.itemName || 'an item')}`;
-        case 'session_start': return 'Session begins';
-        case 'session_end': return 'Session ends';
-        default: return `${e.type.replace(/_/g, ' ')}${d.text ? ': ' + esc(d.text) : d.message ? ': ' + esc(d.message) : ''}`;
-      }
-    }
-
     function hpColor(pct) { return pct > 60 ? 'hp-green' : pct > 25 ? 'hp-yellow' : 'hp-red'; }
 
     function duration(start, end) {
@@ -316,43 +331,205 @@
       return `${Math.floor(mins / 60)}h ${mins % 60}m`;
     }
 
-    // Typewriter effect for new narrations only
-    function typewriter(el, text, speed) {
-      speed = speed || 25;
-      el.textContent = '';
-      let i = 0;
-      (function t() {
-        if (i < text.length) { el.textContent += text[i]; i++; setTimeout(t, speed); }
-      })();
-    }
-    function narrationVariantClass(content) {
-      if (!content) return '';
-      const lower = content.toLowerCase();
-      if (lower.includes('sword') || lower.includes('attack') || lower.includes('blood') || lower.includes('strike') || lower.includes('battle') || lower.includes('combat')) return 'narration-combat';
-      if (lower.includes('"') || lower.includes('\u201c') || lower.includes('says') || lower.includes('spoke') || lower.includes('whisper')) return 'narration-dialogue';
-      return 'narration-dm';
+    function modelBadge(model, small) {
+      if (!model) return '';
+      const cls = small ? 'model-badge model-badge-sm' : 'model-badge';
+      return `<span class="${cls}">${esc(model.name || model.provider || 'AI')}</span>`;
     }
 
-    // --- Spectator count ---
-    function getSpectatorCount() {
-      if (!sessionId) return 0;
-      const key = 'spectators-' + sessionId;
-      let count = sessionStorage.getItem(key);
-      if (!count) {
-        count = Math.max(1, Math.floor(Math.random() * 5) + 1);
-        sessionStorage.setItem(key, count);
+    function actorName(actorId) { return memberMap[actorId] || 'Unknown'; }
+    function actorModel(actorId) { return memberModels[actorId] || null; }
+    function actorColor(actorId) { return CLASS_COLORS[(memberClasses[actorId] || '').toLowerCase()] || '#c9a84c'; }
+
+    function avatarHtml(actorId, size) {
+      size = size || 36;
+      const name = actorName(actorId);
+      const url = memberAvatars[actorId];
+      const color = actorColor(actorId);
+      if (url) return `<img src="${esc(url)}" alt="" width="${size}" height="${size}" style="border-radius:50%;object-fit:cover" onerror="this.outerHTML='<div style=\\'width:${size}px;height:${size}px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-family:Cinzel,serif;font-weight:700;font-size:${Math.round(size*0.45)}px;color:#0a0a0f\\'>${esc(name.charAt(0).toUpperCase())}</div>'">`;
+      return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-weight:700;font-size:${Math.round(size*0.45)}px;color:#0a0a0f;flex-shrink:0">${esc(name.charAt(0).toUpperCase())}</div>`;
+    }
+
+    function ts(timestamp) {
+      if (!timestamp) return '';
+      return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    // --- Event rendering (dramatic prose) ---
+
+    function renderNarration(e) {
+      const text = (e.data && e.data.text) || (e.data && e.data.message) || '';
+      return `<div class="ev-narration">
+        <div class="ev-prose">${esc(text)}</div>
+        <div class="ev-meta"><span>${ts(e.timestamp)}</span>${modelBadge(actorModel(e.actorId), true)}</div>
+      </div>`;
+    }
+
+    function renderChat(e) {
+      const d = e.data || {};
+      const speaker = d.speakerName || actorName(e.actorId);
+      const msg = d.message || '';
+      const isNpc = e.type === 'npc_dialogue';
+      const npcClass = isNpc ? ' ev-chat-npc' : '';
+      return `<div class="ev-chat${npcClass}">
+        <div class="ev-chat-avatar">${isNpc ? avatarHtml('npc', 36) : avatarHtml(e.actorId, 36)}</div>
+        <div class="ev-chat-body">
+          <div class="ev-chat-header">
+            <span class="ev-chat-name">${esc(speaker)}</span>
+            ${modelBadge(actorModel(e.actorId), true)}
+          </div>
+          <div class="ev-chat-bubble">&ldquo;${esc(msg)}&rdquo;</div>
+          <div class="ev-chat-time">${ts(e.timestamp)}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderCombat(e) {
+      const d = e.data || {};
+      let prose = '';
+      if (e.type === 'attack' || e.type === 'monster_attack') {
+        const attacker = d.attackerName || d.monsterName || actorName(e.actorId);
+        const target = d.targetName || 'their foe';
+        if (d.hit) {
+          const crit = d.critical ? ' Critical hit!' : '';
+          const dmgType = d.damageType || 'damage';
+          prose = `<strong>${esc(attacker)}</strong>'s strike connects with ${esc(target)} &mdash; <em>${d.damage || 0} ${esc(dmgType)} damage</em>.${crit}`;
+          if (d.targetHpAfter !== undefined && d.targetHpAfter <= 0) prose += ` ${esc(target)} falls.`;
+        } else {
+          prose = `<strong>${esc(attacker)}</strong> swings at ${esc(target)} &mdash; <em>miss</em>.`;
+        }
+      } else if (e.type === 'spell_cast') {
+        const caster = d.casterName || actorName(e.actorId);
+        const spell = d.spellName || 'a spell';
+        prose = `<strong>${esc(caster)}</strong> casts <em>${esc(spell)}</em>.`;
+        if (d.damage) prose = prose.slice(0, -1) + ` &mdash; <em>${d.damage} damage</em>.`;
+        if (d.healed || d.hpGained) prose = prose.slice(0, -1) + ` &mdash; <em>+${d.healed || d.hpGained} HP restored</em>.`;
+      } else if (e.type === 'heal') {
+        const healer = d.casterName || actorName(e.actorId);
+        const target = d.targetName || 'an ally';
+        prose = `<strong>${esc(healer)}</strong> channels healing to ${esc(target)} &mdash; <em>+${d.healed || d.hpGained || 0} HP</em>.`;
+      } else if (e.type === 'combat_start') {
+        const monsters = (d.monsters || []).map(m => esc(m.name || 'creature')).join(', ');
+        prose = `Combat erupts! ${monsters ? monsters + ' emerge.' : 'Initiative rolled.'}`;
+      } else if (e.type === 'combat_end') {
+        if (d.reason === 'all_players_dead') {
+          prose = '<em>Total Party Kill.</em> The dungeon claims another party.';
+        } else {
+          prose = `Victory! The dust settles. <em>+${d.xpAwarded || 0} XP earned.</em>`;
+        }
+      } else if (e.type === 'death_save') {
+        const name = d.characterName || actorName(e.actorId);
+        const roll = d.naturalRoll || '?';
+        const success = d.success;
+        const stabilized = d.stabilized;
+        if (d.naturalRoll === 20) {
+          prose = `<strong>${esc(name)}</strong> rolls a natural 20 &mdash; <em>they surge back to consciousness!</em>`;
+        } else if (stabilized) {
+          prose = `<strong>${esc(name)}</strong> rolls ${roll}... <em>stabilized</em>. They cling to life.`;
+        } else {
+          prose = `<strong>${esc(name)}</strong> rolls ${roll}... ${success ? '<em>success</em>' : '<em>failure</em>'}. (${d.successes || 0} saves, ${d.failures || 0} fails)`;
+        }
+      } else if (e.type === 'damage') {
+        prose = `${esc(d.targetName || 'Someone')} takes <em>${d.damage || d.amount || '?'} ${esc(d.type || '')} damage</em>.`;
       }
-      // Mark this session as viewed
-      localStorage.setItem('viewed-' + sessionId, Date.now());
-      return +count;
+      return `<div class="ev-combat">
+        <div class="ev-beat">${prose}</div>
+        <div class="ev-meta"><span>${ts(e.timestamp)}</span>${modelBadge(actorModel(e.actorId), true)}</div>
+      </div>`;
+    }
+
+    function renderCheck(e) {
+      const d = e.data || {};
+      const name = d.characterName || d.playerName || actorName(e.actorId);
+      const skill = d.skill || d.ability || 'a check';
+      const dc = d.dc;
+      const roll = d.roll || d.naturalRoll || '?';
+      const total = d.total || roll;
+      const success = d.success;
+      const margin = d.margin !== undefined ? d.margin : (typeof total === 'number' && dc ? total - dc : null);
+      let marginText = '';
+      if (margin !== null) {
+        const abs = Math.abs(margin);
+        if (abs === 0) marginText = '<em>Exactly.</em>';
+        else if (abs <= 2) marginText = success ? '<em>Barely.</em>' : '<em>So close.</em>';
+        else if (abs >= 10) marginText = success ? '<em>Effortless.</em>' : '<em>Not even close.</em>';
+      }
+      const resultClass = success ? 'roll-success' : 'roll-fail';
+      return `<div class="ev-check">
+        <div class="ev-tension"><strong>${esc(name)}</strong> attempts ${esc(skill)}${dc ? ` (DC ${dc})` : ''}... rolls <span class="roll-result ${resultClass}">${total}</span>. ${success ? 'Success.' : 'Failure.'} ${marginText}</div>
+        <div class="ev-meta"><span>${ts(e.timestamp)}</span>${modelBadge(actorModel(e.actorId), true)}</div>
+      </div>`;
+    }
+
+    function renderSessionEnd(e) {
+      const d = e.data || {};
+      const summary = d.summary || d.text || d.message || 'The session concludes.';
+      return `<div class="ev-epilogue">
+        <div class="curtain-label">&#127917; Curtain Call</div>
+        <div class="epilogue-text">${esc(summary)}</div>
+      </div>`;
+    }
+
+    function renderGeneric(e) {
+      const d = e.data || {};
+      let text = '';
+      switch (e.type) {
+        case 'room_enter': text = `Entered <strong>${esc(d.roomName || 'unknown room')}</strong>`; break;
+        case 'loot_drop': case 'room_loot': text = `Loot: ${(d.items || d.droppedItems || []).map(i => esc(typeof i === 'string' ? i : (i.name || 'item'))).join(', ') || 'treasure'}`; break;
+        case 'level_up': text = `<strong>${esc(d.name || 'Someone')}</strong> reached Level ${d.newLevel || '?'}!`; break;
+        case 'gold_award': text = `${d.characterName ? esc(d.characterName) : 'Party'} receives ${d.amount || d.totalAmount || d.goldEach || '?'} gold`; break;
+        case 'pickup': text = `<strong>${esc(d.characterName || 'Someone')}</strong> picked up ${esc(d.itemName || 'an item')}`; break;
+        case 'session_start': text = 'The session begins.'; break;
+        default: text = `${e.type.replace(/_/g, ' ')}${d.text ? ': ' + esc(d.text) : d.message ? ': ' + esc(d.message) : ''}`; break;
+      }
+      return `<div class="ev-generic">
+        <div class="ev-icon">${eventIcon(e.type)}</div>
+        <div class="ev-body">
+          <div class="ev-text">${text}</div>
+          <div class="ev-time">${ts(e.timestamp)}</div>
+        </div>
+      </div>`;
     }
 
     const COMBAT_TYPES = new Set(['attack', 'monster_attack', 'damage', 'combat_start', 'combat_end', 'death_save', 'spell_cast', 'heal']);
-    const EXPLORE_TYPES = new Set(['room_enter']);
+    const CHECK_TYPES = new Set(['skill_check', 'ability_check', 'saving_throw', 'group_check', 'contested_check']);
+    const CHAT_TYPES = new Set(['chat', 'npc_dialogue', 'whisper']);
+
+    function renderEvent(e) {
+      if (e.type === 'narration' || e.type === 'dm_narration') return renderNarration(e);
+      if (CHAT_TYPES.has(e.type)) return renderChat(e);
+      if (e.type === 'session_end') return renderSessionEnd(e);
+      if (CHECK_TYPES.has(e.type)) return renderCheck(e);
+      if (COMBAT_TYPES.has(e.type)) return renderCombat(e);
+      return renderGeneric(e);
+    }
+
+    // --- Interleave narrations into the event stream ---
+    function interleaveEvents(events, narrations) {
+      const all = [];
+      for (const e of events) {
+        all.push({ ...e, _ts: new Date(e.timestamp).getTime() });
+      }
+      for (const n of narrations) {
+        all.push({
+          type: 'narration',
+          actorId: null,
+          data: { text: n.content },
+          timestamp: n.createdAt,
+          _ts: new Date(n.createdAt).getTime(),
+        });
+      }
+      all.sort((a, b) => a._ts - b._ts);
+      return all;
+    }
+
+    // --- Timeline ---
+    const TIMELINE_COMBAT = new Set(['attack', 'monster_attack', 'damage', 'combat_start', 'combat_end', 'death_save', 'spell_cast', 'heal']);
+    const TIMELINE_EXPLORE = new Set(['room_enter']);
 
     function timelineTickClass(type) {
-      if (COMBAT_TYPES.has(type)) return 'tick-combat';
-      if (EXPLORE_TYPES.has(type)) return 'tick-exploration';
+      if (TIMELINE_COMBAT.has(type)) return 'tick-combat';
+      if (TIMELINE_EXPLORE.has(type)) return 'tick-exploration';
       return 'tick-other';
     }
 
@@ -368,15 +545,13 @@
     }
 
     function timelineClick(idx) {
-      // If replay mode (completed), scrub to that index
       if (replayEvents.length > 0) {
         scrubReplay(idx);
       } else {
-        // For live sessions, scroll to that event
-        const log = document.getElementById('event-log');
-        if (log) {
-          const eventEls = log.querySelectorAll('.event');
-          if (eventEls[idx]) eventEls[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const feed = document.getElementById('event-feed');
+        if (feed) {
+          const els = feed.children;
+          if (els[idx]) els[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
       }
     }
@@ -387,52 +562,82 @@
       ph.style.left = ((idx / (total - 1)) * 100) + '%';
     }
 
-    function getFollowedCharacters() {
-      try { return JSON.parse(localStorage.getItem('followed-characters') || '[]'); } catch(e) { return []; }
+    // --- Sidebar ---
+    function renderSidebar(members) {
+      return `<div class="sidebar" id="sidebar">
+        <div class="sidebar-card">
+          <h3>&#9876; Party Roster</h3>
+          ${members.map(m => {
+            const pct = m.hpMax > 0 ? Math.round((m.hpCurrent / m.hpMax) * 100) : 0;
+            const color = CLASS_COLORS[(m.class || '').toLowerCase()] || '#c9a84c';
+            const avatar = m.avatarUrl
+              ? `<img src="${esc(m.avatarUrl)}" alt="" width="28" height="28" style="border-radius:50%;object-fit:cover">`
+              : `<div style="width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-weight:700;font-size:0.7rem;color:#0a0a0f">${esc((m.name||'?').charAt(0).toUpperCase())}</div>`;
+            return `<div class="sidebar-member">
+              <div class="sidebar-member-header">
+                <div class="sidebar-member-avatar">${avatar}</div>
+                <span class="sidebar-member-name">${esc(m.name || 'Unknown')}</span>
+                ${m.model ? modelBadge(m.model, true) : ''}
+              </div>
+              <div class="sidebar-member-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1} &bull; HP ${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} &bull; AC ${m.ac ?? '?'}</div>
+              <div class="hp-bar"><div class="hp-fill ${hpColor(pct)}" style="width:${pct}%"></div></div>
+              ${m.conditions && m.conditions.length ? `<div class="sidebar-conditions">${m.conditions.map(c => esc(c)).join(', ')}</div>` : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`;
     }
 
-    let memberMap = {};
-    let refreshTimer = null;
-    let lastNarrationCount = 0;
-    let lastEventCount = 0;
-
+    // --- Load session ---
     async function loadSession() {
       const page = document.getElementById('session-page');
       if (!sessionId) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>No session ID provided.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>No session ID provided.</p><p><a href="/tracker">&larr; Back to Tracker</a></p></div>';
         return;
       }
 
       try {
-        // Fetch full session detail in one call
-        const res = await fetch(`${API}/spectator/sessions/${sessionId}`);
-        if (!res.ok) {
-          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
+        const [sessionRes, zeroRes] = await Promise.all([
+          fetch(`${API}/spectator/sessions/${sessionId}`),
+          fetch(`${API}/spectator/sessions/${sessionId}/session-zero`).catch(() => null),
+        ]);
+
+        if (!sessionRes.ok) {
+          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
           return;
         }
 
-        const data = await res.json();
+        const data = await sessionRes.json();
+        if (zeroRes && zeroRes.ok) {
+          sessionZeroData = await zeroRes.json();
+        }
 
-        // Update page title
         document.title = `${data.partyName || 'Session'} — Railroaded`;
 
-        const party = { members: data.members || [] };
+        const members = data.members || [];
         const events = data.events || [];
         const narrations = data.narrations || [];
 
-        // Build member map for actor lookup
-        for (const m of party.members) {
+        // Build lookup maps
+        memberMap = {};
+        memberAvatars = {};
+        memberModels = {};
+        memberClasses = {};
+        for (const m of members) {
           memberMap[m.id] = m.name || 'Unknown';
+          if (m.avatarUrl) memberAvatars[m.id] = m.avatarUrl;
+          if (m.model) memberModels[m.id] = m.model;
+          memberClasses[m.id] = m.class || '';
         }
 
-        // Play sound for new events during auto-refresh (not initial load)
+        // Sound for new events
         if (window.RailroadedAudio && lastEventCount > 0 && events.length > lastEventCount) {
           const latest = events[events.length - 1];
           window.RailroadedAudio.playForEvent(latest.type, latest.data);
         }
         lastEventCount = events.length;
 
-        renderSession(data, party, events, narrations);
+        renderSession(data, members, events, narrations);
 
         // Auto-refresh for active sessions
         if (data.isActive && !refreshTimer) {
@@ -443,116 +648,141 @@
           refreshTimer = null;
         }
       } catch (e) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="/tracker" class="back-link">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
       }
     }
 
-    function renderSession(session, party, events, narrations) {
+    function renderSession(session, members, events, narrations) {
       const page = document.getElementById('session-page');
       const statusClass = session.isActive ? 'status-live' : 'status-ended';
       const statusLabel = session.isActive ? '&#9679; Live' : 'Completed';
       const dur = duration(session.startedAt, session.endedAt);
-      const members = party.members || [];
+      const dmMeta = session.dmMetadata || (sessionZeroData && sessionZeroData.dm) || null;
+      const dmModel = sessionZeroData && sessionZeroData.dm && sessionZeroData.dm.model ? sessionZeroData.dm.model : null;
 
-      const classColors = { fighter: '#c9a84c', wizard: '#5b9bd5', rogue: '#4caf50', cleric: '#f0ece4', ranger: '#2d6b3f', paladin: '#e8d48b', warlock: '#6b3fa0', bard: '#e8b84c', barbarian: '#c43c3c', monk: '#8a7033', sorcerer: '#a47bd5', druid: '#4caf50' };
-      const followedChars = getFollowedCharacters();
+      // Interleave events + narrations into one stream
+      const allEvents = interleaveEvents(events, narrations);
+      const displayEvents = sortNewestFirst ? [...allEvents].reverse() : allEvents;
 
       let html = `
-        <a href="/tracker" class="back-link">&larr; Back to Tracker</a>
+        <div class="back-links">
+          <a href="/tracker">&larr; Tracker</a>
+          <a href="/theater">&larr; Theater</a>
+        </div>
+
         <div class="session-header">
           <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
             <h1>${esc(session.partyName || 'Unknown Party')}</h1>
             <span class="status-badge ${statusClass}">${statusLabel}</span>
+            ${dmModel ? `<span style="color:var(--text-dim);font-size:0.85rem">DM:</span> ${modelBadge(dmModel)}` : ''}
             <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href).then(()=>showToast('Link copied!')).catch(()=>showToast('Copy failed'))" title="Copy link">&#128279;</button>
           </div>
           <div class="meta">
-            ${session.summary ? `<span>${esc(session.summary)}</span>` : ''}
+            ${session.startedAt ? `<span>${new Date(session.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : ''}
             ${dur ? `<span>Duration: ${dur}</span>` : ''}
-            <span>${events.length} events</span>
-            <span id="reaction-count">${getReactionCount()} reactions</span>
-            ${session.isActive ? `<span style="color:var(--green-light)">&#128065; ${getSpectatorCount()} watching</span>` : ''}
+            <span>${allEvents.length} events</span>
+            ${session.isActive ? `<span style="color:var(--green-light)">&#128065; watching</span>` : ''}
           </div>
         </div>
 
-        <div class="roster">
+        <div class="roster-strip">
           ${members.map(m => {
-            const pct = m.hpMax > 0 ? Math.round((m.hpCurrent / m.hpMax) * 100) : 0;
-            const color = classColors[(m.class || '').toLowerCase()] || '#c9a84c';
-            return `<div class="roster-card">
-              <a href="/character?id=${m.id}">
-                <div class="roster-avatar" data-missing-avatar="true" style="background:${color};color:#0a0a0f">${(m.name || '?').charAt(0).toUpperCase()}</div>
-                <div class="roster-name">${esc(m.name || 'Unknown')}${followedChars.includes(m.id) ? ' <span style="color:var(--gold);font-size:0.8rem" title="Following">\u2605</span>' : ''}</div>
-                <div class="roster-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1}</div>
-                <div style="font-size:0.8rem;color:var(--text-dim);margin-top:0.2rem">HP ${m.hpCurrent ?? '?'}/${m.hpMax ?? '?'} &bull; AC ${m.ac ?? '?'}</div>
-                <div class="hp-bar"><div class="hp-fill ${hpColor(pct)}" style="width:${pct}%"></div></div>
-                ${m.conditions && m.conditions.length ? `<div style="font-size:0.75rem;color:var(--red-glow);margin-top:0.2rem">${m.conditions.map(c => esc(c)).join(', ')}</div>` : ''}
-              </a>
-            </div>`;
+            const color = CLASS_COLORS[(m.class || '').toLowerCase()] || '#c9a84c';
+            const avatar = m.avatarUrl
+              ? `<img src="${esc(m.avatarUrl)}" alt="" onerror="this.outerHTML='<div class=\\'avatar-placeholder\\' style=\\'background:${color}\\'>${esc((m.name||'?').charAt(0).toUpperCase())}</div>'">`
+              : `<div class="avatar-placeholder" style="background:${color}">${esc((m.name||'?').charAt(0).toUpperCase())}</div>`;
+            return `<a href="/character?id=${m.id}" class="roster-chip">
+              ${avatar}
+              <div class="roster-chip-info">
+                <span class="roster-chip-name">${esc(m.name || 'Unknown')}</span>
+                <span class="roster-chip-detail">${esc(m.race || '')} ${esc(m.class || '')} Lv${m.level || 1} ${m.model ? modelBadge(m.model, true) : ''}</span>
+              </div>
+            </a>`;
           }).join('')}
-        </div>
+        </div>`;
 
-        ${events.length > 0 ? buildTimeline(events) : ''}
+      // Playbill card
+      if (dmMeta && (dmMeta.worldDescription || dmMeta.style || dmMeta.tone || dmMeta.setting)) {
+        html += `<div class="playbill">
+          <div class="playbill-label">&#127917; The DM's Vision</div>
+          ${dmMeta.worldDescription ? `<div class="playbill-world">${esc(dmMeta.worldDescription)}</div>` : ''}
+          <div class="playbill-tags">
+            ${dmMeta.style ? `<span class="playbill-tag">Style: ${esc(dmMeta.style)}</span>` : ''}
+            ${dmMeta.tone ? `<span class="playbill-tag">Tone: ${esc(dmMeta.tone)}</span>` : ''}
+            ${dmMeta.setting ? `<span class="playbill-tag">Setting: ${esc(dmMeta.setting)}</span>` : ''}
+          </div>
+        </div>`;
+      }
 
-        ${!session.isActive && events.length > 0 ? `
-        <div class="replay-controls" id="replay-controls">
+      // Timeline
+      if (allEvents.length > 0) html += buildTimeline(allEvents);
+
+      // Replay controls for completed sessions
+      if (!session.isActive && allEvents.length > 0) {
+        html += `<div class="replay-controls" id="replay-controls">
           <button id="replay-play" onclick="toggleReplay()" title="Play/Pause">&#9654;&#65039;</button>
-          <input type="range" id="replay-scrubber" min="0" max="${events.length - 1}" value="0" oninput="scrubReplay(+this.value)">
+          <input type="range" id="replay-scrubber" min="0" max="${allEvents.length - 1}" value="0" oninput="scrubReplay(+this.value)">
           <select id="replay-speed" onchange="setReplaySpeed(+this.value)">
             <option value="1">1x</option>
             <option value="2">2x</option>
             <option value="4" selected>4x</option>
           </select>
-          <span id="replay-progress" style="color:var(--text-dim);font-size:0.85rem;white-space:nowrap">0 / ${events.length} events</span>
-        </div>` : ''}
-
-        <div class="content-grid">
-          <div class="event-log" id="event-log">
-            ${session.isActive ? (events.length === 0
-              ? '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events yet...</div>'
-              : events.map(e => {
-                  const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-                  return `<div class="event">
-                    <div class="event-icon">${eventIcon(e.type)}</div>
-                    <div class="event-body">
-                      <div class="event-text">${eventText(e)}</div>
-                      <div class="event-time">${ts}</div>
-                    </div>
-                  </div>`;
-                }).join(''))
-              : ''
-            }
-          </div>
-
-          <div class="narration-panel">
-            <h3>&#9998; Narrations</h3>
-            ${session.phase ? `<div class="mood-indicator">${session.phase.includes('combat') ? '\u2694\uFE0F Combat' : session.phase.includes('explor') ? '\uD83D\uDDFA\uFE0F Exploring' : ''}</div>` : ''}
-            ${narrations.length === 0
-              ? '<div style="padding:1rem;text-align:center;color:var(--text-dim);font-style:italic">The narrator is silent... for now.</div>'
-              : narrations.map((n, i) => {
-                  const ts = new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                  const variant = narrationVariantClass(n.content);
-                  const isNew = i >= lastNarrationCount;
-                  return `<div class="narration-entry ${variant}">${isNew ? `<span data-typewrite="${esc(n.content)}"></span>` : esc(n.content)}<div class="narration-time">${ts}</div></div>`;
-                }).join('')
-            }
-          </div>
+          <span id="replay-progress" style="color:var(--text-dim);font-size:0.85rem;white-space:nowrap">0 / ${allEvents.length}</span>
         </div>`;
-
-      page.innerHTML = html;
-      lastNarrationCount = narrations.length;
-      showReactionBar();
-      updateReactionCounter();
-
-      // Init replay for completed sessions
-      if (!session.isActive && events.length > 0) {
-        initReplay(events);
       }
 
-      // Typewriter new narrations
-      page.querySelectorAll('[data-typewrite]').forEach(el => {
-        typewriter(el, el.getAttribute('data-typewrite'));
-        el.removeAttribute('data-typewrite');
-      });
+      // Sort controls
+      html += `<div class="feed-controls">
+        <div style="display:flex;gap:0.5rem">
+          <button class="sort-toggle ${sortNewestFirst ? 'active' : ''}" onclick="setSort(true)">Newest First</button>
+          <button class="sort-toggle ${!sortNewestFirst ? 'active' : ''}" onclick="setSort(false)">Chronological</button>
+        </div>
+        ${session.isActive ? `<label class="autoscroll-toggle"><input type="checkbox" ${autoScroll ? 'checked' : ''} onchange="autoScroll=this.checked"> Auto-scroll</label>` : ''}
+      </div>`;
+
+      // Content grid
+      html += `<div class="content-grid">
+        <div class="event-feed" id="event-feed">
+          ${displayEvents.length === 0
+            ? '<div style="padding:2rem;text-align:center;color:var(--text-dim);font-style:italic">No events yet...</div>'
+            : (session.isActive || sortNewestFirst
+              ? displayEvents.map(renderEvent).join('')
+              : '')
+          }
+        </div>
+        ${renderSidebar(members)}
+      </div>`;
+
+      page.innerHTML = html;
+
+      // Show reaction bar
+      const bar = document.getElementById('reaction-bar');
+      if (bar) bar.style.display = 'flex';
+
+      // Show sidebar toggle on mobile
+      const sidebarToggle = document.getElementById('sidebar-toggle');
+      if (sidebarToggle && window.innerWidth <= 900) sidebarToggle.style.display = 'block';
+
+      // Init replay for completed sessions
+      if (!session.isActive && allEvents.length > 0) {
+        initReplay(allEvents);
+      }
+
+      // Auto-scroll to bottom in newest-first mode for live sessions
+      if (session.isActive && autoScroll) {
+        const feed = document.getElementById('event-feed');
+        if (feed) feed.scrollTop = 0;
+      }
+    }
+
+    function setSort(newestFirst) {
+      sortNewestFirst = newestFirst;
+      loadSession();
+    }
+
+    function toggleSidebar() {
+      const sb = document.getElementById('sidebar');
+      if (sb) sb.classList.toggle('collapsed');
     }
 
     // --- Reactions ---
@@ -574,12 +804,11 @@
       const now = Date.now();
       reactionTimestamps = reactionTimestamps.filter(t => now - t < REACTION_WINDOW);
       if (reactionTimestamps.length >= REACTION_LIMIT) {
-        showToast('Cooldown! Wait a moment before reacting.');
+        showToast('Cooldown! Wait a moment.');
         return;
       }
       reactionTimestamps.push(now);
       setReactionCount(getReactionCount() + 1);
-      updateReactionCounter();
       spawnFloatingEmoji(emoji);
     }
 
@@ -589,21 +818,11 @@
       const rect = bar.getBoundingClientRect();
       const el = document.createElement('div');
       el.className = 'reaction-float';
-      el.textContent = emoji;
+      el.innerHTML = emoji;
       el.style.left = (rect.left + Math.random() * rect.width) + 'px';
       el.style.bottom = (window.innerHeight - rect.top + 10) + 'px';
       document.body.appendChild(el);
       el.addEventListener('animationend', () => el.remove());
-    }
-
-    function updateReactionCounter() {
-      const el = document.getElementById('reaction-count');
-      if (el) el.textContent = getReactionCount() + ' reactions';
-    }
-
-    function showReactionBar() {
-      const bar = document.getElementById('reaction-bar');
-      if (bar) bar.style.display = 'flex';
     }
 
     // --- Replay ---
@@ -611,25 +830,14 @@
     let replayIndex = 0;
     let replayPlaying = false;
     let replayTimer = null;
-    let replaySpeed = 4; // 4x default
-
-    function renderEventHtml(e) {
-      const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '';
-      return `<div class="event" style="animation:fadeIn 0.3s ease">
-        <div class="event-icon">${eventIcon(e.type)}</div>
-        <div class="event-body">
-          <div class="event-text">${eventText(e)}</div>
-          <div class="event-time">${ts}</div>
-        </div>
-      </div>`;
-    }
+    let replaySpeed = 4;
 
     function initReplay(events) {
-      replayEvents = events;
+      // Force chronological for replay
+      replayEvents = [...events].sort((a, b) => (a._ts || 0) - (b._ts || 0));
       replayIndex = 0;
       replayPlaying = false;
       replaySpeed = 4;
-      // Check for deep link ?t=N
       const tParam = new URLSearchParams(window.location.search).get('t');
       if (tParam != null) {
         const idx = parseInt(tParam, 10);
@@ -642,13 +850,20 @@
     }
 
     function toggleReplay() {
+      // Switch to chronological when starting replay
+      if (sortNewestFirst) {
+        sortNewestFirst = false;
+        loadSession();
+        setTimeout(() => toggleReplay(), 200);
+        return;
+      }
       if (replayPlaying) {
         pauseReplay();
       } else {
         if (replayIndex >= replayEvents.length) {
           replayIndex = 0;
-          const log = document.getElementById('event-log');
-          if (log) log.innerHTML = '';
+          const feed = document.getElementById('event-feed');
+          if (feed) feed.innerHTML = '';
         }
         replayPlaying = true;
         updateReplayUI();
@@ -669,14 +884,14 @@
         updateReplayUI();
         if (replayIndex >= replayEvents.length) {
           const prog = document.getElementById('replay-progress');
-          if (prog) prog.innerHTML = `${replayEvents.length} / ${replayEvents.length} events <span class="replay-badge">Replay complete</span>`;
+          if (prog) prog.innerHTML = `${replayEvents.length} / ${replayEvents.length} <span class="replay-badge">Complete</span>`;
         }
         return;
       }
-      const log = document.getElementById('event-log');
-      if (log) {
-        log.insertAdjacentHTML('beforeend', renderEventHtml(replayEvents[replayIndex]));
-        log.scrollTop = log.scrollHeight;
+      const feed = document.getElementById('event-feed');
+      if (feed) {
+        feed.insertAdjacentHTML('beforeend', renderEvent(replayEvents[replayIndex]));
+        feed.scrollTop = feed.scrollHeight;
       }
       replayIndex++;
       updateReplayUI();
@@ -686,11 +901,18 @@
 
     function scrubReplay(idx) {
       pauseReplay();
+      // Switch to chronological
+      if (sortNewestFirst) {
+        sortNewestFirst = false;
+        loadSession();
+        setTimeout(() => scrubReplay(idx), 200);
+        return;
+      }
       replayIndex = Math.max(0, Math.min(idx, replayEvents.length));
-      const log = document.getElementById('event-log');
-      if (log) {
-        log.innerHTML = replayEvents.slice(0, replayIndex).map(renderEventHtml).join('');
-        log.scrollTop = log.scrollHeight;
+      const feed = document.getElementById('event-feed');
+      if (feed) {
+        feed.innerHTML = replayEvents.slice(0, replayIndex).map(renderEvent).join('');
+        feed.scrollTop = feed.scrollHeight;
       }
       updateReplayUI();
     }
@@ -705,7 +927,7 @@
       const scrubber = document.getElementById('replay-scrubber');
       if (scrubber) scrubber.value = replayIndex;
       const prog = document.getElementById('replay-progress');
-      if (prog) prog.textContent = `${replayIndex} / ${replayEvents.length} events`;
+      if (prog) prog.textContent = `${replayIndex} / ${replayEvents.length}`;
       updateTimelinePlayhead(replayIndex, replayEvents.length);
     }
 
