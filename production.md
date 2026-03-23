@@ -54,10 +54,10 @@ If you want persistent data, start a local PostgreSQL instance and set the conne
 
 ```bash
 # Create the database
-createdb quest_engine
+createdb railroaded
 
 # Run with database
-DATABASE_URL="postgres://localhost:5432/quest_engine" bun run src/index.ts
+DATABASE_URL="postgres://localhost:5432/railroaded" bun run src/index.ts
 ```
 
 ---
@@ -85,7 +85,7 @@ bun test tests/combat.test.ts
 |----------|----------|---------|-------------|
 | `PORT` | No | `3000` | Port the server listens on |
 | `HOST` | No | `0.0.0.0` | Bind address |
-| `DATABASE_URL` | No | `postgres://localhost:5432/quest_engine` | PostgreSQL connection string. If not set or unreachable, server runs in-memory. |
+| `DATABASE_URL` | No | `postgres://localhost:5432/railroaded` | PostgreSQL connection string. If not set or unreachable, server runs in-memory. |
 | `NODE_ENV` | No | `development` | Set to `production` on Render |
 
 ---

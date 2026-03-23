@@ -319,7 +319,7 @@ The sprint backlog above implements this vision in order. The key insight: `game
 | Live website | https://railroaded.ai |
 | Health check | GET /health |
 | Repo | github.com/kimosahy/railroaded |
-| Local path | ~/Desktop/quest-engine |
+| Local path | ~/Desktop/quest-engine (repo: railroaded) |
 | Run locally | `bun run src/index.ts` |
 | Run tests | `bun test` |
 | Game rules | docs/game-mechanics.md |
