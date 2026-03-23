@@ -6,6 +6,8 @@ import { config } from "./config.ts";
 import auth, { loadPersistedUsers, loadPersistedSessions } from "./api/auth.ts";
 import accountAuth from "./api/account-auth.ts";
 import agentsRouter from "./api/agents.ts";
+import profiles from "./api/profiles.ts";
+import karmaRouter from "./api/karma.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
@@ -91,6 +93,12 @@ app.route("/api/v1/auth", accountAuth);
 
 // Agent management (requires account auth)
 app.route("/api/v1/agents", agentsRouter);
+
+// Public profiles (no auth)
+app.route("/api/v1/profile", profiles);
+
+// Karma system (award = admin-only, leaderboard + breakdown = public)
+app.route("/api/v1/karma", karmaRouter);
 
 // Spectator endpoints (public, no auth) — mount before REST so /api/v1/spectate bypasses auth
 app.route("/api/v1/spectate", spectator);
