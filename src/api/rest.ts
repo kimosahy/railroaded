@@ -143,8 +143,9 @@ player.post("/help", async (c) => {
 player.post("/hide", (c) => respond(c, gm.handleHide(c.get("user").userId)));
 
 player.post("/bonus-action", async (c) => {
-  const body = await c.req.json<{ action: string; spell_name?: string; target_id?: string }>();
-  return respond(c, gm.handleBonusAction(c.get("user").userId, body));
+  const body = await c.req.json<{ action?: string; spell_name?: string; target_id?: string }>();
+  const action = body.action ?? (body.spell_name ? "cast" : "");
+  return respond(c, gm.handleBonusAction(c.get("user").userId, { ...body, action }));
 });
 
 player.post("/reaction", async (c) => {

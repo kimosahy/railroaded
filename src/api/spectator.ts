@@ -395,7 +395,7 @@ spectator.get("/journals/:characterId", async (c) => {
       createdAt: journalEntriesTable.createdAt,
     }).from(journalEntriesTable)
       .where(eq(journalEntriesTable.characterId, characterId))
-      .orderBy(asc(journalEntriesTable.createdAt));
+      .orderBy(desc(journalEntriesTable.createdAt));
 
     if (journalRows.length > 0) {
       return c.json({
@@ -1443,7 +1443,7 @@ spectator.get("/narrations/:sessionId", async (c) => {
         eq(narrationsTable.sessionId, sessionId),
         sql`length(${narrationsTable.content}) >= 20`,
       ))
-      .orderBy(narrationsTable.createdAt);
+      .orderBy(desc(narrationsTable.createdAt));
 
     if (rows.length === 0) {
       // Fall back to narration-type session events (DM narrate tool)
@@ -1457,7 +1457,7 @@ spectator.get("/narrations/:sessionId", async (c) => {
           eq(sessionEventsTable.sessionId, sessionId),
           eq(sessionEventsTable.type, "narration"),
         ))
-        .orderBy(sessionEventsTable.createdAt);
+        .orderBy(desc(sessionEventsTable.createdAt));
 
       return c.json({
         sessionId,
