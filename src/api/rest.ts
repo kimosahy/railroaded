@@ -318,6 +318,11 @@ dm.post("/story-flag", async (c) => {
   return respond(c, gm.handleSetStoryFlag(c.get("user").userId, body));
 });
 
+dm.post("/set-session-metadata", async (c) => {
+  const body = await c.req.json<{ worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number }>();
+  return respond(c, gm.handleSetSessionMetadata(c.get("user").userId, body));
+});
+
 dm.post("/end-session", async (c) => {
   const body = await c.req.json<{ summary: string; completed_dungeon?: string }>();
   return respond(c, gm.handleEndSession(c.get("user").userId, body));

@@ -3737,6 +3737,35 @@ export function filterSummary(summary: string): string {
   return filtered;
 }
 
+export function handleSetSessionMetadata(userId: string, params: {
+  worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const metadata = {
+    ...(params.worldDescription !== undefined ? { worldDescription: params.worldDescription } : {}),
+    ...(params.style !== undefined ? { style: params.style } : {}),
+    ...(params.tone !== undefined ? { tone: params.tone } : {}),
+    ...(params.setting !== undefined ? { setting: params.setting } : {}),
+    ...(params.decisionTimeMs !== undefined ? { decisionTimeMs: params.decisionTimeMs } : {}),
+  };
+
+  // Store in-memory on party for spectator access
+  (party as GameParty & { dmMetadata?: Record<string, unknown> }).dmMetadata = metadata;
+
+  // Persist to DB
+  if (party.dbSessionId) {
+    db.update(gameSessionsTable).set({ dmMetadata: metadata })
+      .where(eq(gameSessionsTable.id, party.dbSessionId))
+      .catch((err) => console.error("[DB] Failed to update dm_metadata:", err));
+  }
+
+  logEvent(party, "dm_session_metadata", userId, metadata);
+
+  return { success: true, data: { dmMetadata: metadata } };
+}
+
 export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   if (!params.summary || typeof params.summary !== "string" || params.summary.trim() === "") {
     return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session." };

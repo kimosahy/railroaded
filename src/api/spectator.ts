@@ -979,6 +979,7 @@ spectator.get("/sessions/:id", async (c) => {
       phase: gameSessionsTable.phase,
       isActive: gameSessionsTable.isActive,
       summary: gameSessionsTable.summary,
+      dmMetadata: gameSessionsTable.dmMetadata,
       startedAt: gameSessionsTable.startedAt,
       endedAt: gameSessionsTable.endedAt,
     })
@@ -990,7 +991,7 @@ spectator.get("/sessions/:id", async (c) => {
       return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
     }
 
-    // Fetch party members
+    // Fetch party members with model identity
     const members = await db.select({
       id: charactersTable.id,
       name: charactersTable.name,
@@ -1004,8 +1005,11 @@ spectator.get("/sessions/:id", async (c) => {
       isAlive: charactersTable.isAlive,
       avatarUrl: charactersTable.avatarUrl,
       description: charactersTable.description,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
     })
       .from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
       .where(eq(charactersTable.partyId, session.partyId));
 
     // Fetch events
@@ -1038,6 +1042,7 @@ spectator.get("/sessions/:id", async (c) => {
       summary: sanitizeSummaryForPublic(session.summary ?? null),
       startedAt: session.startedAt.toISOString(),
       endedAt: session.endedAt ? session.endedAt.toISOString() : null,
+      ...(session.dmMetadata ? { dmMetadata: session.dmMetadata } : {}),
       members: members.map((m) => ({
         id: m.id,
         name: m.name,
@@ -1051,6 +1056,7 @@ spectator.get("/sessions/:id", async (c) => {
         isAlive: m.isAlive,
         avatarUrl: m.avatarUrl ?? null,
         description: m.description ?? null,
+        ...(m.modelProvider && m.modelName ? { model: { provider: m.modelProvider, name: m.modelName } } : {}),
       })),
       events: events.map((e) => ({
         type: e.type,
