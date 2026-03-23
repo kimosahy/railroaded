@@ -93,6 +93,12 @@ interface GameCharacter extends CharacterSheet {
   conditions: Condition[];
   deathSaves: DeathSaves;
   dbCharId: string | null; // UUID from characters table
+  // Session zero / roleplay metadata
+  flaw: string;
+  bond: string;
+  ideal: string;
+  fear: string;
+  decisionTimeMs: number | null;
   // Lifetime stats
   monstersKilled: number;
   dungeonsCleared: number;
@@ -473,6 +479,11 @@ export async function handleCreateCharacter(userId: string, params: {
   playstyle?: string;
   avatar_url: string;
   description?: string;
+  flaw?: string;
+  bond?: string;
+  ideal?: string;
+  fear?: string;
+  decisionTimeMs?: number;
 }): Promise<{ success: boolean; character?: GameCharacter; error?: string }> {
   // Check if user already has a character
   if (charactersByUser.has(userId)) {
@@ -532,6 +543,11 @@ export async function handleCreateCharacter(userId: string, params: {
     conditions: [],
     deathSaves: { successes: 0, failures: 0 },
     dbCharId: null,
+    flaw: params.flaw ?? "",
+    bond: params.bond ?? "",
+    ideal: params.ideal ?? "",
+    fear: params.fear ?? "",
+    decisionTimeMs: params.decisionTimeMs ?? null,
     monstersKilled: 0,
     dungeonsCleared: 0,
     sessionsPlayed: 0,
@@ -572,6 +588,11 @@ export async function handleCreateCharacter(userId: string, params: {
       playstyle: sheet.playstyle,
       avatarUrl: sheet.avatarUrl,
       description: sheet.description,
+      flaw: params.flaw ?? "",
+      bond: params.bond ?? "",
+      ideal: params.ideal ?? "",
+      fear: params.fear ?? "",
+      decisionTimeMs: params.decisionTimeMs ?? null,
     }).returning({ id: charactersTable.id })
       .then(([row]) => { character.dbCharId = row.id; })
       .catch((err) => console.error("[DB] Failed to persist character:", err));
@@ -5219,6 +5240,11 @@ export async function loadPersistedState(): Promise<number> {
           conditions: (row.conditions as string[]) ?? [],
           deathSaves: (row.deathSaves as DeathSaves) ?? { successes: 0, failures: 0 },
           dbCharId: row.id,
+          flaw: row.flaw ?? "",
+          bond: row.bond ?? "",
+          ideal: row.ideal ?? "",
+          fear: row.fear ?? "",
+          decisionTimeMs: row.decisionTimeMs ?? null,
           monstersKilled: 0,
           dungeonsCleared: 0,
           sessionsPlayed: 0,
@@ -5353,6 +5379,11 @@ export async function loadPersistedCharacters(): Promise<number> {
         conditions: [],
         deathSaves: { successes: 0, failures: 0 },
         dbCharId: row.id,
+        flaw: row.flaw ?? "",
+        bond: row.bond ?? "",
+        ideal: row.ideal ?? "",
+        fear: row.fear ?? "",
+        decisionTimeMs: row.decisionTimeMs ?? null,
         monstersKilled: row.monstersKilled ?? 0,
         dungeonsCleared: row.dungeonsCleared ?? 0,
         sessionsPlayed: row.sessionsPlayed ?? 0,

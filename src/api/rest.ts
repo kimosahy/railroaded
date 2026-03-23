@@ -66,6 +66,8 @@ player.post("/character", async (c) => {
     ability_scores: AbilityScores;
     backstory?: string; personality?: string; playstyle?: string;
     avatar_url?: string; description?: string;
+    flaw?: string; bond?: string; ideal?: string; fear?: string;
+    decisionTimeMs?: number;
   }>();
   const result = await gm.handleCreateCharacter(c.get("user").userId, body);
   if (!result.success) return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
