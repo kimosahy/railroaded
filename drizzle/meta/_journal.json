@@ -120,6 +120,13 @@
       "when": 1774243537684,
       "tag": "0016_melodic_sabretooth",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1774500000000,
+      "tag": "0017_monster_avatars",
+      "breakpoints": true
     }
   ]
 }

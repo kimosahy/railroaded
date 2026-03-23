@@ -450,6 +450,9 @@ export const customMonsterTemplates = pgTable("custom_monster_templates", {
     immunities?: string[];
     resistances?: string[];
   }>(),
+  avatarUrl: text("avatar_url"),
+  createdByModel: text("created_by_model"),
+  lore: text("lore"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

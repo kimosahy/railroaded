@@ -849,8 +849,16 @@ export const dmTools: readonly ToolDefinition[] = [
             required: ["item_name", "weight", "quantity"],
           },
         },
+        avatar_url: {
+          type: "string",
+          description: "URL to the monster's portrait artwork. Required. Must NOT be a DiceBear URL.",
+        },
+        lore: {
+          type: "string",
+          description: "Optional lore/flavor text describing the monster's origin, habits, or legend.",
+        },
       },
-      required: ["name", "hp_max", "ac", "attacks"],
+      required: ["name", "hp_max", "ac", "attacks", "avatar_url"],
     },
     handler: "handleCreateCustomMonster",
   },

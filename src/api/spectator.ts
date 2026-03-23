@@ -26,6 +26,7 @@ import {
   rooms as roomsTable,
   waitlistSignups as waitlistSignupsTable,
   monsterTemplates as monsterTemplatesTable,
+  customMonsterTemplates as customMonsterTemplatesTable,
   users as usersTable,
 } from "../db/schema.ts";
 import { getModelIdentity } from "./auth.ts";
@@ -2789,7 +2790,7 @@ spectator.get("/benchmark", async (c) => {
   }
 });
 
-// GET /spectator/bestiary — monster compendium with encounter counts
+// GET /spectator/bestiary — monster compendium with encounter counts + custom monster details
 spectator.get("/bestiary", async (c) => {
   try {
     const templates = await db
@@ -2803,6 +2804,34 @@ spectator.get("/bestiary", async (c) => {
       .from(monsterTemplatesTable)
       .orderBy(asc(monsterTemplatesTable.name));
 
+    // Fetch custom monster templates with avatar/lore/model data
+    let customMonsters: { name: string; avatarUrl: string | null; createdByModel: string | null; lore: string | null; statBlock: Record<string, unknown> }[] = [];
+    try {
+      customMonsters = await db.select({
+        name: customMonsterTemplatesTable.name,
+        avatarUrl: customMonsterTemplatesTable.avatarUrl,
+        createdByModel: customMonsterTemplatesTable.createdByModel,
+        lore: customMonsterTemplatesTable.lore,
+        statBlock: customMonsterTemplatesTable.statBlock,
+      }).from(customMonsterTemplatesTable);
+    } catch (err) {
+      console.error("[DB] Failed to fetch custom monsters for bestiary:", err);
+    }
+
+    // Build a lookup of custom monster data by normalized name
+    const customDataMap = new Map<string, { avatarUrl: string | null; createdByModel: string | null; lore: string | null; hp: number; ac: number; xp: number }>();
+    for (const cm of customMonsters) {
+      const sb = cm.statBlock as { hpMax?: number; ac?: number; xpValue?: number } | null;
+      customDataMap.set(normalizeMonsterName(cm.name), {
+        avatarUrl: cm.avatarUrl,
+        createdByModel: cm.createdByModel,
+        lore: cm.lore,
+        hp: sb?.hpMax ?? 0,
+        ac: sb?.ac ?? 0,
+        xp: sb?.xpValue ?? 0,
+      });
+    }
+
     const combatEvents = await db
       .select({ data: sessionEventsTable.data })
       .from(sessionEventsTable)
@@ -2811,7 +2840,45 @@ spectator.get("/bestiary", async (c) => {
     const encounterCounts = countEncountersFromEvents(combatEvents);
     const bestiary = buildBestiary(templates, encounterCounts);
 
-    return c.json({ monsters: bestiary });
+    // Enrich bestiary entries with custom monster data
+    const enriched = bestiary.map((entry) => {
+      const custom = customDataMap.get(normalizeMonsterName(entry.name));
+      if (custom) {
+        return {
+          ...entry,
+          hp: entry.hp || custom.hp,
+          ac: entry.ac || custom.ac,
+          xp: entry.xp || custom.xp,
+          avatarUrl: custom.avatarUrl,
+          createdByModel: custom.createdByModel,
+          lore: custom.lore,
+          isCustom: true,
+        };
+      }
+      return { ...entry, avatarUrl: null, createdByModel: null, lore: null, isCustom: false };
+    });
+
+    // Add custom monsters that haven't been encountered yet
+    for (const cm of customMonsters) {
+      const normalized = normalizeMonsterName(cm.name);
+      if (!bestiary.some((b) => normalizeMonsterName(b.name) === normalized)) {
+        const sb = cm.statBlock as { hpMax?: number; ac?: number; xpValue?: number } | null;
+        enriched.push({
+          name: cm.name,
+          hp: sb?.hpMax ?? 0,
+          ac: sb?.ac ?? 0,
+          cr: 0,
+          xp: sb?.xpValue ?? 0,
+          count: 0,
+          avatarUrl: cm.avatarUrl,
+          createdByModel: cm.createdByModel,
+          lore: cm.lore,
+          isCustom: true,
+        });
+      }
+    }
+
+    return c.json({ monsters: enriched });
   } catch (err) {
     console.error("[DB] Failed to fetch bestiary:", err);
     return c.json({ monsters: [] });

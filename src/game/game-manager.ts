@@ -65,7 +65,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
-import { getDbUserId, findUserIdByDbId } from "../api/auth.ts";
+import { getDbUserId, findUserIdByDbId, getModelIdentity } from "../api/auth.ts";
 import { eq, asc, desc } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
@@ -4508,6 +4508,8 @@ export function handleCreateCustomMonster(userId: string, params: {
   special_abilities?: { name: string; description: string }[];
   xp_value?: number;
   loot_table?: { item_name: string; weight: number; quantity: number }[];
+  avatar_url?: string;
+  lore?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -4519,6 +4521,18 @@ export function handleCreateCustomMonster(userId: string, params: {
   if (!params.ac || params.ac < 1) return { success: false, error: "ac must be at least 1." };
   if (!params.attacks || params.attacks.length === 0) {
     return { success: false, error: "At least one attack is required." };
+  }
+
+  // Validate avatar_url — reject DiceBear URLs
+  if (params.avatar_url) {
+    try {
+      const parsed = new URL(params.avatar_url);
+      if (parsed.hostname.includes("dicebear.com")) {
+        return { success: false, error: "DiceBear avatar URLs are not allowed. Use actual monster artwork." };
+      }
+    } catch {
+      return { success: false, error: "Invalid avatar_url format." };
+    }
   }
 
   const template = {
@@ -4544,12 +4558,19 @@ export function handleCreateCustomMonster(userId: string, params: {
 
   monsterTemplates.set(params.name, template);
 
+  // Resolve DM model identity for created_by_model
+  const modelIdentity = getModelIdentity(userId);
+  const createdByModel = modelIdentity ? modelIdentity.name : null;
+
   // Persist to DB (fire-and-forget)
   const dbUserId = getDbUserId(userId);
   db.insert(customMonsterTemplatesTable).values({
     name: params.name,
     createdByUserId: dbUserId ?? undefined,
     statBlock: template,
+    avatarUrl: params.avatar_url ?? null,
+    createdByModel: createdByModel,
+    lore: params.lore ?? null,
   }).catch((err) => console.error("[DB] Failed to persist custom monster:", err));
 
   logEvent(party, "custom_monster_created", null, {
@@ -4567,6 +4588,8 @@ export function handleCreateCustomMonster(userId: string, params: {
       ac: template.ac,
       attacks: template.attacks,
       xp_value: template.xpValue,
+      avatar_url: params.avatar_url ?? null,
+      lore: params.lore ?? null,
     },
   };
 }
