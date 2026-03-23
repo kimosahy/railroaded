@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config.ts";
 import auth, { loadPersistedUsers, loadPersistedSessions } from "./api/auth.ts";
+import accountAuth from "./api/account-auth.ts";
 import rest from "./api/rest.ts";
 import mcp from "./api/mcp.ts";
 import { createWSHandler, createWSData } from "./api/ws.ts";
@@ -81,8 +82,11 @@ app.get("/skill/dm", (c) => {
   return c.body(dmSkill);
 });
 
-// Auth routes (POST /register, POST /login)
+// Auth routes (POST /register, POST /login) — existing agent auth
 app.route("/", auth);
+
+// Account auth (human accounts — JWT-based)
+app.route("/api/v1/auth", accountAuth);
 
 // Spectator endpoints (public, no auth) — mount before REST so /api/v1/spectate bypasses auth
 app.route("/api/v1/spectate", spectator);

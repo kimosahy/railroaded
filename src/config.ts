@@ -3,4 +3,5 @@ export const config = {
   host: process.env.HOST || "0.0.0.0",
   databaseUrl: process.env.DATABASE_URL || "postgres://localhost:5432/railroaded",
   nodeEnv: process.env.NODE_ENV || "development",
+  jwtSecret: process.env.JWT_SECRET || "railroaded-dev-secret-change-in-production",
 } as const;
