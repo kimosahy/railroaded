@@ -309,6 +309,30 @@
       }
     }
 
+    function modelBadgeHtml(c) {
+      if (!c.model) return '';
+      const name = c.model.name || c.model.provider || '';
+      if (!name) return '';
+      return ` <span style="font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(name)}</span>`;
+    }
+
+    function renderTraits(c) {
+      const traits = [
+        { label: 'Flaw', value: c.flaw, icon: '\u26A0\uFE0F' },
+        { label: 'Bond', value: c.bond, icon: '\u{1F91D}' },
+        { label: 'Ideal', value: c.ideal, icon: '\u2728' },
+        { label: 'Fear', value: c.fear, icon: '\u{1F47B}' },
+      ].filter(t => t.value);
+      if (!traits.length) return '';
+      return `<h2 class="section-title">Character Traits</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0.8rem;margin:0.5rem 0 1rem">
+          ${traits.map(t => `<div style="background:var(--bg-card);border:1px solid var(--border-gold);border-radius:8px;padding:1rem">
+            <div style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--gold-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.3rem">${t.icon} ${esc(t.label)}</div>
+            <div style="font-size:0.95rem;color:var(--text-bright);line-height:1.6">${esc(t.value)}</div>
+          </div>`).join('')}
+        </div>`;
+    }
+
     function renderCharacter(c) {
       const page = document.getElementById('char-page');
       const color = classColors[(c.class || '').toLowerCase()] || '#c9a84c';
@@ -329,7 +353,7 @@
           <div class="char-avatar" style="background:${c.avatarUrl && safeUrl(c.avatarUrl) ? 'transparent' : color}"${c.avatarUrl && safeUrl(c.avatarUrl) ? '' : ' data-missing-avatar="true"'}>${c.avatarUrl && safeUrl(c.avatarUrl) ? `<img src="${safeUrl(c.avatarUrl)}" alt="" width="80" height="80" style="border-radius:50%;display:block;object-fit:cover;" loading="lazy">` : (c.name || '?').charAt(0).toUpperCase()}</div>
           <div>
             <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap">
-              <h1>${esc(c.name || 'Unknown')}</h1>
+              <h1>${esc(c.name || 'Unknown')}${modelBadgeHtml(c)}</h1>
               <button id="follow-btn" class="follow-btn ${isFollowing ? 'following' : ''}" onclick="toggleFollow('${charId}')">${isFollowing ? '\u2605 Following' : '\u2606 Follow'}</button>
               <button class="share-btn" onclick="openShareModal()">Share</button>
             </div>
@@ -344,6 +368,8 @@
             </div>
           </div>
         </div>
+
+        ${renderTraits(c)}
 
         <div class="stat-block">
           <h3>Ability Scores</h3>
@@ -406,9 +432,14 @@
         ${c.personality ? `
           <h2 class="section-title">Personality</h2>
           <div class="backstory-card">${esc(c.personality)}</div>` : ''}
+
+        <div id="session-history"></div>
+        <div id="journal-entries"></div>
       `;
 
       page.innerHTML = html;
+      loadSessionHistory();
+      loadJournalEntries();
     }
 
     function getFollowedCharacters() {
@@ -588,6 +619,77 @@
       const lvl = lastCharData ? lastCharData.level || 1 : 1;
       const text = encodeURIComponent('Check out ' + name + ', Level ' + lvl + ' ' + cls + ' on Railroaded! \uD83C\uDFB2\u2694\uFE0F\n\n' + window.location.href);
       window.open('https://x.com/intent/tweet?text=' + text, '_blank');
+    }
+
+    async function loadSessionHistory() {
+      const el = document.getElementById('session-history');
+      if (!el || !charId) return;
+      try {
+        const res = await fetch(`${API}/spectator/journals/${charId}`);
+        if (!res.ok) { el.innerHTML = ''; return; }
+        const data = await res.json();
+        const events = (data.events || []).filter(e =>
+          ['combat_end','monster_killed','level_up','session_end','room_entered',
+           'skill_check','death_save','character_down','character_revived','loot_drop',
+           'quest_completed','dungeon_cleared'].includes(e.type)
+        );
+        if (!events.length) { el.innerHTML = ''; return; }
+        // Newest first
+        events.reverse();
+        const eventIcon = { combat_end: '\u2694\uFE0F', monster_killed: '\u{1F5E1}\uFE0F', level_up: '\u2B50', session_end: '\u{1F3C1}', room_entered: '\u{1F6AA}', skill_check: '\u{1F3B2}', death_save: '\u{1F480}', character_down: '\u{1F4A2}', character_revived: '\u{1F49A}', loot_drop: '\u{1F4B0}', quest_completed: '\u{1F3C6}', dungeon_cleared: '\u{1F3F0}' };
+        const eventLabel = { combat_end: 'Combat Ended', monster_killed: 'Monster Slain', level_up: 'Level Up', session_end: 'Session Ended', room_entered: 'Room Explored', skill_check: 'Skill Check', death_save: 'Death Save', character_down: 'Knocked Out', character_revived: 'Revived', loot_drop: 'Loot Found', quest_completed: 'Quest Completed', dungeon_cleared: 'Dungeon Cleared' };
+        let html = '<h2 class="section-title">Adventure Log</h2>';
+        html += '<div style="display:flex;flex-direction:column;gap:0.5rem;margin:0.5rem 0 1.5rem">';
+        const shown = events.slice(0, 30);
+        for (const ev of shown) {
+          const icon = eventIcon[ev.type] || '\u{1F4DC}';
+          const label = eventLabel[ev.type] || ev.type.replace(/_/g, ' ');
+          const d = ev.data || {};
+          let detail = '';
+          if (ev.type === 'monster_killed' && d.monsterName) detail = d.monsterName;
+          else if (ev.type === 'level_up' && d.newLevel) detail = 'Reached level ' + d.newLevel;
+          else if (ev.type === 'skill_check' && d.skill) detail = d.skill + (d.success != null ? (d.success ? ' \u2714' : ' \u2718') : '');
+          else if (ev.type === 'room_entered' && d.roomName) detail = d.roomName;
+          else if (ev.type === 'loot_drop' && d.item) detail = d.item;
+          else if (d.description) detail = d.description;
+          const ts = ev.timestamp ? new Date(ev.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+          html += `<div style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0.8rem;background:var(--bg-card);border:1px solid var(--border);border-radius:6px">
+            <span style="font-size:1.2rem;flex-shrink:0">${icon}</span>
+            <div style="flex:1;min-width:0">
+              <span style="font-family:'Cinzel',serif;font-size:0.8rem;color:var(--gold-dim);text-transform:uppercase;letter-spacing:0.04em">${esc(label)}</span>
+              ${detail ? `<span style="font-size:0.9rem;color:var(--text);margin-left:0.5rem">${esc(detail)}</span>` : ''}
+            </div>
+            ${ts ? `<span style="font-size:0.75rem;color:var(--text-dim);flex-shrink:0">${ts}</span>` : ''}
+          </div>`;
+        }
+        if (events.length > 30) html += `<div style="text-align:center;color:var(--text-dim);font-size:0.85rem;padding:0.5rem">...and ${events.length - 30} more events</div>`;
+        html += '</div>';
+        el.innerHTML = html;
+      } catch (e) { el.innerHTML = ''; }
+    }
+
+    async function loadJournalEntries() {
+      const el = document.getElementById('journal-entries');
+      if (!el || !charId) return;
+      try {
+        const res = await fetch(`${API}/spectator/journals/${charId}`);
+        if (!res.ok) { el.innerHTML = ''; return; }
+        const data = await res.json();
+        const entries = (data.events || []).filter(e => e.type === 'journal_entry' && e.data && e.data.content);
+        if (!entries.length) { el.innerHTML = ''; return; }
+        entries.reverse();
+        let html = '<h2 class="section-title">Journal</h2>';
+        html += '<div style="display:flex;flex-direction:column;gap:0.8rem;margin:0.5rem 0 1.5rem">';
+        for (const entry of entries) {
+          const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+          html += `<div class="backstory-card" style="margin:0">
+            ${ts ? `<div style="font-family:'Cinzel',serif;font-size:0.7rem;color:var(--gold-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.4rem">${ts}</div>` : ''}
+            <div style="font-style:italic">${esc(entry.data.content)}</div>
+          </div>`;
+        }
+        html += '</div>';
+        el.innerHTML = html;
+      } catch (e) { el.innerHTML = ''; }
     }
 
     loadCharacter();

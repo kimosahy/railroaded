@@ -741,6 +741,7 @@ spectator.get("/characters/:id", async (c) => {
   }
 
   if (char) {
+    const model = getModelIdentity(char.userId);
     return c.json({
       id: char.dbCharId ?? characterId,
       name: char.name, race: char.race, class: char.class,
@@ -752,6 +753,8 @@ spectator.get("/characters/:id", async (c) => {
       proficiencies: char.proficiencies, features: char.features,
       conditions: char.conditions,
       backstory: char.backstory, personality: char.personality,
+      flaw: char.flaw ?? null, bond: char.bond ?? null,
+      ideal: char.ideal ?? null, fear: char.fear ?? null,
       avatarUrl: char.avatarUrl, description: char.description,
       monstersKilled: char.monstersKilled ?? 0,
       dungeonsCleared: char.dungeonsCleared ?? 0,
@@ -760,12 +763,40 @@ spectator.get("/characters/:id", async (c) => {
       criticalHits: char.criticalHits ?? 0,
       timesKnockedOut: char.timesKnockedOut ?? 0,
       goldEarned: char.goldEarned ?? 0,
+      ...(model ? { model } : {}),
     });
   }
 
   // DB fallback
   try {
-    const [row] = await db.select().from(charactersTable).where(eq(charactersTable.id, characterId));
+    const rows = await db.select({
+      id: charactersTable.id,
+      name: charactersTable.name, race: charactersTable.race, class: charactersTable.class,
+      level: charactersTable.level, xp: charactersTable.xp, gold: charactersTable.gold,
+      hpCurrent: charactersTable.hpCurrent, hpMax: charactersTable.hpMax, ac: charactersTable.ac,
+      abilityScores: charactersTable.abilityScores,
+      spellSlots: charactersTable.spellSlots,
+      inventory: charactersTable.inventory, equipment: charactersTable.equipment,
+      proficiencies: charactersTable.proficiencies, features: charactersTable.features,
+      conditions: charactersTable.conditions,
+      backstory: charactersTable.backstory, personality: charactersTable.personality,
+      flaw: charactersTable.flaw, bond: charactersTable.bond,
+      ideal: charactersTable.ideal, fear: charactersTable.fear,
+      avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
+      monstersKilled: charactersTable.monstersKilled,
+      dungeonsCleared: charactersTable.dungeonsCleared,
+      sessionsPlayed: charactersTable.sessionsPlayed,
+      totalDamageDealt: charactersTable.totalDamageDealt,
+      criticalHits: charactersTable.criticalHits,
+      timesKnockedOut: charactersTable.timesKnockedOut,
+      goldEarned: charactersTable.goldEarned,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.id, characterId));
+
+    const row = rows[0];
     if (!row) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
 
     return c.json({
@@ -779,6 +810,8 @@ spectator.get("/characters/:id", async (c) => {
       proficiencies: row.proficiencies, features: row.features,
       conditions: row.conditions,
       backstory: row.backstory, personality: row.personality,
+      flaw: row.flaw || null, bond: row.bond || null,
+      ideal: row.ideal || null, fear: row.fear || null,
       avatarUrl: row.avatarUrl ?? null, description: row.description ?? null,
       monstersKilled: row.monstersKilled ?? 0,
       dungeonsCleared: row.dungeonsCleared ?? 0,
@@ -787,6 +820,7 @@ spectator.get("/characters/:id", async (c) => {
       criticalHits: row.criticalHits ?? 0,
       timesKnockedOut: row.timesKnockedOut ?? 0,
       goldEarned: row.goldEarned ?? 0,
+      ...(row.modelProvider && row.modelName ? { model: { provider: row.modelProvider, name: row.modelName } } : {}),
     });
   } catch (err) {
     console.error("[DB] Failed to fetch character:", err);
