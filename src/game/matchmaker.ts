@@ -25,7 +25,11 @@ export interface MatchResult {
   balanceScore: number;
 }
 
-export const PARTY_SIZE = 4;
+export const PARTY_SIZE_MIN = 2;
+export const PARTY_SIZE_MAX = 20;
+
+// Keep PARTY_SIZE as alias for backward compat (used in queue messages)
+export const PARTY_SIZE = PARTY_SIZE_MIN;
 
 /** Sentinel userId for parties that formed without a real DM in the queue. */
 export const SYSTEM_DM_ID = "system-dm";
@@ -33,6 +37,7 @@ export const SYSTEM_DM_ID = "system-dm";
 /**
  * Attempt to form a party from the queue.
  * Returns a MatchResult if a valid party can be formed, null otherwise.
+ * Requires at least 1 DM + 2 players. Takes up to 20 players.
  * If enough players are queued but no DM is available, forms the party
  * with a synthetic system-dm placeholder so players aren't blocked.
  */
@@ -40,11 +45,14 @@ export function tryMatchParty(queue: QueueEntry[]): MatchResult | null {
   const players = queue.filter((e) => e.role === "player");
   const dms = queue.filter((e) => e.role === "dm");
 
-  if (players.length < PARTY_SIZE) {
+  // With a real DM: form with 2+ players (new flexible minimum)
+  // Without a real DM: require 4+ players (legacy system-dm behavior)
+  const minPlayers = dms.length > 0 ? PARTY_SIZE_MIN : 4;
+  if (players.length < minPlayers) {
     return null;
   }
 
-  // Find the best party composition
+  // Find the best party composition (take up to PARTY_SIZE_MAX)
   const bestParty = findBestParty(players);
   if (!bestParty) return null;
 
@@ -74,31 +82,25 @@ interface PartyCandidate {
 }
 
 /**
- * Find the best party of 4 from available players.
- * Prioritizes class balance.
+ * Find the best party from available players.
+ * Takes all queued players (up to PARTY_SIZE_MAX).
+ * Prioritizes class balance for the first 4 slots, then fills remaining.
  */
 function findBestParty(players: QueueEntry[]): PartyCandidate | null {
-  if (players.length < PARTY_SIZE) return null;
+  if (players.length < PARTY_SIZE_MIN) return null;
 
-  // If we have exactly 4 or few enough to not need complex matching,
-  // use a greedy approach
-  if (players.length <= 8) {
-    return greedyMatch(players);
-  }
-
-  // For larger queues, use the greedy approach too (fast enough for MVP)
   return greedyMatch(players);
 }
 
 /**
  * Greedy matching: fill roles one at a time.
- * Priority order: healer > tank > caster > DPS
+ * Priority order: healer > tank > caster > DPS, then fill remaining up to max.
  */
 function greedyMatch(players: QueueEntry[]): PartyCandidate | null {
   const remaining = [...players];
   const selected: QueueEntry[] = [];
 
-  // Role priorities
+  // Role priorities (try to fill each role first for balance)
   const rolePriorities: { class: CharacterClass; role: string }[] = [
     { class: "cleric", role: "healer" },
     { class: "fighter", role: "tank" },
@@ -108,7 +110,7 @@ function greedyMatch(players: QueueEntry[]): PartyCandidate | null {
 
   // Try to fill each role
   for (const priority of rolePriorities) {
-    if (selected.length >= PARTY_SIZE) break;
+    if (selected.length >= PARTY_SIZE_MAX) break;
 
     const idx = remaining.findIndex(
       (p) => p.characterClass === priority.class
@@ -119,12 +121,12 @@ function greedyMatch(players: QueueEntry[]): PartyCandidate | null {
     }
   }
 
-  // Fill remaining slots with whoever is available
-  while (selected.length < PARTY_SIZE && remaining.length > 0) {
+  // Fill remaining slots with whoever is available (up to max)
+  while (selected.length < PARTY_SIZE_MAX && remaining.length > 0) {
     selected.push(remaining.shift()!);
   }
 
-  if (selected.length < PARTY_SIZE) return null;
+  if (selected.length < PARTY_SIZE_MIN) return null;
 
   return {
     members: selected,

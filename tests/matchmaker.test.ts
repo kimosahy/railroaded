@@ -18,9 +18,12 @@ describe("tryMatchParty", () => {
     expect(match!.dm.userId).toBe("dm1");
   });
 
-  test("3 players + 1 DM → no match (not enough players)", () => {
+  test("3 players + 1 DM → match (meets 2-player minimum with DM)", () => {
     const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makeDM("dm1")];
-    expect(tryMatchParty(queue)).toBeNull();
+    const match = tryMatchParty(queue);
+    expect(match).not.toBeNull();
+    expect(match!.players).toHaveLength(3);
+    expect(match!.dm.userId).toBe("dm1");
   });
 
   test("4 players + no DM → match with system-dm", () => {
@@ -32,7 +35,7 @@ describe("tryMatchParty", () => {
     expect(match!.dm.role).toBe("dm");
   });
 
-  test("5 players + no DM → match with system-dm (picks best 4)", () => {
+  test("5 players + no DM → match with system-dm (takes all 5)", () => {
     const queue = [
       makePlayer("p1", "cleric"),
       makePlayer("p2", "fighter"),
@@ -42,7 +45,7 @@ describe("tryMatchParty", () => {
     ];
     const match = tryMatchParty(queue);
     expect(match).not.toBeNull();
-    expect(match!.players).toHaveLength(4);
+    expect(match!.players).toHaveLength(5);
     expect(match!.dm.userId).toBe(SYSTEM_DM_ID);
   });
 
@@ -57,7 +60,7 @@ describe("tryMatchParty", () => {
     const match = tryMatchParty(queue)!;
     const ids = getMatchedIds(match);
     expect(ids).toContain(SYSTEM_DM_ID);
-    expect(ids).toHaveLength(5);
+    expect(ids).toHaveLength(5); // 4 players + system-dm
   });
 });
 

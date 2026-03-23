@@ -153,8 +153,8 @@ describe("Party formation", () => {
     expect(result.data!.matched).toBe(false);
     expect(result.data!.position).toBe(1);
     expect(result.data!.playersInQueue).toBe(1);
-    expect(result.data!.playersNeeded).toBe(3);
-    expect(result.data!.message).toBe("You've joined the matchmaking queue. 3 more players needed to form a party.");
+    expect(result.data!.playersNeeded).toBe(1);
+    expect(result.data!.message).toBe("You've joined the matchmaking queue. 1 more player needed to form a party.");
   });
 
   test("queue shows correct count as players join", async () => {
@@ -163,12 +163,10 @@ describe("Party formation", () => {
     handleQueueForParty(p1);
     const r2 = handleQueueForParty(p2);
     expect(r2.data!.playersInQueue).toBe(2);
-    expect(r2.data!.playersNeeded).toBe(2);
-    expect(r2.data!.message).toBe("You've joined the matchmaking queue. 2 more players needed to form a party.");
+    expect(r2.data!.playersNeeded).toBe(0);
     const r3 = handleQueueForParty(p3);
     expect(r3.data!.playersInQueue).toBe(3);
-    expect(r3.data!.playersNeeded).toBe(1);
-    expect(r3.data!.message).toBe("You've joined the matchmaking queue. 1 more player needed to form a party.");
+    expect(r3.data!.playersNeeded).toBe(-1);
   });
 
   test("DM queue response includes playersNeeded", async () => {
@@ -177,8 +175,8 @@ describe("Party formation", () => {
     const dmId = uid("dm");
     const result = handleDMQueueForParty(dmId);
     expect(result.data!.playersWaiting).toBe(1);
-    expect(result.data!.playersNeeded).toBe(3);
-    expect(result.data!.message).toContain("3 more players");
+    expect(result.data!.playersNeeded).toBe(1);
+    expect(result.data!.message).toContain("1 more player");
   });
 
   test("party has correct members and DM", async () => {
