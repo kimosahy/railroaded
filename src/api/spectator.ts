@@ -1077,6 +1077,90 @@ spectator.get("/sessions/:id", async (c) => {
   }
 });
 
+// GET /spectator/sessions/:id/session-zero — character creation + DM setup data
+spectator.get("/sessions/:id/session-zero", async (c) => {
+  const sessionId = c.req.param("id");
+
+  try {
+    // Fetch session with DM metadata
+    const [session] = await db.select({
+      id: gameSessionsTable.id,
+      partyId: gameSessionsTable.partyId,
+      dmMetadata: gameSessionsTable.dmMetadata,
+    })
+      .from(gameSessionsTable)
+      .where(eq(gameSessionsTable.id, sessionId));
+
+    if (!session) {
+      return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
+    }
+
+    // Fetch DM info
+    const [dmParty] = await db.select({
+      dmUserId: partiesTable.dmUserId,
+    }).from(partiesTable).where(eq(partiesTable.id, session.partyId));
+
+    let dm: Record<string, unknown> | null = null;
+    if (dmParty?.dmUserId) {
+      const [dmUser] = await db.select({
+        modelProvider: usersTable.modelProvider,
+        modelName: usersTable.modelName,
+      }).from(usersTable).where(eq(usersTable.id, dmParty.dmUserId));
+
+      const dmMeta = session.dmMetadata as Record<string, unknown> | null;
+      dm = {
+        ...(dmUser?.modelProvider && dmUser?.modelName
+          ? { model: { provider: dmUser.modelProvider, name: dmUser.modelName } }
+          : {}),
+        worldChoice: dmMeta?.worldDescription ?? null,
+        style: dmMeta?.style ?? null,
+        decisionTimeMs: dmMeta?.decisionTimeMs ?? null,
+      };
+    }
+
+    // Fetch player characters with model identity and session-zero fields
+    const players = await db.select({
+      name: charactersTable.name,
+      race: charactersTable.race,
+      class: charactersTable.class,
+      personality: charactersTable.personality,
+      backstory: charactersTable.backstory,
+      flaw: charactersTable.flaw,
+      bond: charactersTable.bond,
+      ideal: charactersTable.ideal,
+      fear: charactersTable.fear,
+      decisionTimeMs: charactersTable.decisionTimeMs,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    })
+      .from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.partyId, session.partyId));
+
+    return c.json({
+      dm,
+      players: players.map((p) => ({
+        ...(p.modelProvider && p.modelName
+          ? { model: { provider: p.modelProvider, name: p.modelName } }
+          : {}),
+        name: p.name,
+        race: p.race,
+        class: p.class,
+        personality: p.personality || null,
+        backstory: p.backstory || null,
+        flaw: p.flaw || null,
+        bond: p.bond || null,
+        ideal: p.ideal || null,
+        fear: p.fear || null,
+        decisionTimeMs: p.decisionTimeMs ?? null,
+      })),
+    });
+  } catch (err) {
+    console.error("[DB] Failed to fetch session-zero data:", err);
+    return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
+  }
+});
+
 // GET /spectator/sessions/:id/events — all events for a session
 spectator.get("/sessions/:id/events", async (c) => {
   const sessionId = c.req.param("id");
