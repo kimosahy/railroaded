@@ -2670,6 +2670,125 @@ export function buildBestiary(
   return bestiary;
 }
 
+// GET /spectator/benchmark — per-model aggregate stats for the AI benchmark page
+spectator.get("/benchmark", async (c) => {
+  try {
+    // Join characters with users to get model identity per character
+    const rows = await db.select({
+      charId: charactersTable.id,
+      name: charactersTable.name,
+      race: charactersTable.race,
+      class: charactersTable.class,
+      level: charactersTable.level,
+      xp: charactersTable.xp,
+      isAlive: charactersTable.isAlive,
+      monstersKilled: charactersTable.monstersKilled,
+      dungeonsCleared: charactersTable.dungeonsCleared,
+      sessionsPlayed: charactersTable.sessionsPlayed,
+      totalDamageDealt: charactersTable.totalDamageDealt,
+      criticalHits: charactersTable.criticalHits,
+      timesKnockedOut: charactersTable.timesKnockedOut,
+      goldEarned: charactersTable.goldEarned,
+      backstory: charactersTable.backstory,
+      flaw: charactersTable.flaw,
+      bond: charactersTable.bond,
+      ideal: charactersTable.ideal,
+      fear: charactersTable.fear,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+
+    // Group by model identity
+    const modelMap = new Map<string, {
+      provider: string;
+      name: string;
+      characters: number;
+      sessions: number;
+      alive: number;
+      dead: number;
+      totalMonstersKilled: number;
+      totalDamageDealt: number;
+      totalCriticalHits: number;
+      totalTimesKnockedOut: number;
+      totalDungeonsCleared: number;
+      totalGoldEarned: number;
+      levelSum: number;
+      classChoices: Record<string, number>;
+      raceChoices: Record<string, number>;
+      hasFlaws: number;
+      hasBonds: number;
+      hasIdeals: number;
+      hasFears: number;
+    }>();
+
+    for (const r of rows) {
+      const provider = r.modelProvider || "unknown";
+      const modelName = r.modelName || "unknown";
+      const key = `${provider}::${modelName}`;
+
+      let entry = modelMap.get(key);
+      if (!entry) {
+        entry = {
+          provider, name: modelName,
+          characters: 0, sessions: 0, alive: 0, dead: 0,
+          totalMonstersKilled: 0, totalDamageDealt: 0, totalCriticalHits: 0,
+          totalTimesKnockedOut: 0, totalDungeonsCleared: 0, totalGoldEarned: 0,
+          levelSum: 0, classChoices: {}, raceChoices: {},
+          hasFlaws: 0, hasBonds: 0, hasIdeals: 0, hasFears: 0,
+        };
+        modelMap.set(key, entry);
+      }
+
+      entry.characters++;
+      entry.sessions += r.sessionsPlayed ?? 0;
+      if (r.isAlive) entry.alive++; else entry.dead++;
+      entry.totalMonstersKilled += r.monstersKilled ?? 0;
+      entry.totalDamageDealt += r.totalDamageDealt ?? 0;
+      entry.totalCriticalHits += r.criticalHits ?? 0;
+      entry.totalTimesKnockedOut += r.timesKnockedOut ?? 0;
+      entry.totalDungeonsCleared += r.dungeonsCleared ?? 0;
+      entry.totalGoldEarned += r.goldEarned ?? 0;
+      entry.levelSum += r.level ?? 1;
+      entry.classChoices[r.class] = (entry.classChoices[r.class] || 0) + 1;
+      entry.raceChoices[r.race] = (entry.raceChoices[r.race] || 0) + 1;
+      if (r.flaw && r.flaw.length > 0) entry.hasFlaws++;
+      if (r.bond && r.bond.length > 0) entry.hasBonds++;
+      if (r.ideal && r.ideal.length > 0) entry.hasIdeals++;
+      if (r.fear && r.fear.length > 0) entry.hasFears++;
+    }
+
+    const models = [...modelMap.values()]
+      .filter((m) => m.provider !== "unknown" || m.name !== "unknown")
+      .map((m) => ({
+        provider: m.provider,
+        name: m.name,
+        characters: m.characters,
+        sessions: m.sessions,
+        survivalRate: m.characters > 0 ? Math.round((m.alive / m.characters) * 100) : 0,
+        avgLevel: m.characters > 0 ? +(m.levelSum / m.characters).toFixed(1) : 0,
+        monstersKilled: m.totalMonstersKilled,
+        damageDealt: m.totalDamageDealt,
+        criticalHits: m.totalCriticalHits,
+        timesKnockedOut: m.totalTimesKnockedOut,
+        dungeonsCleared: m.totalDungeonsCleared,
+        goldEarned: m.totalGoldEarned,
+        flawRate: m.characters > 0 ? Math.round((m.hasFlaws / m.characters) * 100) : 0,
+        bondRate: m.characters > 0 ? Math.round((m.hasBonds / m.characters) * 100) : 0,
+        idealRate: m.characters > 0 ? Math.round((m.hasIdeals / m.characters) * 100) : 0,
+        fearRate: m.characters > 0 ? Math.round((m.hasFears / m.characters) * 100) : 0,
+        classChoices: m.classChoices,
+        raceChoices: m.raceChoices,
+      }))
+      .sort((a, b) => b.sessions - a.sessions || b.characters - a.characters);
+
+    return c.json({ models });
+  } catch (err) {
+    console.error("[DB] Failed to fetch benchmark data:", err);
+    return c.json({ models: [] });
+  }
+});
+
 // GET /spectator/bestiary — monster compendium with encounter counts
 spectator.get("/bestiary", async (c) => {
   try {
