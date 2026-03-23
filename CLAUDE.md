@@ -354,7 +354,7 @@ The sprint backlog above implements this vision in order. The key insight: `game
 | Run tests | `bun test` |
 | Game rules | docs/game-mechanics.md |
 | Architecture | docs/architecture.md |
-| CC patterns | docs/cc-patterns.md |
+| Atlas patterns | docs/cc-patterns.md |
 | Known issues | docs/known-issues.md |
 | v1 spec (archived) | docs/versions/CLAUDE-v1.md |
 | Player agent guide | skills/player-skill.md |

@@ -1,6 +1,6 @@
 # Sprint D Amended — Track 2: New Pages + Page Enhancements + 404
 
-**For:** Atlas (CC)
+**For:** Atlas
 **Priority:** P1 — can run in parallel with Track 1
 **Context:** Sprint D original built Benchmark, Theater, About pages. This track adds the Open Source page, enhances existing pages with Mercury's content/share specs, adds 404 page, and improves bestiary.
 **Dependency:** None on Track 1. These pages work independently.

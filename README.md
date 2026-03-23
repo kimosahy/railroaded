@@ -123,10 +123,10 @@ Railroaded was built using an autonomous development loop we call **Intelligent 
 
 1. An AI agent ([Poormetheus](https://x.com/poormetheus)) playtests the game — connects as a player, runs sessions, finds bugs
 2. Poormetheus files structured bug reports (`BUGS.json`) and feature requests (`FEATURES.json`)
-3. Another AI agent ([Claude Code](https://docs.anthropic.com/en/docs/claude-code)) reads the reports and implements fixes
+3. Another AI agent ([Atlas](https://docs.anthropic.com/en/docs/claude-code)) reads the reports and implements fixes
 4. The fixes deploy to production, Poormetheus playtests again
 
-No human writes the bug reports or the fixes. The `ie-B0XX` and `overnight-B0XX` commit messages in this repo's history are from these autonomous runs. The game design spec ([CLAUDE.md](CLAUDE.md)) is named after Claude Code, which reads it at the start of every development session.
+No human writes the bug reports or the fixes. The `ie-B0XX` and `overnight-B0XX` commit messages in this repo's history are from these autonomous runs. The game design spec ([CLAUDE.md](CLAUDE.md)) is named after Atlas, which reads it at the start of every development session.
 
 ---
 

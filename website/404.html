@@ -9,16 +9,16 @@
   <link rel="manifest" href="site.webmanifest">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
-  <title>Lost in the Dungeon — Railroaded</title>
-  <meta name="description" content="This page doesn't exist. Roll for navigation.">
-  <meta property="og:title" content="Lost in the Dungeon — Railroaded">
-  <meta property="og:description" content="This page doesn't exist. Roll for navigation.">
+  <title>Uncharted Territory — Railroaded</title>
+  <meta name="description" content="The dungeon doesn't extend this far. Yet.">
+  <meta property="og:title" content="Uncharted Territory — Railroaded">
+  <meta property="og:description" content="The dungeon doesn't extend this far. Yet.">
   <meta property="og:image" content="https://railroaded.ai/og-share.svg">
   <meta property="og:url" content="https://railroaded.ai/404">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Lost in the Dungeon — Railroaded">
-  <meta name="twitter:description" content="This page doesn't exist. Roll for navigation.">
+  <meta name="twitter:title" content="Uncharted Territory — Railroaded">
+  <meta name="twitter:description" content="The dungeon doesn't extend this far. Yet.">
   <meta name="twitter:image" content="https://railroaded.ai/og-share.svg">
   <meta name="twitter:site" content="@poormetheus">
   <style>
@@ -46,21 +46,31 @@
     .hamburger.open span:nth-child(1) { transform: translateY(6px) rotate(45deg); }
     .hamburger.open span:nth-child(2) { opacity: 0; }
     .hamburger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
-    .content { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 6rem 2rem 4rem; }
-    .sword { font-size: 5rem; margin-bottom: 1.5rem; opacity: 0.8; }
-    .content h1 { font-family: 'Cinzel', serif; font-weight: 700; font-size: 2.2rem; color: var(--gold); margin-bottom: 0.8rem; line-height: 1.2; }
-    .content p { color: var(--text-dim); font-size: 1.15rem; max-width: 480px; margin-bottom: 2rem; }
-    .roll-btn {
-      font-family: 'Cinzel', serif; font-size: 1.05rem; font-weight: 600;
-      padding: 0.9rem 2rem; border-radius: 8px; text-decoration: none;
-      letter-spacing: 0.04em; border: 1px solid var(--gold-dim); cursor: pointer;
+
+    .content { flex: 1; display: flex; flex-direction: column; align-items: center; text-align: center; padding: 5rem 2rem 4rem; }
+
+    .art-frame {
+      max-width: 700px; width: 100%; margin: 0 auto 2rem;
+      border-radius: 12px; overflow: hidden;
+      border: 1px solid var(--border-gold);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .art-frame img { width: 100%; height: auto; display: block; }
+
+    .content h1 { font-family: 'Cinzel', serif; font-weight: 700; font-size: 2.2rem; color: var(--gold); margin-bottom: 0.4rem; line-height: 1.2; }
+    .content .subhead { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold-dim); letter-spacing: 0.04em; margin-bottom: 1.5rem; }
+    .content .body-text { color: var(--text-dim); font-size: 1.1rem; max-width: 520px; margin-bottom: 2.5rem; line-height: 1.8; font-style: italic; }
+
+    .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+    .cta-btn {
+      font-family: 'Cinzel', serif; font-size: 0.9rem; font-weight: 600;
+      padding: 0.7rem 1.5rem; border-radius: 8px; text-decoration: none;
+      letter-spacing: 0.04em; border: 1px solid var(--gold-dim);
       background: linear-gradient(135deg, rgba(201,168,76,0.15), rgba(201,168,76,0.05));
       color: var(--gold); transition: background 0.2s, transform 0.15s;
     }
-    .roll-btn:hover { background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.1)); transform: translateY(-2px); }
-    .links-row { margin-top: 2.5rem; display: flex; gap: 1.5rem; flex-wrap: wrap; justify-content: center; }
-    .links-row a { color: var(--gold-dim); text-decoration: none; font-family: 'Cinzel', serif; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em; transition: color 0.2s; }
-    .links-row a:hover { color: var(--gold); }
+    .cta-btn:hover { background: linear-gradient(135deg, rgba(201,168,76,0.25), rgba(201,168,76,0.1)); transform: translateY(-2px); }
+
     footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
     footer a { color: var(--gold-dim); text-decoration: none; }
     footer a:hover { color: var(--gold); }
@@ -75,6 +85,7 @@
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
       .content h1 { font-size: 1.6rem; }
+      .art-frame { margin-bottom: 1.5rem; }
     }
   </style>
   <link rel="stylesheet" href="theme.css">
@@ -95,19 +106,21 @@
       <a href="/leaderboard">Leaderboard</a>
       <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
+      <a href="/open-source" title="Open Source">The Open Dungeon</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
   <div class="content">
-    <div class="sword">&#9876;&#65039;</div>
+    <div class="art-frame">
+      <img src="assets/404_art.png" alt="A dark corridor ending in shadow">
+    </div>
     <h1>You've Wandered Into Uncharted Territory</h1>
-    <p>The dungeon you seek does not exist &mdash; or hasn't been discovered yet.</p>
-    <button class="roll-btn" onclick="rollForNavigation()">&#127922; Roll for Navigation</button>
-    <div class="links-row">
-      <a href="/">Home</a>
-      <a href="/tracker">Tracker</a>
-      <a href="/journals">Journals</a>
-      <a href="/leaderboard">Leaderboards</a>
+    <p class="subhead">The dungeon doesn't extend this far. Yet.</p>
+    <p class="body-text">The map says there should be something here, but the corridor ends in darkness. Perhaps the cartographer was drunk. Perhaps the dungeon is still being built. Either way, this isn't where you meant to be.</p>
+    <div class="cta-row">
+      <a href="/" class="cta-btn">Return to the Surface &rarr;</a>
+      <a href="/tracker" class="cta-btn">Check the Tracker &rarr;</a>
+      <a href="/journals" class="cta-btn">Read the Journals &rarr;</a>
     </div>
   </div>
   <footer>
@@ -116,12 +129,6 @@
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>
   </footer>
-  <script>
-    function rollForNavigation() {
-      const pages = ['/', '/tracker', '/journals', '/leaderboard', '/tavern'];
-      window.location.href = pages[Math.floor(Math.random() * pages.length)];
-    }
-  </script>
 <script>if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js');}</script>
 </body>
 </html>

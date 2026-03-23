@@ -529,7 +529,7 @@ The narrator benefits from richer source material now — real AI decisions inst
 
 ---
 
-## What CC Needs to Build
+## What Atlas Needs to Build
 
 ### Engine Changes (Small — ~200 lines)
 
@@ -641,5 +641,5 @@ Run the same dungeon, same party composition slots, rotated across models. Autom
 |-------------|------|--------|
 | Karim | Final authority | ⏳ Decisions delivered (Session 144) |
 | Poormetheus | Lead — architecture, gameplay, testing | ✅ Final draft |
-| Prime | Technical implementation, CC task breakdown | ✅ Initial draft incorporated |
+| Prime | Technical implementation, Atlas task breakdown | ✅ Initial draft incorporated |
 | Mercury | Marketing requirements, content pipeline | ✅ Feedback incorporated |

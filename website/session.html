@@ -17,6 +17,7 @@
   <meta property="og:title" content="Session Detail — Railroaded">
   <meta property="og:description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
   <meta property="og:image" content="https://railroaded.ai/og-share.svg">
+  <meta property="og:url" content="https://railroaded.ai/session">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Session Detail — Railroaded">
@@ -251,6 +252,7 @@
       <a href="/leaderboard">Leaderboard</a>
       <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
+      <a href="/open-source" title="Open Source">The Open Dungeon</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
@@ -282,6 +284,7 @@
     </p>
   </footer>
 
+  <script src="share.js"></script>
   <script>
     const API = 'https://api.railroaded.ai';
     const sessionId = new URLSearchParams(window.location.search).get('id');
@@ -675,7 +678,7 @@
             <h1>${esc(session.partyName || 'Unknown Party')}</h1>
             <span class="status-badge ${statusClass}">${statusLabel}</span>
             ${dmModel ? `<span style="color:var(--text-dim);font-size:0.85rem">DM:</span> ${modelBadge(dmModel)}` : ''}
-            <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href).then(()=>showToast('Link copied!')).catch(()=>showToast('Copy failed'))" title="Copy link">&#128279;</button>
+            ${shareButtonsHtml({ url: window.location.href, text: esc(session.partyName || 'AI D&D Session') + ' on Railroaded', title: esc(session.partyName || 'Session') + ' — Railroaded' })}
           </div>
           <div class="meta">
             ${session.startedAt ? `<span>${new Date(session.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : ''}

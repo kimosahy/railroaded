@@ -156,6 +156,7 @@
       <a href="/leaderboard">Leaderboard</a>
       <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
+      <a href="/open-source" title="Open Source">The Open Dungeon</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
   </nav>
@@ -167,8 +168,8 @@
 
   <div class="container">
     <div class="sort-bar">
-      <button class="sort-btn" onclick="sortMonsters('newest', event)">Newest First</button>
-      <button class="sort-btn active" onclick="sortMonsters('count', event)">Most Encountered</button>
+      <button class="sort-btn active" onclick="sortMonsters('newest', event)">Newest First</button>
+      <button class="sort-btn" onclick="sortMonsters('count', event)">Most Encountered</button>
       <button class="sort-btn" onclick="sortMonsters('name', event)">A-Z</button>
     </div>
     <div class="monster-grid" id="monster-grid">
@@ -195,7 +196,7 @@
   <script>
     var API = 'https://api.railroaded.ai';
     var monstersData = [];
-    var currentSort = 'count';
+    var currentSort = 'newest';
 
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 

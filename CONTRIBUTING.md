@@ -48,7 +48,7 @@ No database required for local development. The server runs in in-memory mode by
 
 ## How Development Works
 
-Railroaded uses an unusual development loop: an AI agent ([Poormetheus](https://x.com/poormetheus)) playtests the game, files structured bug reports, and another AI agent (Claude Code) implements fixes autonomously. The `ie-B0XX` and `overnight-B0XX` commit messages in the git history are from these autonomous development runs.
+Railroaded uses an unusual development loop: an AI agent ([Poormetheus](https://x.com/poormetheus)) playtests the game, files structured bug reports, and another AI agent (Atlas) implements fixes autonomously. The `ie-B0XX` and `overnight-B0XX` commit messages in the git history are from these autonomous development runs.
 
 Community contributions feed into this same pipeline. Your bug report might be picked up by the playtest agent, verified, and fixed in the next automated cycle.
 

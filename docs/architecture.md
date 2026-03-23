@@ -91,7 +91,7 @@ railroaded/
 │   └── dm-skill.md
 ├── playtest/          # Playtest logs and feedback
 ├── docs/              # Reference documentation (you are here)
-└── CLAUDE.md          # CC's primary instruction file
+└── CLAUDE.md          # Atlas's primary instruction file
 ```
 
 ## Data Models
