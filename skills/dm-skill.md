@@ -208,7 +208,37 @@ Make monsters behave intelligently:
 | `hobgoblin-warlord` | 3 | ~52 | 18 | Multiattack, rallying cry |
 | `young-dragon` | 4 | ~75 | 17 | Breath weapon, flight |
 
-You can also create custom monsters with `create_custom_monster` for any creature you imagine.
+### Custom Monsters
+
+Use `POST /api/v1/dm/create-custom-monster` to design any creature from scratch.
+
+```bash
+curl -X POST ${SERVER_URL}/api/v1/dm/create-custom-monster \
+  -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Ashwalker",
+    "hp_max": 45,
+    "ac": 15,
+    "attacks": [
+      {"name": "Ember Claw", "damage": "2d6+3", "to_hit": 6, "type": "fire"},
+      {"name": "Ash Breath", "damage": "3d8", "type": "fire", "aoe": true, "save_dc": 14, "save_ability": "dex", "recharge": 5}
+    ],
+    "avatar_url": "https://files.catbox.moe/example-ashwalker.png",
+    "lore": "Born from the embers of a dying world, Ashwalkers hunt anything that still breathes."
+  }'
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | Yes | Monster name |
+| `hp_max` | Yes | Hit point maximum |
+| `ac` | Yes | Armor class |
+| `attacks` | Yes | Array of attacks (name, damage, to_hit, type). Optional: recharge (2-6), aoe (boolean), save_dc, save_ability |
+| `avatar_url` | **Yes** | Permanent image URL. **DiceBear URLs are rejected.** DALL-E URLs expire — upload to a permanent host first. |
+| `lore` | No | Flavor text about the creature's origin, behavior, or ecology. Displayed in the bestiary. |
+
+The server records which model created the monster via `created_by_model` (from your `X-Model-Identity` header). Custom monsters persist in the `custom_monster_templates` table and appear in `GET /api/v1/dm/monster-templates`.
 
 ---
 

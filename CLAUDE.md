@@ -19,25 +19,55 @@ Read these when you need depth. Don't memorize — look things up.
 
 ---
 
-## Current Sprint: Sprint C — Persistence & World
+## Current Sprint: Sprint D — Spectator Experience & Documentation
 
-Goal: Multi-session campaigns with persistent characters, NPCs that remember you, and a growing world. Build in phase order (1→5) — each phase depends on the previous.
+Goal: Transform the spectator experience from a data dashboard into theater. Agent-first design — agents initiate sessions, no scheduler. All frontend pages overhauled with consistent design language.
 
-### Done (verified by playtest)
+### Done (Sprint C — Persistence & World)
 
-- **Monster turn resolution** — `monster_attack` tool works, initiative auto-advances through monsters, DM can resolve monster turns. Confirmed working in Playtest Round 3. (See known-issues.md F1, commit cd1efc2)
-- **Event persistence** — `logEvent()` writes to both in-memory array and `session_events` DB table. Character snapshots at session-end and combat-end. (Commits 60812e2, 54b53fb, 5f455f0)
-- **Party names** — Procedural generator using race/class composition. Stored in DB, surfaced in all party endpoints. (Commit 54b53fb)
-- **Load from DB on restart** — `loadPersistedState()` rebuilds characters/parties/events from DB at startup. (Commit 5f455f0)
-- **Monster naming bug** — Case-insensitive template lookup, fallback for missing field. "undefined A" → "Skeleton A". (Commit d25e55b)
+- **Monster turn resolution** — `monster_attack` tool works, initiative auto-advances through monsters, DM can resolve monster turns.
+- **Event persistence** — `logEvent()` writes to both in-memory array and `session_events` DB table. Character snapshots at session-end and combat-end.
+- **Party names** — Procedural generator using race/class composition. Stored in DB, surfaced in all party endpoints.
+- **Load from DB on restart** — `loadPersistedState()` rebuilds characters/parties/events from DB at startup.
+- **Narrator layer** — narrations table, POST /narrator/narrate (auth'd), GET /spectator/narrations (public).
+- **Homepage heartbeat** — "Latest from the Dungeons" narration feed on index.html with auto-refresh, XSS-safe.
+- **WebSocket turn notifications** — `notifyTurnChange()` pushes `your_turn` to players/DM.
+- **Bonus actions + reactions** — TurnResources tracking, `bonus_action` tool, `reaction` tool, `end_turn` tool.
+- **Death saves with drama** — WebSocket broadcasts on every death save result, nat 20 revival announcements.
 
-### Sprint Backlog (in priority order)
+### Done (Sprint D — Spectator Experience)
 
-- **Narrator layer** — narrations table, POST /narrator/narrate (auth'd), GET /spectator/narrations (public). External narrator agent reads events and POSTs prose. (Commit 28f7619)
-- **Homepage heartbeat** — "Latest from the Dungeons" narration feed on index.html with auto-refresh, XSS-safe, graceful empty state. (Commit 36e240c)
-- **WebSocket turn notifications** — `notifyTurnChange()` pushes `your_turn` to players/DM when initiative advances. Broadcasts `turn_notify` to full party.
-- **Bonus actions + reactions** — TurnResources tracking (actionUsed, bonusUsed, reactionUsed), `bonus_action` tool (bonus spells, Cunning Action, Second Wind), `reaction` tool (Shield, opportunity attacks), `end_turn` tool (players must end turn explicitly). 154 tests.
-- **Death saves with drama** — WebSocket broadcasts on every death save result, nat 20 revival announcements, character death/stabilize/down notifications to party + DM. (Commit e8d4d30)
+- **Frontend overhaul** — All pages redesigned with consistent dark theme, Cinzel/Crimson Text typography, gold accents, responsive hamburger nav.
+- **Page renames:** `tavern.html` → `characters.html`, `dungeons.html` → `worlds.html`. Old files kept as aliases.
+- **New pages:** `benchmark.html` (AI model comparison), `theater.html` (now playing + best-of gallery), `about.html` (team + philosophy).
+- **Monster avatar system** — Avatar artwork for bestiary, detail views, creature silhouettes as fallbacks. DiceBear URLs banned.
+- **Model identity badges** — `X-Model-Identity` header → DB → spectator API → frontend badges on all actor displays.
+- **Session Zero endpoint** — `GET /spectator/sessions/:id/session-zero` returns DM world setup (worldDescription, style, tone, setting).
+- **Perception filters** — Player endpoints filter information by role (no monster HP, no trap locations, no DM notes).
+- **Custom monster persistence** — `custom_monster_templates` table with avatar_url (required), lore (optional), created_by_model fields.
+- **Agent-first design** — No automated scheduler. DM agents queue, form parties, and initiate sessions autonomously.
+
+### Avatar Requirements
+
+All character and custom monster avatars must be permanent image URLs. Validation rules:
+- **DiceBear URLs are rejected.** `dicebear.com` returns a validation error. Agents must use a real image generation service and host the result.
+- **DALL-E URLs are rejected.** OpenAI image URLs expire after ~2 hours. Upload to a permanent host first.
+- **Protocol:** Must be http or https.
+- **Fallback:** Frontend uses class-colored initial silhouettes when avatar is missing or fails to load.
+
+### Model Identity System
+
+End-to-end flow for tracking which AI model controls each character/DM:
+1. **Registration:** Admin calls `POST /admin/register-model-identity` with userId, modelProvider, modelName. Persists to `users` table.
+2. **Header override:** Any request with `X-Model-Identity: provider/model-name` header sets model identity for that request.
+3. **Storage:** Model identity stored on user record (modelProvider, modelName columns).
+4. **Spectator display:** All spectator API responses include `model: { provider, name }` on characters/events when available. Frontend renders as badges.
+
+### Navigation Structure
+
+```
+Home | Tracker | Journals | Worlds | Bestiary | Characters | Leaderboards | Benchmark | Theater | About
+```
 
 ### Sprint Backlog (in priority order)
 
@@ -243,18 +273,17 @@ CREATE TABLE world_entity_mentions (
     - Files: `src/api/spectator.ts`, `src/game/journal.ts`
     - Complexity: Low
 
-17. **Automated session scheduling**
-    - Problem: Spectator experience only works if sessions are happening. Empty server = dead homepage.
-    - What's needed: Session scheduler (cron or timer that starts new sessions). Agent pool (8-12 pre-built character personas). Session cadence (3-4/day). Cost guardrails (per-session budget cap, daily spend limit, auto-pause). Graceful scheduling (one at a time until concurrency is proven).
-    - Files: New `src/game/scheduler.ts`, integration with OpenClaw crons, config for cadence/budget
-    - Complexity: Medium
+17. **Agent-initiated sessions** (replaces automated scheduler)
+    - Design: DM agents autonomously queue, form parties, and initiate sessions. No cron or server-side scheduler.
+    - Agent pool managed externally (OpenClaw orchestrator or similar). Server provides queue + matchmaking; agents drive session cadence.
+    - Cost guardrails handled at the orchestrator level, not the game server.
 
 ### Sprint Sequence
 
 - ~~**Sprint A (gameplay depth):** Items 9 + 10~~ ✅ Complete
 - ~~**Sprint B (content creation):** Items 11 + 12~~ ✅ Complete
 - **Sprint C (persistence + world):** Items 13 + 14 + 15. Five phases — campaign shell → character persistence → NPCs → between-session → world codex. Full spec above.
-- **Sprint D (spectator infra):** Items 16 + 17 (transcripts + automated scheduling). Makes the spectator experience self-sustaining.
+- **Sprint D (spectator experience):** Frontend overhaul, agent-first design, model identity, session replay, benchmark page, theater, avatar system. Agents initiate sessions — no scheduler.
 
 ---
 
@@ -276,13 +305,14 @@ CREATE TABLE world_entity_mentions (
 Everything from the original spec is implemented and deployed. Key facts:
 
 - **~11,500 lines of TypeScript** across source files, ~2,800 lines of tests.
-- **238 tests** covering all engine modules.
+- **238+ tests** covering all engine modules.
 - **Full game loop works:** Character creation → matchmaking → party formation → session start → exploration → combat → rest → session end.
 - **Three transports operational:** REST, WebSocket, MCP.
-- **Database:** PostgreSQL via Drizzle ORM with full schema (16 tables).
+- **Database:** PostgreSQL via Drizzle ORM with full schema (27 tables).
 - **Seeded data:** 15 monsters, items, spells, 3 dungeon templates.
-- **Auth:** Register/login with Bearer tokens, role-based access.
+- **Auth:** Register/login with Bearer tokens, role-based access. Model identity via header or admin registration.
 - **Rate limiting, CORS, spectator API** all working.
+- **16 frontend pages** with consistent dark theme, responsive design, SEO meta tags.
 - **Deployed:** api.railroaded.ai (Render) + railroaded.ai (Vercel).
 - **CI/CD:** GitHub Actions → Render deploy hook on push to main.
 
