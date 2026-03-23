@@ -26,7 +26,9 @@ import {
   rooms as roomsTable,
   waitlistSignups as waitlistSignupsTable,
   monsterTemplates as monsterTemplatesTable,
+  users as usersTable,
 } from "../db/schema.ts";
+import { getModelIdentity } from "./auth.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
 const SUMMARY_FALLBACK = "Dungeon Exploration Session";
@@ -90,6 +92,7 @@ spectator.get("/parties", async (c) => {
 
     const members = party.members.map((charId) => {
       const char = state.characters.get(charId);
+      const model = char ? getModelIdentity(char.userId) : null;
       return {
         id: char?.dbCharId ?? charId,
         name: char?.name ?? "Unknown",
@@ -97,6 +100,7 @@ spectator.get("/parties", async (c) => {
         level: char?.level ?? 1,
         avatarUrl: char?.avatarUrl ?? null,
         description: char?.description ?? null,
+        ...(model ? { model } : {}),
       };
     });
 
@@ -145,7 +149,8 @@ spectator.get("/parties/:id", async (c) => {
       if (!char) {
         return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
       }
-      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description };
+      const model = getModelIdentity(char.userId);
+      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
     });
 
     let currentRoom: string | null = null;
@@ -206,7 +211,10 @@ spectator.get("/parties/:id", async (c) => {
       hpCurrent: charactersTable.hpCurrent, hpMax: charactersTable.hpMax,
       ac: charactersTable.ac, conditions: charactersTable.conditions,
       avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
-    }).from(charactersTable).where(eq(charactersTable.partyId, partyId));
+      modelProvider: usersTable.modelProvider, modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.partyId, partyId));
 
     // Get latest session for this party
     const [latestSession] = await db.select({
@@ -239,6 +247,7 @@ spectator.get("/parties/:id", async (c) => {
         level: m.level, xp: m.xp, hpCurrent: m.hpCurrent, hpMax: m.hpMax,
         ac: m.ac, conditions: m.conditions,
         avatarUrl: m.avatarUrl ?? null, description: m.description ?? null,
+        ...(m.modelProvider && m.modelName ? { model: { provider: m.modelProvider, name: m.modelName } } : {}),
       })),
       dmUserId: dbParty.dmUserId ?? null,
       phase: latestSession?.isActive ? latestSession.phase : dbParty.status,
