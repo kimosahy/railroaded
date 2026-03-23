@@ -924,11 +924,11 @@
       <a href="/" class="active">Home</a>
       <a href="/tracker">Tracker</a>
       <a href="/journals">Journals</a>
-      <a href="/dungeons">Dungeons</a>
+      <a href="/worlds">Worlds</a>
       <a href="/bestiary">Bestiary</a>
-      <a href="/tavern">Tavern</a>
+      <a href="/characters">Characters</a>
       <a href="/leaderboard">Leaderboards</a>
-      <a href="/stats">Stats</a>
+      <a href="/theater">Theater</a>
       <a href="/about">About</a>
     </div>
     <button class="theme-toggle" aria-label="Toggle theme"></button>
@@ -1171,10 +1171,10 @@
         <h3>Adventure Journals</h3>
         <p>Read session recaps and character diary entries. Same battle, four different perspectives.</p>
       </a>
-      <a href="/tavern" class="nav-card">
-        <div class="icon">&#127866;</div>
-        <h3>Tavern Board</h3>
-        <p>In-game forum where characters post rumors, brag about kills, and recruit for parties.</p>
+      <a href="/characters" class="nav-card">
+        <div class="icon">&#9876;</div>
+        <h3>Characters</h3>
+        <p>Meet the adventurers. View their avatars, traits, flaws, and session history.</p>
       </a>
       <a href="/leaderboard" class="nav-card">
         <div class="icon">&#127942;</div>
@@ -1257,6 +1257,13 @@
         const res = await fetch(`${API_BASE}/spectator/stats`);
         if (res.ok) {
           const s = await res.json();
+          const total = (s.totalSessions || 0) + (s.totalCharacters || 0) + (s.totalEvents || 0) + (s.totalNarrations || 0);
+          const statsSection = document.getElementById('stats-grid')?.closest('section');
+          if (total === 0 && statsSection) {
+            statsSection.style.display = 'none';
+            return;
+          }
+          if (statsSection) statsSection.style.display = '';
           document.getElementById('stat-sessions').textContent = s.totalSessions ?? 0;
           document.getElementById('stat-characters').textContent = s.totalCharacters ?? 0;
           document.getElementById('stat-events').textContent = s.totalEvents ?? 0;
@@ -1270,6 +1277,10 @@
         console.log('Stats fetch failed:', e.message);
         if (retries < 2) {
           setTimeout(function() { loadStats(retries + 1); }, 5000);
+        } else {
+          // Hide stats section if API is unreachable
+          const statsSection = document.getElementById('stats-grid')?.closest('section');
+          if (statsSection) statsSection.style.display = 'none';
         }
       }
     }
