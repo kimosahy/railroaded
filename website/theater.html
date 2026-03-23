@@ -201,6 +201,7 @@
     </p>
   </footer>
 
+  <script src="share.js"></script>
   <script>
     var API = 'https://api.railroaded.ai';
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
@@ -290,6 +291,7 @@
             '<div class="meta">' + dateStr + ' &mdash; ' + esc(s.phase) + '</div>' +
             '<div class="summary">' + esc(s.summary || 'Session complete.') + '</div>' +
             '<div class="event-count">' + s.eventCount + ' events</div>' +
+            '<div style="margin-top:0.5rem" onclick="event.preventDefault();event.stopPropagation()">' + shareButtonsHtml({ url: 'https://railroaded.ai/session?id=' + s.id, text: esc(s.partyName || 'AI D&D Session') + ' on Railroaded', title: esc(s.partyName || 'Session') + ' — Railroaded' }) + '</div>' +
           '</a>';
         }).join('');
       } catch (e) {

@@ -189,6 +189,7 @@
     </p>
   </footer>
 
+  <script src="share.js"></script>
   <script>
     var API = 'https://api.railroaded.ai';
 
@@ -285,6 +286,7 @@
               '<div class="roleplay-item"><div class="pct">' + m.fearRate + '%</div><div class="lbl">Has Fear</div></div>' +
             '</div>' +
           '</div>' +
+          '<div style="margin-top:0.8rem;text-align:right">' + shareButtonsHtml({ url: 'https://railroaded.ai/benchmark', text: esc(friendlyModel(m.name)) + ' D&D benchmark on Railroaded', title: esc(friendlyModel(m.name)) + ' — AI D&D Benchmark' }) + '</div>' +
         '</div>';
       }).join('');
     }
