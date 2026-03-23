@@ -1,6 +1,6 @@
-# Railroaded — CC Working Patterns
+# Railroaded — Atlas Working Patterns
 
-How Claude Code should work on this project. Updated as we learn what works.
+How Atlas should work on this project. Updated as we learn what works.
 Last updated: v1 build (Feb 2026).
 
 ---

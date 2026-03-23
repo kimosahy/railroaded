@@ -1,6 +1,6 @@
 # Sprint D Amended — Track 1: P0 Bug Fixes + Homepage Enhancements
 
-**For:** Atlas (CC)
+**For:** Atlas
 **Priority:** P0 — blocks all traffic and marketing launch
 **Context:** Sprint D original shipped 15 commits. Live site audit found 3 new bugs + missing content. This track fixes them.
 
