@@ -192,12 +192,19 @@
 
     // Character name → avatar URL lookup (populated from party/leaderboard data)
     const charAvatarMap = new Map();
+    const charModelMap = new Map();
     function updateAvatarMap(members) {
       for (const m of members || []) {
         if (m.name && m.avatarUrl) charAvatarMap.set(m.name, m.avatarUrl);
+        if (m.name && m.model && m.model.name) charModelMap.set(m.name, m.model.name);
       }
     }
     function charAvatar(name) { return charAvatarMap.get(name) || null; }
+    function modelBadge(name) {
+      const model = charModelMap.get(name);
+      if (!model) return '';
+      return ` <span style="font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(model)}</span>`;
+    }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
       size = size || 36;
@@ -277,7 +284,7 @@
       return `<div class="ev ev-chat">
         <div class="avatar"${missingAttr} style="background:${avatarBg};overflow:hidden">${avatarContent}</div>
         <div class="bubble">
-          <div class="speaker" style="color:${col}">${esc(name)}</div>
+          <div class="speaker" style="color:${col}">${esc(name)}${modelBadge(name)}</div>
           <div class="msg">${esc(d.message || '')}</div>
           <div class="ts">${ts}</div>
         </div>
