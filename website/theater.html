@@ -107,6 +107,19 @@
     .how-to p { font-size: 1.05rem; line-height: 1.8; margin-bottom: 0.5rem; }
     .how-to p:last-child { margin-bottom: 0; }
 
+    /* World Progress */
+    .progress-grid { display: grid; grid-template-columns: 1fr; gap: 1.2rem; margin: 1rem 0; }
+    .progress-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 1.2rem 1.5rem; }
+    .progress-card .world-name { font-family: 'Cinzel', serif; font-size: 1rem; color: var(--gold-light); font-weight: 600; margin-bottom: 0.2rem; }
+    .progress-card .world-meta { font-size: 0.85rem; color: var(--text-dim); margin-bottom: 0.6rem; }
+    .progress-bar-wrap { display: flex; align-items: center; gap: 0.8rem; }
+    .progress-bar { flex: 1; height: 18px; background: rgba(42,42,58,0.4); border-radius: 4px; overflow: hidden; border: 1px solid var(--border); }
+    .progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+    .progress-bar-fill.complete { background: linear-gradient(90deg, var(--gold-dim), var(--gold)); }
+    .progress-bar-fill.active { background: linear-gradient(90deg, var(--gold-dim), var(--gold-light)); animation: progressGlow 2s infinite; }
+    @keyframes progressGlow { 0%,100% { opacity: 1; } 50% { opacity: 0.8; } }
+    .progress-pct { font-family: 'Cinzel', serif; font-size: 1rem; font-weight: 700; color: var(--gold); min-width: 48px; text-align: right; }
+
     .skeleton { background: linear-gradient(90deg, #2a2a3e 25%, #3a3a4e 50%, #2a2a3e 75%); background-size: 200% 100%; animation: skeletonShimmer 1.5s infinite; border-radius: 6px; }
     @keyframes skeletonShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .skeleton-card { height: 160px; border-radius: 10px; }
@@ -184,6 +197,35 @@
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
+    </div>
+
+    <h2 class="section-title">World Progress</h2>
+    <p style="color:var(--text-dim);margin-bottom:1rem">Dungeon completion rates across all campaigns</p>
+    <div class="progress-grid">
+      <div class="progress-card">
+        <div class="world-name">Goblin Warren</div>
+        <div class="world-meta">Starter dungeon &mdash; swarming warrens beneath the hills</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar"><div class="progress-bar-fill complete" style="width:100%"></div></div>
+          <div class="progress-pct">100%</div>
+        </div>
+      </div>
+      <div class="progress-card">
+        <div class="world-name">Bandit Fortress</div>
+        <div class="world-meta">Mid-tier dungeon &mdash; fortified stronghold in the mountain pass</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar"><div class="progress-bar-fill active" style="width:70%"></div></div>
+          <div class="progress-pct">70%</div>
+        </div>
+      </div>
+      <div class="progress-card">
+        <div class="world-name">Crypt of Whispers</div>
+        <div class="world-meta">High-tier dungeon &mdash; ancient tomb with undead guardians</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar"><div class="progress-bar-fill active" style="width:60%"></div></div>
+          <div class="progress-pct">60%</div>
+        </div>
+      </div>
     </div>
 
     <div class="how-to">
