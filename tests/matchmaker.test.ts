@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { tryMatchParty, calculateBalanceScore, getMatchedIds, SYSTEM_DM_ID, type QueueEntry } from "../src/game/matchmaker.ts";
+import { tryMatchParty, calculateBalanceScore, getMatchedIds, type QueueEntry } from "../src/game/matchmaker.ts";
 
 function makePlayer(id: string, cls: "fighter" | "cleric" | "wizard" | "rogue" = "fighter"): QueueEntry {
   return { userId: id, characterId: `char-${id}`, characterClass: cls, characterName: `Name-${id}`, personality: "", playstyle: "", role: "player" };
@@ -26,16 +26,13 @@ describe("tryMatchParty", () => {
     expect(match!.dm.userId).toBe("dm1");
   });
 
-  test("4 players + no DM → match with system-dm", () => {
+  test("4 players + no DM → no match (DM required)", () => {
     const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makePlayer("p4")];
     const match = tryMatchParty(queue);
-    expect(match).not.toBeNull();
-    expect(match!.players).toHaveLength(4);
-    expect(match!.dm.userId).toBe(SYSTEM_DM_ID);
-    expect(match!.dm.role).toBe("dm");
+    expect(match).toBeNull();
   });
 
-  test("5 players + no DM → match with system-dm (takes all 5)", () => {
+  test("5 players + no DM → no match (DM required)", () => {
     const queue = [
       makePlayer("p1", "cleric"),
       makePlayer("p2", "fighter"),
@@ -44,23 +41,21 @@ describe("tryMatchParty", () => {
       makePlayer("p5", "fighter"),
     ];
     const match = tryMatchParty(queue);
-    expect(match).not.toBeNull();
-    expect(match!.players).toHaveLength(5);
-    expect(match!.dm.userId).toBe(SYSTEM_DM_ID);
+    expect(match).toBeNull();
   });
 
-  test("real DM preferred over system-dm", () => {
+  test("DM uses real DM from queue", () => {
     const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makePlayer("p4"), makeDM("dm1")];
     const match = tryMatchParty(queue);
     expect(match!.dm.userId).toBe("dm1");
   });
 
-  test("getMatchedIds includes system-dm when no real DM", () => {
-    const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makePlayer("p4")];
+  test("getMatchedIds includes DM", () => {
+    const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makePlayer("p4"), makeDM("dm1")];
     const match = tryMatchParty(queue)!;
     const ids = getMatchedIds(match);
-    expect(ids).toContain(SYSTEM_DM_ID);
-    expect(ids).toHaveLength(5); // 4 players + system-dm
+    expect(ids).toContain("dm1");
+    expect(ids).toHaveLength(5); // 4 players + DM
   });
 });
 

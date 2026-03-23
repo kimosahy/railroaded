@@ -38,40 +38,23 @@ export const SYSTEM_DM_ID = "system-dm";
  * Attempt to form a party from the queue.
  * Returns a MatchResult if a valid party can be formed, null otherwise.
  * Requires at least 1 DM + 2 players. Takes up to 20 players.
- * If enough players are queued but no DM is available, forms the party
- * with a synthetic system-dm placeholder so players aren't blocked.
+ * A real DM is always required — no system-dm fallback.
  */
 export function tryMatchParty(queue: QueueEntry[]): MatchResult | null {
   const players = queue.filter((e) => e.role === "player");
   const dms = queue.filter((e) => e.role === "dm");
 
-  // With a real DM: form with 2+ players (new flexible minimum)
-  // Without a real DM: require 4+ players (legacy system-dm behavior)
-  const minPlayers = dms.length > 0 ? PARTY_SIZE_MIN : 4;
-  if (players.length < minPlayers) {
-    return null;
-  }
+  // A real DM is required to form a party
+  if (dms.length === 0) return null;
+  if (players.length < PARTY_SIZE_MIN) return null;
 
   // Find the best party composition (take up to PARTY_SIZE_MAX)
   const bestParty = findBestParty(players);
   if (!bestParty) return null;
 
-  // Pick the first available DM, or use a synthetic placeholder
-  const dm: QueueEntry = dms.length > 0
-    ? dms[0]!
-    : {
-        userId: SYSTEM_DM_ID,
-        characterId: "",
-        characterClass: "fighter",
-        characterName: "DM",
-        personality: "",
-        playstyle: "",
-        role: "dm",
-      };
-
   return {
     players: bestParty.members,
-    dm,
+    dm: dms[0]!,
     balanceScore: bestParty.score,
   };
 }
