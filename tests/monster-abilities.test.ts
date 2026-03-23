@@ -49,7 +49,7 @@ describe("monster abilities — recharge, AoE, saves", () => {
 
   test("create_custom_monster accepts recharge attack fields", () => {
     const result = handleCreateCustomMonster(dmId, {
-      name: "Young Dragon",
+      name: "Young Fire Dragon",
       hp_max: 80,
       ac: 17,
       attacks: [
@@ -109,12 +109,12 @@ describe("monster abilities — recharge, AoE, saves", () => {
 
   test("spawn dragon and enter combat", () => {
     const result = handleSpawnEncounter(dmId, {
-      monsters: [{ template_name: "Young Dragon", count: 1 }],
+      monsters: [{ template_name: "Young Fire Dragon", count: 1 }],
     });
     expect(result.success).toBe(true);
     const monsters = result.data!.monsters as { name: string; id: string }[];
     expect(monsters.length).toBe(1);
-    expect(monsters[0].name).toBe("Young Dragon");
+    expect(monsters[0].name).toBe("Young Fire Dragon");
   });
 
   test("monster_attack with AoE save-based attack hits all players", () => {
