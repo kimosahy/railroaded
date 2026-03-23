@@ -1,3 +1,8 @@
 {
-  "cleanUrls": true
+  "cleanUrls": true,
+  "redirects": [
+    { "source": "/tavern", "destination": "/characters", "permanent": true },
+    { "source": "/dungeons", "destination": "/worlds", "permanent": true },
+    { "source": "/stats", "destination": "/", "permanent": true }
+  ]
 }
