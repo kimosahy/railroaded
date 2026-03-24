@@ -204,7 +204,10 @@
     function modelBadge(name) {
       const model = charModelMap.get(name);
       if (!model) return '';
-      return ` <span style="font-size:0.65rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(model)}</span>`;
+      var colors = { 'claude':'#b388ff', 'gemini':'#4fc3f7', 'gpt':'#66bb6a', 'llama':'#ff8a65', 'deepseek':'#26a69a', 'o3':'#66bb6a', 'mistral':'#ef5350' };
+      var lower = model.toLowerCase(), color = '#8a8780';
+      for (var key in colors) { if (lower.includes(key)) { color = colors[key]; break; } }
+      return ` <span style="background:${color}22;color:${color};border:1px solid ${color}44;padding:0.1rem 0.4rem;border-radius:10px;font-size:0.65rem;font-family:sans-serif;white-space:nowrap;vertical-align:middle">${esc(model)}</span>`;
     }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
@@ -580,9 +583,21 @@
       if (sorted.indexOf(current) !== -1) select.value = current;
     }
 
-    // Seed avatar map from all known parties
+    // Seed avatar map from all known characters
     let journalSessions = []; // cache for partyId lookups
     async function seedAvatarMap() {
+      try {
+        var idRes = await fetch(`${API}/spectator/character-identities`);
+        if (idRes.ok) {
+          var idData = await idRes.json();
+          for (var ch of (idData.identities || [])) {
+            if (ch.name && ch.avatarUrl && !ch.avatarUrl.includes('dicebear.com')) charAvatarMap.set(ch.name, ch.avatarUrl);
+            if (ch.name && ch.model && ch.model.name) charModelMap.set(ch.name, ch.model.name);
+          }
+          return;
+        }
+      } catch (_) {}
+      // Fallback to parties
       try {
         const res = await fetch(`${API}/spectator/parties`);
         if (!res.ok) return;

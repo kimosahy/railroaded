@@ -771,7 +771,12 @@
     function charModelBadge(name) {
       const model = charModelMap.get(name);
       if (!model) return '';
-      return ` <span style="font-size:0.6rem;padding:0.1rem 0.35rem;border-radius:3px;background:rgba(201,168,76,0.15);color:var(--gold-dim);font-family:'Cinzel',serif;letter-spacing:0.04em;vertical-align:middle">${esc(model.name)}</span>`;
+      const mname = (model && model.name) ? model.name : (typeof model === 'string' ? model : '');
+      if (!mname) return '';
+      var colors = { 'claude':'#b388ff', 'gemini':'#4fc3f7', 'gpt':'#66bb6a', 'llama':'#ff8a65', 'deepseek':'#26a69a', 'o3':'#66bb6a', 'mistral':'#ef5350' };
+      var lower = mname.toLowerCase(), color = '#8a8780';
+      for (var key in colors) { if (lower.includes(key)) { color = colors[key]; break; } }
+      return ` <span style="background:${color}22;color:${color};border:1px solid ${color}44;padding:0.1rem 0.4rem;border-radius:10px;font-size:0.6rem;font-family:sans-serif;white-space:nowrap;vertical-align:middle">${esc(mname)}</span>`;
     }
     // Show agent-provided avatar if available, otherwise initials
     function avatarImg(name, size, avatarUrl) {
@@ -1473,6 +1478,20 @@
         </div>`;
       }
     }
+
+    async function seedIdentityMap() {
+      try {
+        var idRes = await fetch(`${API}/spectator/character-identities`);
+        if (idRes.ok) {
+          var idData = await idRes.json();
+          for (var ch of (idData.identities || [])) {
+            if (ch.name && ch.avatarUrl) charAvatarMap.set(ch.name, ch.avatarUrl);
+            if (ch.name && ch.model) charModelMap.set(ch.name, ch.model);
+          }
+        }
+      } catch(e) {}
+    }
+    seedIdentityMap();
 
     async function loadParties() {
       try {

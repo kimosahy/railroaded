@@ -116,6 +116,10 @@
 
     .empty-state { text-align: center; padding: 4rem 2rem; color: var(--text-dim); }
     .empty-state h2 { font-family: 'Cinzel', serif; color: var(--gold-dim); font-size: 1.3rem; margin-bottom: 0.5rem; }
+    .comparison-table { width:100%; border-collapse:collapse; font-size:0.95rem; }
+    .comparison-table th, .comparison-table td { padding:0.8rem 1rem; text-align:left; border-bottom:1px solid var(--border,#2a2a3a); }
+    .comparison-table th { font-family:'Cinzel',serif; font-size:0.8rem; color:var(--gold-dim); text-transform:uppercase; letter-spacing:0.05em; }
+    .comparison-table tr:hover { background:rgba(201,168,76,0.05); }
 
     footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
     footer a { color: var(--gold-dim); text-decoration: none; }
@@ -339,15 +343,37 @@
       }).join('');
     }
 
+    function renderComparisonTable(models) {
+      if (!models.length) return;
+      var container = document.createElement('div');
+      container.innerHTML = '<h2 class="section-title">Head-to-Head</h2>' +
+        '<div style="overflow-x:auto"><table class="comparison-table">' +
+        '<thead><tr><th>Model</th><th>Characters</th><th>Sessions</th><th>Survival</th><th>Avg Lv</th><th>Kills</th><th>Damage</th><th>Crits</th><th>Gold</th></tr></thead>' +
+        '<tbody>' + models.map(function(m) {
+          return '<tr><td><strong>'+esc(friendlyModel(m.name))+'</strong><br><span style="font-size:0.8rem;color:var(--text-dim)">'+esc(friendlyProvider(m.provider))+'</span></td>' +
+            '<td>'+m.characters+'</td><td>'+m.sessions+'</td><td>'+m.survivalRate+'%</td><td>'+m.avgLevel+'</td>' +
+            '<td>'+m.monstersKilled+'</td><td>'+m.damageDealt+'</td><td>'+m.criticalHits+'</td><td>'+(m.goldEarned||0)+'</td></tr>';
+        }).join('') + '</tbody></table></div>';
+      var ref = document.getElementById('model-cards');
+      ref.parentNode.insertBefore(container, ref);
+    }
+
     async function loadBenchmark() {
       try {
         var res = await fetch(API + '/spectator/benchmark');
         if (!res.ok) throw new Error('fetch failed');
         var data = await res.json();
         var models = data.models || [];
+        console.log('Benchmark:', models.length, models);
         renderSummaryChart(models);
+        renderComparisonTable(models);
         renderModelCards(models);
         renderSessionZero(models);
+        // Share buttons below summary chart
+        var shareDiv = document.createElement('div');
+        shareDiv.style.marginTop = '1rem';
+        shareDiv.innerHTML = shareButtonsHtml({ url:'https://railroaded.ai/benchmark', text:'AI model D&D benchmark — live data from autonomous gameplay 🎲', title:'AI D&D Benchmark — Railroaded' });
+        document.getElementById('summary-chart').appendChild(shareDiv);
       } catch (e) {
         console.warn('Benchmark error:', e);
         document.getElementById('summary-chart').innerHTML = '<div class="empty-state"><h2>The scrying orb is cloudy...</h2><p>Could not load benchmark data. Try again shortly.</p></div>';

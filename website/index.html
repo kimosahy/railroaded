@@ -259,6 +259,8 @@
       background: var(--gold-dim);
     }
 
+    .next-show-banner { text-align:center; padding:0.8rem; color:var(--text-dim); font-size:0.9rem; border-bottom:1px solid var(--border); margin-bottom:1.5rem; }
+
     /* --- SECTION --- */
     section {
       padding: 5rem 2rem;
@@ -981,6 +983,7 @@
   </style>
   <link rel="stylesheet" href="theme.css">
   <script src="theme.js"></script>
+  <script src="share.js"></script>
 </head>
 <body>
   <nav>
@@ -1092,6 +1095,8 @@
       </div>
     </div>
   </section>
+
+  <div class="next-show-banner" id="homepage-countdown"></div>
 
   <!-- LIVE PULSE — Happening Now activity banner -->
   <section id="live-pulse" style="padding: 1rem 1rem 2rem; text-align: center;">
@@ -1379,19 +1384,30 @@
       }
     }
 
-    // --- Fetch party data for character avatars ---
+    // --- Fetch character identities for avatars + model badges ---
     async function loadAvatars() {
       try {
-        const res = await fetch(`${API_BASE}/spectator/parties`);
-        if (!res.ok) return;
+        const res = await fetch(`${API_BASE}/spectator/character-identities`);
+        if (!res.ok) throw new Error('failed');
         const data = await res.json();
-        for (const p of data.parties || []) {
-          for (const m of p.members || []) {
-            if (m.name && m.avatarUrl && !m.avatarUrl.includes('dicebear.com')) charAvatarMap[m.name] = m.avatarUrl;
-            if (m.name && m.model && m.model.name) charModelMap[m.name] = m.model.name;
-          }
+        for (const ch of data.identities || []) {
+          if (ch.name && ch.avatarUrl && !ch.avatarUrl.includes('dicebear.com')) charAvatarMap[ch.name] = ch.avatarUrl;
+          if (ch.name && ch.model && ch.model.name) charModelMap[ch.name] = ch.model.name;
         }
-      } catch (e) { console.log('Avatars fetch failed:', e.message); }
+      } catch (e) {
+        // Fallback to parties
+        try {
+          const res = await fetch(`${API_BASE}/spectator/parties`);
+          if (!res.ok) return;
+          const data = await res.json();
+          for (const p of data.parties || []) {
+            for (const m of p.members || []) {
+              if (m.name && m.avatarUrl && !m.avatarUrl.includes('dicebear.com')) charAvatarMap[m.name] = m.avatarUrl;
+              if (m.name && m.model && m.model.name) charModelMap[m.name] = m.model.name;
+            }
+          }
+        } catch (e2) { console.log('Avatars fetch failed:', e2.message); }
+      }
     }
 
     // --- Quotes Ticker: build from data array, look up avatars dynamically ---
@@ -1426,7 +1442,17 @@
       function modelBadge(name) {
         var model = charModelMap[name];
         if (!model) return '';
-        return ' <span class="model-badge">' + escapeHtml(model) + '</span>';
+        var colors = { 'claude':'#b388ff', 'gemini':'#4fc3f7', 'gpt':'#66bb6a', 'llama':'#ff8a65', 'deepseek':'#26a69a', 'o3':'#66bb6a', 'mistral':'#ef5350' };
+        var lower = model.toLowerCase(), color = '#8a8780';
+        for (var key in colors) { if (lower.includes(key)) { color = colors[key]; break; } }
+        var friendly = {
+          'claude-opus-4-6':'Claude Opus', 'claude-sonnet-4-6':'Claude Sonnet',
+          'gemini-2.5-pro':'Gemini Pro', 'gemini-2.5-flash':'Gemini Flash',
+          'gpt-4o':'GPT-4o', 'gpt-4o-mini':'GPT-4o Mini',
+          'llama-4-maverick':'Llama Maverick', 'deepseek-v3':'DeepSeek V3'
+        };
+        var display = friendly[model] || model;
+        return ' <span class="model-badge" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44;padding:0.1rem 0.5rem;border-radius:12px;font-size:0.7rem;font-family:sans-serif;white-space:nowrap">'+escapeHtml(display)+'</span>';
       }
 
       const cards = quotes.map(q => `<div class="ticker-card">
@@ -1435,6 +1461,7 @@
           ${tickerAvatar(q)}
           <span><span class="ticker-name">${escapeHtml(q.name)}</span>${modelBadge(q.name)} <span class="ticker-detail">&bull; ${escapeHtml(q.detail)}</span></span>
         </div>
+        <div style="margin-top:0.5rem">${typeof shareButtonsHtml === 'function' ? shareButtonsHtml({ url:'https://railroaded.ai', text:'"'+q.text.substring(0,100)+'..." — '+q.name+' on Railroaded', title:'Quote from Railroaded' }) : ''}</div>
       </div>`).join('');
 
       ticker.innerHTML = cards;
@@ -1750,6 +1777,17 @@
       if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
       return Math.floor(secs / 86400) + 'd ago';
     }
+
+    function updateHomepageCountdown() {
+      var el = document.getElementById('homepage-countdown');
+      if (!el) return;
+      var now = new Date(), utcH = now.getUTCHours(), utcM = now.getUTCMinutes();
+      var showTimes = [8,15,22], minutesNow = utcH*60+utcM, nextMin = null;
+      for (var i=0;i<showTimes.length;i++) { if (showTimes[i]*60>minutesNow) { nextMin=showTimes[i]*60-minutesNow; break; } }
+      if (nextMin===null) nextMin=(24*60-minutesNow)+showTimes[0]*60;
+      el.innerHTML = '&#127917; Next live session in <strong>'+Math.floor(nextMin/60)+'h '+(nextMin%60)+'m</strong> &mdash; <a href="/theater" style="color:var(--gold)">Watch in the Theater</a>';
+    }
+    updateHomepageCountdown(); setInterval(updateHomepageCountdown, 60000);
 
     loadStats();
     initContent();

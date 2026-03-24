@@ -128,6 +128,19 @@
     .skeleton-card { height: 160px; border-radius: 10px; }
     .empty-state { text-align: center; padding: 3rem; color: var(--text-dim); }
 
+    /* Featured Production */
+    .featured-card {
+      background: var(--bg-card); border: 2px solid var(--gold-dim); border-radius: 12px;
+      padding: 2rem; margin: 2rem 0 1rem; transition: border-color 0.2s, transform 0.15s;
+    }
+    .featured-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+    .featured-label { font-family: 'Cinzel', serif; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--gold-dim); margin-bottom: 0.5rem; }
+    .featured-card h2 { font-family: 'Cinzel', serif; font-size: 1.6rem; color: var(--gold-light); margin-bottom: 0.3rem; }
+    .featured-card .meta { font-size: 0.9rem; color: var(--text-dim); margin-bottom: 0.8rem; }
+    .featured-card .summary { font-size: 1.05rem; color: var(--text); line-height: 1.7; margin-bottom: 1rem; }
+    .featured-cta { display: inline-block; font-family: 'Cinzel', serif; font-size: 0.85rem; color: var(--gold); text-decoration: none; border: 1px solid var(--gold-dim); padding: 0.5rem 1.2rem; border-radius: 6px; transition: background 0.2s; }
+    .featured-cta:hover { background: rgba(201,168,76,0.1); }
+
     footer { border-top: 1px solid var(--border); padding: 2.5rem 2rem; text-align: center; color: var(--text-dim); font-size: 0.9rem; }
     footer a { color: var(--gold-dim); text-decoration: none; }
     footer a:hover { color: var(--gold); }
@@ -171,9 +184,7 @@
   </nav>
 
   <div class="container">
-    <div id="now-playing" class="now-playing">
-      <div class="skeleton skeleton-card"></div>
-    </div>
+    <div id="featured-session"></div>
 
     <h2 class="section-title">Show Schedule</h2>
     <p style="color:var(--text-dim);margin-bottom:0.5rem">Automated sessions run three times daily</p>
@@ -192,6 +203,10 @@
       </div>
     </div>
     <div id="countdown" class="countdown"></div>
+
+    <div id="now-playing" class="now-playing" style="margin-top:2rem">
+      <div class="skeleton skeleton-card"></div>
+    </div>
 
     <h2 class="section-title">Best Of</h2>
     <p style="color:var(--text-dim);margin-bottom:1rem">The most dramatic sessions, ranked by event density</p>
@@ -282,8 +297,16 @@
         var parties = (data.parties || []).filter(function(p) { return p.isActive; });
 
         if (parties.length === 0) {
+          var now2 = new Date(), utcH2 = now2.getUTCHours(), utcM2 = now2.getUTCMinutes();
+          var minutesNow2 = utcH2*60+utcM2, showTimes2 = [8,15,22], nextMin2 = null;
+          for (var i2=0;i2<showTimes2.length;i2++) { if (showTimes2[i2]*60>minutesNow2) { nextMin2=showTimes2[i2]*60-minutesNow2; break; } }
+          if (nextMin2===null) nextMin2=(24*60-minutesNow2)+showTimes2[0]*60;
+          var h2=Math.floor(nextMin2/60), m2=nextMin2%60;
           el.className = 'now-playing';
-          el.innerHTML = '<div class="no-show"><h3>No show running right now</h3><p>Check the schedule below or browse past sessions.</p></div>';
+          el.innerHTML = '<div style="display:flex;align-items:center;gap:0.8rem;padding:0.8rem 1.2rem;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">' +
+            '<span style="color:var(--text-dim);font-size:0.9rem">No live session right now</span>' +
+            '<span style="color:var(--gold-dim)">·</span>' +
+            '<span style="color:var(--gold);font-size:0.9rem">Next show in '+h2+'h '+m2+'m</span></div>';
           return;
         }
 
@@ -347,8 +370,35 @@
       }
     }
 
+    async function loadFeatured() {
+      try {
+        var res = await fetch(API + '/spectator/sessions?limit=10');
+        if (!res.ok) return;
+        var data = await res.json();
+        var sessions = (data.sessions || []).filter(function(s) {
+          return !s.isActive && s.eventCount > 10 && s.partyName;
+        });
+        if (!sessions.length) return;
+        sessions.sort(function(a,b) { return b.eventCount - a.eventCount; });
+        var s = sessions[0];
+        var date = new Date(s.startedAt);
+        var dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        var summary = (s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20)
+          ? s.summary : s.eventCount + ' events across this session.';
+        var el = document.getElementById('featured-session');
+        el.innerHTML = '<div class="featured-card">' +
+          '<div class="featured-label">&#9733; Featured Production</div>' +
+          '<h2>'+esc(s.partyName || 'Unknown Party')+'</h2>' +
+          '<div class="meta">'+dateStr+' &mdash; '+s.eventCount+' events</div>' +
+          '<div class="summary">'+esc(summary)+'</div>' +
+          '<a class="featured-cta" href="/session?id='+esc(s.id)+'">Watch Replay &rarr;</a>' +
+        '</div>';
+      } catch(e) { /* silent */ }
+    }
+
     loadNowPlaying();
     loadBestOf();
+    loadFeatured();
     // Auto-refresh now playing every 30s
     setInterval(loadNowPlaying, 30000);
   </script>
