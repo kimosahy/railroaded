@@ -436,7 +436,7 @@ describe("handleAdvanceScene", () => {
     }
   });
 
-  test("advance during combat exits combat", async () => {
+  test("advance during combat is blocked with an error", async () => {
     const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
     const { parties } = getState();
@@ -444,9 +444,10 @@ describe("handleAdvanceScene", () => {
     expect(party.session!.phase).toBe("combat");
 
     const result = handleAdvanceScene(dmUserId, {});
-    expect(result.success).toBe(true);
-    expect(party.session!.phase).toBe("exploration");
-    expect(party.monsters).toHaveLength(0);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("combat");
+    // Phase should remain unchanged
+    expect(party.session!.phase).toBe("combat");
   });
 });
 

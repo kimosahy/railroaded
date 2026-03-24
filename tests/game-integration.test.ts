@@ -37,6 +37,7 @@ import {
   handleDMJournal,
   handleJournalAdd,
   handleDealEnvironmentDamage,
+  handleMonsterAction,
   getCharacterForUser,
   getPartyForUser,
   getPartyForCharacter,
@@ -998,13 +999,27 @@ describe("G. Advance Scene", () => {
     expect(spawn.success).toBe(true);
   });
 
-  test("advance scene exits combat but reports no movement without room_id", () => {
+  test("advance scene is blocked during active combat", () => {
+    const party = getPartyForUser(players[0])!;
+    expect(party.session!.phase).toBe("combat");
+    const result = handleAdvanceScene(dm, {});
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("combat");
+    // Phase must remain unchanged
+    expect(party.session!.phase).toBe("combat");
+  });
+
+  test("advance scene with no room_id reports exits after combat ends", () => {
+    // End combat by dealing lethal environment damage to all monsters
+    const party = getPartyForUser(players[0])!;
+    const monster = party.monsters[0]!;
+    handleDealEnvironmentDamage(dm, { target_id: monster.id, damage: 9999, damage_type: "fire", description: "test collapse" });
+    expect(party.session!.phase).toBe("exploration");
+
     const result = handleAdvanceScene(dm, {});
     expect(result.success).toBe(true);
     expect(result.data!.advanced).toBe(false);
     expect(result.data!.message).toContain("next_room_id");
-    const party = getPartyForUser(players[0])!;
-    expect(party.session!.phase).toBe("exploration");
   });
 
   test("advance scene with valid room_id moves the party", () => {

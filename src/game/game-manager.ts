@@ -1036,6 +1036,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
           logEvent(party, "level_up", null, lu);
           broadcastToParty(party.id, { type: "level_up", ...lu });
         }
+        stabilizeUnconsciousCharacters(party);
         snapshotCharacters(party);
       }
     }
@@ -1406,6 +1407,53 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   };
 }
 
+export function handleMonsterAction(userId: string, params: { monster_id: string; action: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session || party.session.phase !== "combat") {
+    return { success: false, error: "Not in combat." };
+  }
+
+  // Verify it's this monster's turn
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== params.monster_id || current.type !== "monster") {
+    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}` };
+  }
+
+  const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
+  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
+
+  const validActions = ["dodge", "dash", "disengage", "flee", "hold"];
+  const action = (params.action ?? "").toLowerCase();
+  if (!validActions.includes(action)) {
+    return { success: false, error: `Invalid action "${params.action}". Valid actions: ${validActions.join(", ")}` };
+  }
+
+  if (action === "flee") {
+    // Monster flees — remove from encounter entirely
+    monster.isAlive = false;
+    party.session = removeCombatant(party.session, params.monster_id);
+    logEvent(party, "monster_action", monster.id, { monsterName: monster.name, action, outcome: `${monster.name} flees the encounter.` });
+    broadcastToParty(party.id, { type: "monster_fled", monsterName: monster.name });
+
+    if (shouldCombatEnd(party.session)) {
+      party.session = exitCombat(party.session);
+      logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
+      stabilizeUnconsciousCharacters(party);
+      snapshotCharacters(party);
+    }
+  } else {
+    logEvent(party, "monster_action", monster.id, { monsterName: monster.name, action, outcome: `${monster.name} uses ${action}.` });
+    advanceTurnSkipDead(party);
+  }
+
+  const nextCombatant = getCurrentCombatant(party.session);
+  return {
+    success: true,
+    data: { monsterName: monster.name, action, nextTurn: nextCombatant?.entityId ?? null },
+  };
+}
+
 export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
@@ -1599,6 +1647,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
                 logEvent(party, "level_up", null, lu);
                 broadcastToParty(party.id, { type: "level_up", ...lu });
               }
+              stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
             }
           }
@@ -1797,6 +1846,9 @@ export function handleMove(userId: string, params: { direction_or_target: string
 export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+
+  if (char.conditions.includes("dead")) return { success: false, error: "Your character is dead." };
+  if (char.conditions.includes("unconscious")) return { success: false, error: "Your character is unconscious and cannot speak." };
 
   const party = getPartyForCharacter(char.id);
   if (!party) return { success: false, error: "Not in a party." };
@@ -2410,6 +2462,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
                 logEvent(party, "level_up", null, lu);
                 broadcastToParty(party.id, { type: "level_up", ...lu });
               }
+              stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
             }
           }
@@ -2831,25 +2884,29 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
   return { success: true, data: { room: room.name, description: params.description } };
 }
 
-export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogue: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  if (!params.npc_id) return { success: false, error: "npc_id is required." };
-  if (!params.dialogue) return { success: false, error: "dialogue is required." };
+export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?: string; dialogue?: string; message?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  // Accept npc_id or name as identifier; accept dialogue or message as text
+  const npcIdentifier = params.npc_id ?? params.name;
+  const dialogue = params.dialogue ?? params.message;
+
+  if (!npcIdentifier) return { success: false, error: "npc_id or name is required." };
+  if (!dialogue) return { success: false, error: "dialogue or message is required." };
 
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   // Check if this references a persistent NPC
-  const npc = npcsMap.get(params.npc_id);
-  const npcName = npc ? npc.name : params.npc_id;
+  const npc = npcsMap.get(npcIdentifier);
+  const npcName = npc ? npc.name : npcIdentifier;
 
-  logEvent(party, "npc_dialogue", null, { npcId: npc?.id, npcName, dialogue: params.dialogue });
+  logEvent(party, "npc_dialogue", null, { npcId: npc?.id, npcName, dialogue });
 
   // Log interaction for persistent NPCs
   if (npc?.dbNpcId && party.dbSessionId) {
     const memEntry: NpcMemoryEntry = {
       sessionId: party.session?.id ?? "unknown",
       event: "dialogue",
-      summary: params.dialogue.slice(0, 200),
+      summary: dialogue.slice(0, 200),
       dispositionAtTime: npc.disposition,
     };
     npc.memory.push(memEntry);
@@ -2859,7 +2916,7 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
       npcId: npc.dbNpcId,
       sessionId: party.dbSessionId,
       interactionType: "dialogue",
-      description: params.dialogue.slice(0, 500),
+      description: dialogue.slice(0, 500),
     }).catch((err) => console.error("[DB] Failed to log NPC dialogue interaction:", err));
 
     db.update(npcsTable).set({ memory: npc.memory, updatedAt: new Date() })
@@ -2867,7 +2924,7 @@ export function handleVoiceNpc(userId: string, params: { npc_id: string; dialogu
       .catch((err) => console.error("[DB] Failed to update NPC memory:", err));
   }
 
-  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue: params.dialogue } };
+  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue } };
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -3081,7 +3138,35 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   const char = resolveCharacter(playerId);
-  if (!char) return { success: false, error: `Player ${playerId} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  if (!char) {
+    // Try monster lookup
+    const monster = party.monsters.find((m) => m.id === playerId || m.name.toLowerCase() === playerId.toLowerCase());
+    if (!monster) return { success: false, error: `Target ${playerId} not found. Use character IDs or monster IDs from get_party_state.` };
+    if (!monster.isAlive) return { success: false, error: `${monster.name} is already dead.` };
+
+    const dmgRoll = roll(damageNotation);
+    monster.hpCurrent = Math.max(0, monster.hpCurrent - dmgRoll.total);
+    const killed = monster.hpCurrent === 0;
+    if (killed) {
+      monster.isAlive = false;
+      rollMonsterLoot(party, monster);
+      logEvent(party, "monster_killed", null, { monsterName: monster.name, cause: `environment (${damageType})` });
+      broadcastToParty(party.id, { type: "monster_killed", monsterName: monster.name, cause: `environment (${damageType})` });
+      if (party.session) {
+        party.session = removeCombatant(party.session, monster.id);
+        if (shouldCombatEnd(party.session)) {
+          party.session = exitCombat(party.session);
+          logEvent(party, "combat_end", null, { xpAwarded: 0 });
+          stabilizeUnconsciousCharacters(party);
+          snapshotCharacters(party);
+        }
+      }
+    }
+    return {
+      success: true,
+      data: { target: monster.name, damage: dmgRoll.total, type: damageType, hpRemaining: monster.hpCurrent, killed },
+    };
+  }
 
   if (char.partyId !== party.id) return { success: false, error: `Character ${playerId} is not in your party.` };
 
@@ -3192,12 +3277,9 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   // Accept next_room_id, exit_id, or room_id (agents send any of these)
   const nextRoom = params.next_room_id ?? params.exit_id ?? params.room_id;
 
-  // Exit combat if currently in combat
+  // Block advancing scene during active combat — DM must end the encounter first
   if (party.session && party.session.phase === "combat") {
-    party.session = exitCombat(party.session);
-    party.monsters = []; // clear encounter
-    logEvent(party, "combat_end", null, { reason: "scene_advanced" });
-    snapshotCharacters(party);
+    return { success: false, error: "Cannot advance scene during combat. End the encounter first (all monsters must be defeated or use end-session)." };
   }
 
   if (nextRoom && party.dungeonState) {
@@ -3295,6 +3377,10 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
     }
   }
 
+  // Surface session theme so DM agent can recontextualize room descriptions
+  const dmMeta = (party as GameParty & { dmMetadata?: Record<string, unknown> }).dmMetadata;
+  const sessionTheme = dmMeta && Object.keys(dmMeta).length > 0 ? dmMeta : null;
+
   return {
     success: true,
     data: {
@@ -3303,6 +3389,7 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
       monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions })),
       suggestedEncounter,
       lootTable,
+      sessionTheme,
     },
   };
 }
@@ -4915,6 +5002,16 @@ function persistDmStats(userId: string, increments: { sessionsAsDM?: number; dun
       }).catch((err) => console.error("[DB] Failed to look up username for DM stats:", err));
     }
   }).catch((err) => console.error("[DB] Failed to read DM stats:", err));
+}
+
+function stabilizeUnconsciousCharacters(party: GameParty): void {
+  for (const mid of party.members) {
+    const c = characters.get(mid);
+    if (c && c.isAlive && c.hpCurrent === 0 && c.conditions.includes("unconscious")) {
+      c.conditions = addCondition(c.conditions, "stable");
+      c.deathSaves = resetDeathSaves();
+    }
+  }
 }
 
 function snapshotCharacters(party: GameParty): void {

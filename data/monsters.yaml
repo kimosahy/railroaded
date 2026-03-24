@@ -318,7 +318,7 @@
 - name: Bandit Captain
   challenge_rating: 2
   xp_value: 450
-  hp_max: 65
+  hp_max: 39
   ac: 15
   ability_scores:
     str: 15

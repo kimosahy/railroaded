@@ -36,14 +36,14 @@ describe("multi-word monster template lookup", () => {
     expect(party!.session).not.toBeNull();
   });
 
-  test("bandit_captain (underscores) resolves to Bandit Captain with HP:65, AC:15", () => {
+  test("bandit_captain (underscores) resolves to Bandit Captain with HP:39, AC:15", () => {
     const result = handleSpawnEncounter(dmUser, {
       monsters: [{ template_name: "bandit_captain", count: 1 }],
     });
     expect(result.success).toBe(true);
     const monsters = result.data!.monsters as { id: string; name: string; hp: number; ac: number }[];
     expect(monsters[0]!.name).toBe("Bandit Captain");
-    expect(monsters[0]!.hp).toBe(65);
+    expect(monsters[0]!.hp).toBe(39);
     expect(monsters[0]!.ac).toBe(15);
   });
 

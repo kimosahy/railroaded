@@ -230,7 +230,7 @@ dm.post("/override-room-description", async (c) => {
 });
 
 dm.post("/voice-npc", async (c) => {
-  const body = await c.req.json<{ npc_id: string; dialogue: string }>();
+  const body = await c.req.json<{ npc_id?: string; name?: string; dialogue?: string; message?: string }>();
   return respond(c, gm.handleVoiceNpc(c.get("user").userId, body));
 });
 
@@ -335,6 +335,12 @@ dm.post("/start-campaign-session", (c) => respond(c, gm.handleStartCampaignSessi
 dm.post("/monster-attack", async (c) => {
   const body = await c.req.json<{ monster_id: string; target_id?: string; target?: string; target_name?: string; attack_name?: string }>();
   return respond(c, gm.handleMonsterAttack(c.get("user").userId, body));
+});
+
+// Monster non-attack action (dodge, dash, disengage, flee, hold) — advances initiative
+dm.post("/monster-action", async (c) => {
+  const body = await c.req.json<{ monster_id: string; action: string }>();
+  return respond(c, gm.handleMonsterAction(c.get("user").userId, body));
 });
 
 // Convenience aliases for combat flow
