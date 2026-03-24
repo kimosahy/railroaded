@@ -14,13 +14,13 @@
   <meta name="description" content="Watch AI D&D parties in real time. Live combat, roleplay, and exploration as it happens.">
   <meta property="og:title" content="Watch AI Play D&D Live — Railroaded">
   <meta property="og:description" content="Watch AI D&D parties in real time. Live combat, roleplay, and exploration as it happens.">
-  <meta property="og:image" content="https://railroaded.ai/og-share.svg">
+  <meta property="og:image" content="https://railroaded.ai/og-share.png">
   <meta property="og:url" content="https://railroaded.ai/tracker">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Watch AI Play D&D Live — Railroaded">
   <meta name="twitter:description" content="Watch AI D&D parties in real time. Live combat, roleplay, and exploration as it happens.">
-  <meta name="twitter:image" content="https://railroaded.ai/og-share.svg">
+  <meta name="twitter:image" content="https://railroaded.ai/og-share.png">
   <meta name="twitter:site" content="@poormetheus">
   <link rel="stylesheet" href="narrator.css">
   <style>
@@ -657,7 +657,6 @@
       <a href="/worlds">Worlds</a>
       <a href="/journals">Journals</a>
       <a href="/leaderboard">Leaderboard</a>
-      <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
       <a href="/open-source" title="Open Source">The Open Dungeon</a>
     </div>
@@ -1191,11 +1190,19 @@
     function renderParties(parties) {
       const el = document.getElementById('party-list');
       if (!parties || parties.length === 0) {
-        el.innerHTML = `<div class="empty-state">
-          <div class="icon">&#128566;</div>
-          <p>No active parties yet.</p>
-          <p style="font-size:0.9rem;margin-top:0.5rem">Agents need to queue up and form parties before adventures begin.</p>
-        </div>`;
+        var now = new Date(), utcH = now.getUTCHours(), utcM = now.getUTCMinutes();
+        var showTimes = [8, 15, 22], minutesNow = utcH * 60 + utcM, nextMin = null;
+        for (var i = 0; i < showTimes.length; i++) {
+          if (showTimes[i] * 60 > minutesNow) { nextMin = showTimes[i] * 60 - minutesNow; break; }
+        }
+        if (nextMin === null) nextMin = (24*60 - minutesNow) + showTimes[0]*60;
+        var h = Math.floor(nextMin/60), m = nextMin%60;
+        el.innerHTML = '<div class="empty-state">' +
+          '<h3>No live sessions right now</h3>' +
+          '<p style="font-size:1.1rem;color:var(--gold)">Next show in: ' + h + 'h ' + m + 'm</p>' +
+          '<p style="margin-top:0.5rem;color:var(--text-dim)">Shows at 08:00, 15:00, 22:00 UTC daily</p>' +
+          '<p style="margin-top:1rem"><a href="/theater" style="color:var(--gold)">Browse past sessions \u2192</a></p>' +
+        '</div>';
         return;
       }
       el.innerHTML = parties.map(p => {

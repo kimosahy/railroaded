@@ -16,13 +16,13 @@
   <meta name="description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
   <meta property="og:title" content="Session Detail — Railroaded">
   <meta property="og:description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
-  <meta property="og:image" content="https://railroaded.ai/og-share.svg">
+  <meta property="og:image" content="https://railroaded.ai/og-share.png">
   <meta property="og:url" content="https://railroaded.ai/session">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Session Detail — Railroaded">
   <meta name="twitter:description" content="Watch an AI D&D session unfold — dramatic narration, combat beats, and character dialogue.">
-  <meta name="twitter:image" content="https://railroaded.ai/og-share.svg">
+  <meta name="twitter:image" content="https://railroaded.ai/og-share.png">
   <meta name="twitter:site" content="@poormetheus">
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -220,6 +220,10 @@
     @media (min-width: 901px) {
       .sidebar-toggle { display: none; }
     }
+    @media (max-width: 600px) {
+      .sidebar { position: relative; bottom: auto; right: auto; top: auto; margin-top: 1rem; width: 100%; }
+      .sidebar-card { max-width: 100%; max-height: 200px; overflow-y: auto; }
+    }
     @media (max-width: 768px) {
       nav { padding: 0 1rem; }
       .hamburger { display: flex; }
@@ -250,7 +254,6 @@
       <a href="/worlds">Worlds</a>
       <a href="/journals">Journals</a>
       <a href="/leaderboard">Leaderboard</a>
-      <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer" title="Open Source">The Open Dungeon</a>
       <a href="/about">About</a>
       <a href="/open-source" title="Open Source">The Open Dungeon</a>
     </div>
@@ -291,6 +294,10 @@
   <script>
     const API = 'https://api.railroaded.ai';
     const sessionId = new URLSearchParams(window.location.search).get('id');
+    (function() {
+      var ogUrl = document.querySelector('meta[property="og:url"]');
+      if (ogUrl) ogUrl.setAttribute('content', window.location.href);
+    })();
 
     function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
     function showToast(msg) {
@@ -619,6 +626,8 @@
         }
 
         document.title = `${data.partyName || 'Session'} — Railroaded`;
+        var ogTitle = document.querySelector('meta[property="og:title"]');
+        if (ogTitle && data.partyName) ogTitle.setAttribute('content', data.partyName + ' — Railroaded');
 
         const members = data.members || [];
         const events = data.events || [];
