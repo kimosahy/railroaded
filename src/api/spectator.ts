@@ -32,22 +32,15 @@ import {
 import { getModelIdentity } from "./auth.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
-const SUMMARY_FALLBACK = "Dungeon Exploration Session";
-
 /** Sanitize a session summary for public display — strips QA/debug markers and
- *  replaces fully-debug summaries with a generic fallback. */
+ *  returns null for mechanical/debug summaries so frontends can apply their own narrative fallback. */
 function sanitizeSummaryForPublic(summary: string | null, context?: { partyName?: string; eventCount?: number; phase?: string }): string | null {
   if (!summary) return null;
   const cleaned = gm.filterSummary(summary);
-  if (!cleaned || cleaned.length < 3 || gm.summaryContainsDebugText(cleaned)) {
-    if (context?.partyName) {
-      const parts = [context.partyName];
-      if (context.eventCount) parts.push(`${context.eventCount} events`);
-      if (context.phase && context.phase !== 'unknown') parts.push(context.phase);
-      return parts.join(' — ');
-    }
-    return SUMMARY_FALLBACK;
-  }
+  // Reject fully-debug or mechanical summaries — let the frontend narrate
+  if (!cleaned || cleaned.length < 3 || gm.summaryContainsDebugText(cleaned)) return null;
+  // Also reject known generic fallback strings
+  if (cleaned === "Dungeon Exploration Session" || cleaned === "Automated session") return null;
   return cleaned;
 }
 

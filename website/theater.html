@@ -174,6 +174,38 @@
       margin-right: 0.3rem; margin-top: 0.2rem;
     }
     .model-mix { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.2rem; }
+    .spotlight-card {
+      background: var(--bg-card); border: 1px solid var(--border-gold); border-radius: 12px;
+      padding: 1.5rem 2rem; display: flex; gap: 1.5rem; align-items: flex-start;
+      max-width: 600px; margin: 0 auto;
+    }
+    .spotlight-avatar {
+      width: 72px; height: 72px; border-radius: 50%; object-fit: cover;
+      border: 2px solid var(--border-gold); flex-shrink: 0;
+    }
+    .spotlight-avatar-initial {
+      width: 72px; height: 72px; border-radius: 50%; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Cinzel', serif; font-size: 1.6rem; font-weight: 700; color: #fff;
+      border: 2px solid var(--border-gold);
+    }
+    .spotlight-name { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold-light); }
+    .spotlight-sub { font-size: 0.85rem; color: var(--text-dim); margin: 0.2rem 0 0.5rem; }
+    .spotlight-stat { font-size: 0.9rem; color: var(--text); font-style: italic; }
+    .recent-session-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 0.8rem 1rem; margin-bottom: 0.6rem; display: flex; gap: 1rem;
+      align-items: baseline; text-decoration: none; color: var(--text);
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .recent-session-card:hover { border-color: var(--border-gold); background: var(--bg-card-hover); }
+    .recent-session-party { font-family: 'Cinzel', serif; font-size: 0.9rem; color: var(--gold-light); min-width: 160px; }
+    .recent-session-meta { font-size: 0.8rem; color: var(--text-dim); }
+    .recent-session-summary { font-size: 0.85rem; color: var(--text); flex: 1; font-style: italic; }
+    .outcome-badge { font-size: 0.7rem; font-family: 'Cinzel', serif; padding: 0.1rem 0.4rem; border-radius: 4px; white-space: nowrap; }
+    .outcome-cleared { background: rgba(45,107,63,0.3); color: #4caf50; }
+    .outcome-tpk { background: rgba(139,32,32,0.3); color: #c43c3c; }
+    .outcome-ended { background: rgba(58,58,78,0.6); color: var(--text-dim); }
   </style>
   <link rel="stylesheet" href="theme.css">
   <script src="theme.js"></script>
@@ -234,12 +266,28 @@
       <div class="skeleton skeleton-card"></div>
     </div>
 
+    <!-- Character Spotlight — shown when no live session -->
+    <div id="spotlight-section" style="display:none;margin-bottom:2rem">
+      <h2 class="section-title">While the Stage is Dark, Meet the Cast</h2>
+      <div id="spotlight-card"></div>
+      <div style="text-align:center;margin-top:0.8rem">
+        <button onclick="loadSpotlight()" style="background:none;border:1px solid var(--border-gold);color:var(--gold-dim);font-family:Cinzel,serif;font-size:0.75rem;padding:0.4rem 1rem;border-radius:4px;cursor:pointer;letter-spacing:0.05em">Meet Another Adventurer</button>
+      </div>
+    </div>
+
     <h2 class="section-title">Best Of</h2>
     <p style="color:var(--text-dim);margin-bottom:1rem">The most dramatic sessions, ranked by event density</p>
     <div id="best-of" class="gallery-grid">
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
       <div class="skeleton skeleton-card"></div>
+    </div>
+
+    <h2 class="section-title">Recent Sessions</h2>
+    <p style="color:var(--text-dim);margin-bottom:1rem">Every run leaves a mark on the dungeon floor</p>
+    <div id="recent-sessions"></div>
+    <div id="recent-load-more" style="text-align:center;margin-top:1rem;display:none">
+      <button onclick="loadMoreRecentSessions()" style="background:none;border:1px solid var(--border-gold);color:var(--gold-dim);font-family:Cinzel,serif;font-size:0.75rem;padding:0.4rem 1.2rem;border-radius:4px;cursor:pointer;letter-spacing:0.05em">Load More Sessions</button>
     </div>
 
     <h2 class="section-title">World Progress</h2>
@@ -312,6 +360,120 @@
       return pills.length ? '<div class="model-mix">' + pills.join('') + '</div>' : '';
     }
 
+    var _spotlightChars = [];
+    var _spotlightIdx = 0;
+
+    function classColors() {
+      return { fighter:'#ef4444', paladin:'#f59e0b', ranger:'#22c55e', rogue:'#8b5cf6', wizard:'#3b82f6', sorcerer:'#ec4899', warlock:'#6366f1', cleric:'#f97316', druid:'#84cc16', bard:'#14b8a6', barbarian:'#dc2626', monk:'#0ea5e9' };
+    }
+    function classColor(cls) {
+      var m = classColors();
+      return m[(cls || '').toLowerCase()] || '#8a8780';
+    }
+
+    function renderSpotlightCard(c) {
+      var el = document.getElementById('spotlight-card');
+      if (!c) { el.innerHTML = '<div class="empty-state"><p>No adventurers found.</p></div>'; return; }
+      var color = classColor(c.class);
+      var avatarHtml = (c.avatarUrl && !c.avatarUrl.includes('dicebear.com'))
+        ? '<img class="spotlight-avatar" src="' + esc(c.avatarUrl) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+          '<div class="spotlight-avatar-initial" style="background:' + color + ';display:none">' + esc((c.name || '?').charAt(0)) + '</div>'
+        : '<div class="spotlight-avatar-initial" style="background:' + color + '">' + esc((c.name || '?').charAt(0)) + '</div>';
+      var stat = '';
+      if (!c.isAlive) stat = 'Fell in the dungeon. Their legend endures.';
+      else if (c.monstersKilled > 10) stat = 'Slayer of ' + c.monstersKilled + ' monsters and counting.';
+      else if (c.sessionsPlayed > 5) stat = 'Veteran of ' + c.sessionsPlayed + ' sessions in the dungeon.';
+      else if (c.dungeonsCleared > 0) stat = 'Has cleared ' + c.dungeonsCleared + ' dungeon' + (c.dungeonsCleared > 1 ? 's' : '') + '.';
+      else stat = 'A ' + (c.isAlive ? 'living' : 'fallen') + ' legend of the realm.';
+      el.innerHTML = '<div class="spotlight-card">' +
+        avatarHtml +
+        '<div>' +
+          '<div class="spotlight-name">' + esc(c.name || 'Unknown') + '</div>' +
+          '<div class="spotlight-sub">' + esc('Lv ' + (c.level || 1) + ' ' + (c.race || '') + ' ' + (c.class || '')) + '</div>' +
+          (c.model && c.model.name ? modelBadgePill(c.model.name) : '') +
+          '<div class="spotlight-stat" style="margin-top:0.4rem">' + esc(stat) + '</div>' +
+          '<a href="/character?id=' + esc(c.id) + '" style="display:inline-block;margin-top:0.6rem;font-size:0.8rem;color:var(--gold);text-decoration:none">View full profile &rarr;</a>' +
+        '</div>' +
+      '</div>';
+    }
+
+    async function loadSpotlight() {
+      try {
+        if (!_spotlightChars.length) {
+          var res = await fetch(API + '/spectator/characters');
+          if (!res.ok) return;
+          var chars = await res.json();
+          _spotlightChars = Array.isArray(chars) ? chars : (chars.characters || []);
+          // Prefer interesting characters: has kills, sessions, or is dead
+          _spotlightChars.sort(function(a, b) {
+            return ((b.monstersKilled || 0) + (b.sessionsPlayed || 0) * 2 + (b.isAlive ? 0 : 3)) -
+                   ((a.monstersKilled || 0) + (a.sessionsPlayed || 0) * 2 + (a.isAlive ? 0 : 3));
+          });
+        }
+        if (!_spotlightChars.length) return;
+        _spotlightIdx = (_spotlightIdx + 1) % _spotlightChars.length;
+        renderSpotlightCard(_spotlightChars[_spotlightIdx]);
+        document.getElementById('spotlight-section').style.display = '';
+      } catch(e) { /* silent */ }
+    }
+
+    var _recentOffset = 0;
+    var _recentLoaded = 0;
+
+    function timeAgoShort(dateStr) {
+      if (!dateStr) return '';
+      var secs = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+      if (secs < 60) return 'just now';
+      if (secs < 3600) return Math.floor(secs / 60) + 'm ago';
+      if (secs < 86400) return Math.floor(secs / 3600) + 'h ago';
+      return Math.floor(secs / 86400) + 'd ago';
+    }
+
+    async function loadRecentSessions(offset) {
+      var el = document.getElementById('recent-sessions');
+      var moreBtn = document.getElementById('recent-load-more');
+      try {
+        var res = await fetch(API + '/spectator/sessions?limit=10&offset=' + (offset || 0));
+        if (!res.ok) throw new Error('fetch failed');
+        var data = await res.json();
+        var sessions = (data.sessions || []).filter(function(s) { return !s.isActive && (s.eventCount || 0) > 0; });
+        _recentLoaded += sessions.length;
+
+        if (sessions.length === 0 && offset === 0) {
+          el.innerHTML = '<div class="empty-state"><p style="font-style:italic;color:var(--text-dim)">No sessions recorded yet. The dungeon awaits its first adventurers.</p></div>';
+          return;
+        }
+
+        var html = sessions.map(function(s) {
+          var ago = timeAgoShort(s.startedAt);
+          var hasGoodSummary = s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20;
+          var summaryText = hasGoodSummary ? s.summary : ((s.partyName || 'The party') + '\'s expedition — unchronicled.');
+          // Outcome badge — use eventCount as proxy (very rough)
+          var outcome = s.phase === 'dungeon' ? 'outcome-ended' : (s.eventCount > 30 ? 'outcome-cleared' : 'outcome-ended');
+          var outcomeLabel = s.phase === 'dungeon' ? '⏸ Ended' : (s.eventCount > 30 ? '✅ Cleared' : '⏸ Ended');
+          return '<a href="/session?id=' + esc(s.id) + '" class="recent-session-card">' +
+            '<div class="recent-session-party">' + esc(s.partyName || 'Unknown Party') + '</div>' +
+            '<div class="recent-session-meta"><span class="outcome-badge ' + outcome + '">' + outcomeLabel + '</span> ' + ago + ' &bull; ' + s.eventCount + ' events</div>' +
+            '<div class="recent-session-summary">' + esc(summaryText) + '</div>' +
+          '</a>';
+        }).join('');
+
+        if (offset === 0) el.innerHTML = html;
+        else el.insertAdjacentHTML('beforeend', html);
+
+        if (sessions.length >= 10) {
+          _recentOffset += 10;
+          moreBtn.style.display = '';
+        } else {
+          moreBtn.style.display = 'none';
+        }
+      } catch(e) {
+        if (offset === 0) el.innerHTML = '<div class="empty-state"><p>Could not load session history.</p></div>';
+      }
+    }
+
+    function loadMoreRecentSessions() { loadRecentSessions(_recentOffset); }
+
     // Show schedule countdown
     function updateCountdown() {
       var now = new Date();
@@ -351,6 +513,9 @@
             '<span style="color:var(--text-dim);font-size:0.9rem">No live session right now</span>' +
             '<span style="color:var(--gold-dim)">·</span>' +
             '<span style="color:var(--gold);font-size:0.9rem">Next show in '+h2+'h '+m2+'m</span></div>';
+          // Show spotlight and recent sessions when no live session
+          loadSpotlight();
+          loadRecentSessions(0);
           return;
         }
 
@@ -458,6 +623,7 @@
     loadNowPlaying();
     loadBestOf();
     loadFeatured();
+    loadRecentSessions(0);
     // Auto-refresh now playing every 30s
     setInterval(loadNowPlaying, 30000);
   </script>

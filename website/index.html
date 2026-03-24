@@ -1590,22 +1590,56 @@
       }, 300);
     }
 
+    function timeContextPrefix(timestamp) {
+      const ms = Date.now() - new Date(timestamp).getTime();
+      const hours = ms / (1000 * 60 * 60);
+      if (hours < 6) return 'Earlier today';
+      if (hours < 24) return 'Earlier today';
+      if (hours < 48) return 'Yesterday';
+      return 'Last session';
+    }
+
     async function loadLivePulse() {
       try {
         const res = await fetch(`${API_BASE}/spectator/activity?limit=8`);
         const data = await res.json();
         if (!data.activities || !data.activities.length) {
-          // Fall back to narrations if no activity events
+          // Fall back to narrations
           const nRes = await fetch(`${API_BASE}/spectator/narrations?limit=5`);
           const nData = await nRes.json();
-          if (!nData.narrations || !nData.narrations.length) return;
-          pulseActivities = nData.narrations.map(n => ({
-            message: n.content.length > 120 ? n.content.substring(0, 117) + '...' : n.content,
-            partyName: n.partyName || 'Unknown Party',
-            partyId: null,
-            timestamp: n.createdAt,
-            ago: timeAgo(new Date(n.createdAt))
-          }));
+          if (nData.narrations && nData.narrations.length) {
+            pulseActivities = nData.narrations.map(n => {
+              const prefix = timeContextPrefix(n.createdAt);
+              const truncated = n.content.length > 110 ? n.content.substring(0, 107) + '...' : n.content;
+              return {
+                message: `${prefix}: ${truncated}`,
+                partyName: n.partyName || 'Unknown Party',
+                partyId: null,
+                timestamp: n.createdAt,
+                ago: timeAgo(new Date(n.createdAt))
+              };
+            });
+          } else {
+            // Deepest fallback: pull from recent session events
+            try {
+              const sRes = await fetch(`${API_BASE}/spectator/sessions?limit=3`);
+              const sData = await sRes.json();
+              const sessions = (sData.sessions || []).filter(s => !s.isActive && s.eventCount > 0);
+              if (!sessions.length) return;
+              const evRes = await fetch(`${API_BASE}/spectator/sessions/${sessions[0].id}/events?limit=20`);
+              const evData = await evRes.json();
+              const events = (evData.events || []).filter(e => e.data && (e.data.message || e.data.description));
+              if (!events.length) return;
+              const prefix = timeContextPrefix(sessions[0].startedAt || Date.now());
+              pulseActivities = events.slice(0, 5).map(e => ({
+                message: `${prefix}: ${e.data.message || e.data.description}`,
+                partyName: sessions[0].partyName || 'Unknown Party',
+                partyId: null,
+                timestamp: e.timestamp || e.created_at || sessions[0].startedAt,
+                ago: timeAgo(new Date(sessions[0].startedAt))
+              }));
+            } catch (_) { return; }
+          }
         } else {
           pulseActivities = data.activities.map(a => ({
             message: a.message,
@@ -1795,6 +1829,18 @@
                   icon: '\u2764\uFE0F\u200D\u{1F525}',
                   title: 'On the Brink',
                   desc: `${name} staggers at ${d.hpCurrent} HP. One more blow could end it.`,
+                  sessionId: s.id,
+                  time: ts
+                });
+              }
+              // Boss kill
+              if ((t === 'monster_death' || t === 'kill') && (d.isBoss || /boss|lord|king|queen|chief|champion|elder/i.test(d.monsterName || d.name || ''))) {
+                const attacker = d.attackerName || d.killedBy || 'The party';
+                const monster = d.monsterName || d.name || 'the boss';
+                moments.push({
+                  icon: '\u{1F451}',
+                  title: 'Boss Slain',
+                  desc: `${attacker} fells ${monster}. The dungeon trembles.`,
                   sessionId: s.id,
                   time: ts
                 });

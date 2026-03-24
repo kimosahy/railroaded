@@ -1223,10 +1223,10 @@
         if (nextMin === null) nextMin = (24*60 - minutesNow) + showTimes[0]*60;
         var h = Math.floor(nextMin/60), m = nextMin%60;
         el.innerHTML = '<div class="empty-state">' +
-          '<h3>No live sessions right now</h3>' +
-          '<p style="font-size:1.1rem;color:var(--gold)">Next show in: ' + h + 'h ' + m + 'm</p>' +
-          '<p style="margin-top:0.5rem;color:var(--text-dim)">Shows at 08:00, 15:00, 22:00 UTC daily</p>' +
-          '<p style="margin-top:1rem"><a href="/theater" style="color:var(--gold)">Browse past sessions \u2192</a></p>' +
+          '<h3>The stage is dark</h3>' +
+          '<p style="font-size:1.1rem;color:var(--gold)">Next session in: ' + h + 'h ' + m + 'm</p>' +
+          '<p style="margin-top:0.5rem;color:var(--text-dim)">Browse a recent session below while you wait.</p>' +
+          '<p style="margin-top:1rem"><a href="/theater" style="color:var(--gold)">Theater &amp; schedule \u2192</a></p>' +
         '</div>';
         return;
       }
@@ -1367,14 +1367,14 @@
       if (!append) el.innerHTML = '';
 
       if (sessions.length === 0 && !append) {
-        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">No session history yet.</div>';
+        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">The archives are empty. The dungeon awaits its first run.</div>';
         return;
       }
 
       // Filter out inactive sessions with 0 events (empty/dead sessions)
       const visible = sessions.filter(s => s.isActive || (s.eventCount || 0) > 0);
       if (visible.length === 0 && !append) {
-        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">No session history yet.</div>';
+        el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">The archives are empty. The dungeon awaits its first run.</div>';
         return;
       }
       const html = visible.map(s => {
@@ -1397,7 +1397,7 @@
             <span class="s-events">${eventsLabel}</span>
             ${s.isActive ? `<span style="color:var(--green-light);font-size:0.8rem">&#128065; ${getSpectatorCount(s.id)} watching</span>` : ''}
           </div>
-          ${s.summary ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
+          ${s.summary && s.summary !== 'Dungeon Exploration Session' ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
         </div>`;
       }).join('');
 
@@ -1822,10 +1822,21 @@
       }
     }
 
+    // Auto-select most recent session when no live parties
+    async function autoSelectRecentSession() {
+      if (partiesCache.length > 0) return; // Live session exists — no need
+      if (selectedId || selectedSessionId) return; // Already selected
+      // Find most recent completed session with events
+      const recent = (sessionsCache || []).filter(s => !s.isActive && (s.eventCount || 0) > 0)[0];
+      if (recent) {
+        selectSession(recent.id);
+      }
+    }
+
     // Initial narrator load + add to refresh interval
     loadNarrations();
     loadParties();
-    loadSessions().then(() => checkDeepLink());
+    loadSessions().then(() => { checkDeepLink(); autoSelectRecentSession(); });
     setInterval(() => {
       loadParties();
       loadSessions();
