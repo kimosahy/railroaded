@@ -36,11 +36,18 @@ const SUMMARY_FALLBACK = "Dungeon Exploration Session";
 
 /** Sanitize a session summary for public display — strips QA/debug markers and
  *  replaces fully-debug summaries with a generic fallback. */
-function sanitizeSummaryForPublic(summary: string | null): string | null {
+function sanitizeSummaryForPublic(summary: string | null, context?: { partyName?: string; eventCount?: number; phase?: string }): string | null {
   if (!summary) return null;
   const cleaned = gm.filterSummary(summary);
-  if (!cleaned || cleaned.length < 3) return SUMMARY_FALLBACK;
-  if (gm.summaryContainsDebugText(cleaned)) return SUMMARY_FALLBACK;
+  if (!cleaned || cleaned.length < 3 || gm.summaryContainsDebugText(cleaned)) {
+    if (context?.partyName) {
+      const parts = [context.partyName];
+      if (context.eventCount) parts.push(`${context.eventCount} events`);
+      if (context.phase && context.phase !== 'unknown') parts.push(context.phase);
+      return parts.join(' — ');
+    }
+    return SUMMARY_FALLBACK;
+  }
   return cleaned;
 }
 
@@ -256,7 +263,7 @@ spectator.get("/parties/:id", async (c) => {
       currentRoom: null, currentRoomDescription: null,
       monsters: [],
       recentEvents,
-      sessionSummary: sanitizeSummaryForPublic(latestSession?.summary ?? null),
+      sessionSummary: sanitizeSummaryForPublic(latestSession?.summary ?? null, { partyName: dbParty.name ?? undefined, phase: latestSession?.phase ?? undefined }),
       eventCount: recentEvents.length,
     });
   } catch (err) {
@@ -667,11 +674,13 @@ spectator.get("/characters", async (c) => {
     monstersKilled: number;
     dungeonsCleared: number;
     sessionsPlayed: number;
+    model?: { provider: string; name: string } | null;
   }
 
   // Merge in-memory + DB characters (dedup by DB id)
   const charMap = new Map<string, CharacterSummary>();
   for (const [id, char] of state.characters) {
+    const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id,
       name: char.name, class: char.class, race: char.race,
@@ -681,6 +690,7 @@ spectator.get("/characters", async (c) => {
       monstersKilled: char.monstersKilled ?? 0,
       dungeonsCleared: char.dungeonsCleared ?? 0,
       sessionsPlayed: char.sessionsPlayed ?? 0,
+      ...(model ? { model } : {}),
     });
   }
 
@@ -699,10 +709,14 @@ spectator.get("/characters", async (c) => {
       monstersKilled: charactersTable.monstersKilled,
       dungeonsCleared: charactersTable.dungeonsCleared,
       sessionsPlayed: charactersTable.sessionsPlayed,
-    }).from(charactersTable);
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
+        const dbModel = ch.modelProvider ? { provider: ch.modelProvider, name: ch.modelName || 'unknown' } : null;
         charMap.set(ch.id, {
           id: ch.id,
           name: ch.name, class: ch.class, race: ch.race,
@@ -712,6 +726,7 @@ spectator.get("/characters", async (c) => {
           monstersKilled: ch.monstersKilled ?? 0,
           dungeonsCleared: ch.dungeonsCleared ?? 0,
           sessionsPlayed: ch.sessionsPlayed ?? 0,
+          ...(dbModel ? { model: dbModel } : {}),
         });
       }
     }
@@ -826,6 +841,41 @@ spectator.get("/characters/:id", async (c) => {
     console.error("[DB] Failed to fetch character:", err);
     return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
+});
+
+// GET /spectator/character-identities — lightweight identity map (name, avatarUrl, model) for all characters
+spectator.get("/character-identities", async (c) => {
+  const state = gm.getState();
+  const identities: { name: string; avatarUrl: string | null; model: { provider: string; name: string } | null }[] = [];
+  const seen = new Set<string>();
+
+  for (const [, char] of state.characters) {
+    if (seen.has(char.name)) continue;
+    seen.add(char.name);
+    const model = getModelIdentity(char.userId);
+    identities.push({ name: char.name, avatarUrl: char.avatarUrl ?? null, model: model ?? null });
+  }
+
+  try {
+    const dbChars = await db.select({
+      name: charactersTable.name,
+      avatarUrl: charactersTable.avatarUrl,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+
+    for (const ch of dbChars) {
+      if (seen.has(ch.name)) continue;
+      seen.add(ch.name);
+      const model = ch.modelProvider ? { provider: ch.modelProvider, name: ch.modelName || 'unknown' } : null;
+      identities.push({ name: ch.name, avatarUrl: ch.avatarUrl ?? null, model });
+    }
+  } catch (err) {
+    console.error("[DB] Failed to fetch character identities:", err);
+  }
+
+  return c.json({ identities });
 });
 
 // --- Homepage Stats ---
@@ -990,7 +1040,7 @@ spectator.get("/sessions", async (c) => {
         partyName: r.partyName ?? null,
         phase: r.phase,
         isActive: r.isActive,
-        summary: sanitizeSummaryForPublic(r.summary ?? null),
+        summary: sanitizeSummaryForPublic(r.summary ?? null, { partyName: r.partyName ?? undefined, eventCount: Number(r.eventCount), phase: r.phase ?? undefined }),
         startedAt: r.startedAt.toISOString(),
         endedAt: r.endedAt ? r.endedAt.toISOString() : null,
         eventCount: Number(r.eventCount),
@@ -1077,7 +1127,7 @@ spectator.get("/sessions/:id", async (c) => {
       partyName: session.partyName ?? null,
       phase: session.phase,
       isActive: session.isActive,
-      summary: sanitizeSummaryForPublic(session.summary ?? null),
+      summary: sanitizeSummaryForPublic(session.summary ?? null, { partyName: session.partyName ?? undefined, phase: session.phase ?? undefined }),
       startedAt: session.startedAt.toISOString(),
       endedAt: session.endedAt ? session.endedAt.toISOString() : null,
       ...(session.dmMetadata ? { dmMetadata: session.dmMetadata } : {}),
@@ -1218,9 +1268,15 @@ spectator.get("/sessions/:id/events", async (c) => {
       .limit(limit)
       .offset(offset);
 
+    const HIDDEN_EVENT_TYPES = ['room_override', 'dm_session_metadata', 'system', 'override', 'metadata', 'session_config', 'debug'];
+    const filteredRows = rows.filter(r => {
+      const t = (r.type || '').toLowerCase();
+      return !HIDDEN_EVENT_TYPES.some(hidden => t.includes(hidden));
+    });
+
     return c.json({
       sessionId,
-      events: rows.map((r) => ({
+      events: filteredRows.map((r) => ({
         type: r.type,
         actorId: r.actorId,
         data: r.data,
@@ -1699,7 +1755,7 @@ spectator.get("/featured", async (c) => {
         sessionId: sessionRow.id,
         partyId: sessionRow.partyId,
         partyName: sessionRow.partyName ?? null,
-        title: sanitizeSummaryForPublic(sessionRow.summary ?? null) ?? "Dungeon Exploration Session",
+        title: sanitizeSummaryForPublic(sessionRow.summary ?? null, { partyName: sessionRow.partyName ?? undefined }) ?? "Dungeon Exploration Session",
         members: members.map((m) => ({
           id: m.id,
           name: m.name,
@@ -2363,7 +2419,7 @@ spectator.get("/feed.xml", async (c) => {
     // Build Atom entries
     const entries = sessions.map((s) => {
       const partyName = s.partyName ?? "Unknown Party";
-      const cleanSummary = sanitizeSummaryForPublic(s.summary ?? null);
+      const cleanSummary = sanitizeSummaryForPublic(s.summary ?? null, { partyName });
       const title = s.campaignName
         ? `${xmlEscape(partyName)} — ${xmlEscape(s.campaignName)}`
         : xmlEscape(partyName);
