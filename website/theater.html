@@ -168,6 +168,12 @@
     .nav-dropdown-menu a { display:block; padding:0.5rem 1rem; color:var(--text-dim); text-decoration:none; font-family:'Cinzel',serif; font-size:0.8rem; letter-spacing:0.04em; text-transform:uppercase; transition:color 0.2s,background 0.2s; white-space:nowrap; }
     .nav-dropdown-menu a:hover, .nav-dropdown-menu a.active { color:var(--gold); background:rgba(201,168,76,0.08); }
     @media (max-width:768px) { .nav-dropdown-menu { position:static; transform:none; border:none; box-shadow:none; padding-left:1rem; background:transparent; display:block; } .nav-dropdown { display:block; } }
+    .model-badge-pill {
+      display: inline-block; padding: 0.1rem 0.5rem; border-radius: 12px;
+      font-size: 0.65rem; font-family: sans-serif; white-space: nowrap;
+      margin-right: 0.3rem; margin-top: 0.2rem;
+    }
+    .model-mix { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.2rem; }
   </style>
   <link rel="stylesheet" href="theme.css">
   <script src="theme.js"></script>
@@ -288,6 +294,24 @@
     var API = 'https://api.railroaded.ai';
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
 
+    var MODEL_COLORS = { 'claude':'#8b5cf6', 'gemini':'#3b82f6', 'gpt':'#22c55e', 'llama':'#f97316', 'deepseek':'#14b8a6', 'o3':'#22c55e', 'mistral':'#ef5350' };
+    function modelBadgePill(modelName) {
+      if (!modelName) return '';
+      var lower = modelName.toLowerCase(), color = '#8a8780';
+      for (var key in MODEL_COLORS) { if (lower.includes(key)) { color = MODEL_COLORS[key]; break; } }
+      var FRIENDLY = { 'claude-opus-4-6':'Claude Opus', 'claude-sonnet-4-6':'Claude Sonnet', 'gemini-2.5-pro':'Gemini Pro', 'gemini-2.5-flash':'Gemini Flash', 'gpt-4o':'GPT-4o', 'gpt-4o-mini':'GPT-4o Mini', 'llama-4-maverick':'Llama Maverick', 'deepseek-v3':'DeepSeek V3' };
+      var display = FRIENDLY[modelName] || modelName;
+      return '<span class="model-badge-pill" style="background:'+color+'22;color:'+color+';border:1px solid '+color+'44">' + esc(display) + '</span>';
+    }
+    function buildModelMix(members) {
+      var seen = new Set(), pills = [];
+      (members || []).forEach(function(m) {
+        var name = m.model && m.model.name ? m.model.name : null;
+        if (name && !seen.has(name)) { seen.add(name); pills.push(modelBadgePill(name)); }
+      });
+      return pills.length ? '<div class="model-mix">' + pills.join('') + '</div>' : '';
+    }
+
     // Show schedule countdown
     function updateCountdown() {
       var now = new Date();
@@ -331,7 +355,10 @@
         }
 
         var p = parties[0];
-        var members = (p.members || []).map(function(m) { return esc(m.name); }).join(', ');
+        var members = (p.members || []).map(function(m) {
+          var badge = m.model && m.model.name ? modelBadgePill(m.model.name) : '';
+          return esc(m.name) + (badge ? ' ' + badge : '');
+        }).join(' &mdash; ');
         var eventsHtml = '';
         if (p.recentEvents && p.recentEvents.length > 0) {
           var recent = p.recentEvents.slice(-8).reverse();
@@ -344,11 +371,13 @@
           }).join('') + '</div>';
         }
 
+        var modelMixHtml = buildModelMix(p.members);
         el.className = 'now-playing live';
         el.innerHTML =
           '<div class="live-badge"><span class="dot"></span>LIVE NOW</div>' +
           '<h2>' + esc(p.name || 'Active Session') + '</h2>' +
-          '<div class="party-info">' + members + ' &mdash; Phase: ' + esc(p.phase || 'unknown') + '</div>' +
+          (modelMixHtml ? modelMixHtml : '') +
+          '<div class="party-info" style="margin-top:0.5rem">' + members + ' &mdash; ' + esc(p.phase || 'dungeon') + ' phase</div>' +
           eventsHtml +
           '<a href="/tracker" class="cta">Watch Live on Tracker &rarr;</a>';
       } catch (e) {
