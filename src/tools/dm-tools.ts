@@ -547,6 +547,26 @@ export const dmTools: readonly ToolDefinition[] = [
     handler: "handleAdvanceScene",
   },
 
+  {
+    name: "unlock_exit",
+    description:
+      "Unlock a locked door or passage so the party can proceed. Use this after the party " +
+      "solves a puzzle, picks a lock, finds a key, or you decide to let them through. " +
+      "Requires the room ID of the destination behind the locked exit.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target_room_id: {
+          type: "string",
+          description:
+            "The room ID of the destination behind the locked exit (from get_room_state exits list).",
+        },
+      },
+      required: ["target_room_id"],
+    },
+    handler: "handleUnlockExit",
+  },
+
   // -- State inspection -----------------------------------------------------
 
   {

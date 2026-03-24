@@ -48,7 +48,7 @@ import {
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
-import { resolveAttack, meleeAttackParams, rangedAttackParams } from "../engine/combat.ts";
+import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
 import { castSpell, spellSaveDC, spellAttackBonus, getMaxSpellSlots, type SpellDefinition } from "../engine/spells.ts";
@@ -882,6 +882,7 @@ const dmActionRoutes: Record<string, { method: string; path: string }> = {
   request_contested_check:    { method: "POST", path: "/api/v1/dm/request-contested-check" },
   deal_environment_damage:    { method: "POST", path: "/api/v1/dm/deal-environment-damage" },
   advance_scene:              { method: "POST", path: "/api/v1/dm/advance-scene" },
+  unlock_exit:                { method: "POST", path: "/api/v1/dm/unlock-exit" },
   get_party_state:            { method: "GET",  path: "/api/v1/dm/party-state" },
   get_room_state:             { method: "GET",  path: "/api/v1/dm/room-state" },
   monster_attack:             { method: "POST", path: "/api/v1/dm/monster-attack" },
@@ -992,20 +993,39 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
 
   const result = resolveAttack({ ...attackParams, targetAC: target.ac });
 
+  // Rogue Sneak Attack: bonus damage if (a) ally adjacent or (b) attack had advantage
+  let sneakAttackBonus = 0;
+  if (result.hit && char.class === "rogue") {
+    // TODO: gate Sneak Attack on finesse/ranged weapon type when weapon properties are tracked
+    const allyInMelee = party.members.some((mid) => {
+      if (mid === char.id) return false;
+      const ally = characters.get(mid);
+      return ally && ally.hpCurrent > 0 && !ally.conditions.includes("unconscious");
+    });
+    if (allyInMelee || result.critical) {
+      // TODO: replace critical check with explicit advantage tracking when advantage system is implemented
+      const sneakDice = sneakAttackDice(char.level);
+      const sneakRoll = roll(sneakDice);
+      sneakAttackBonus = sneakRoll.total;
+    }
+  }
+
   if (result.hit) {
-    const { monster, killed } = damageMonster(target, result.totalDamage);
+    const totalDmg = result.totalDamage + sneakAttackBonus;
+    const { monster, killed } = damageMonster(target, totalDmg);
     // Update monster in party
     const idx = party.monsters.findIndex((m) => m.id === target.id);
     if (idx !== -1) party.monsters[idx] = monster;
 
     // Track lifetime stats
-    char.totalDamageDealt += result.totalDamage;
+    char.totalDamageDealt += totalDmg;
     if (result.critical) char.criticalHits++;
 
     logEvent(party, "attack", char.id, {
       attackerName: char.name, targetName: target.name,
-      hit: true, damage: result.totalDamage, damageType: result.damageType,
+      hit: true, damage: totalDmg, damageType: result.damageType,
       critical: result.critical,
+      sneakAttack: sneakAttackBonus > 0, sneakAttackDamage: sneakAttackBonus,
     });
 
     if (killed) {
@@ -1044,9 +1064,10 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     return {
       success: true,
       data: {
-        hit: true, critical: result.critical, damage: result.totalDamage,
+        hit: true, critical: result.critical, damage: totalDmg,
         damageType: result.damageType, targetHP: monster.hpCurrent,
         killed, naturalRoll: result.naturalRoll,
+        sneakAttack: sneakAttackBonus > 0, sneakAttackDamage: sneakAttackBonus,
       },
     };
   }
@@ -1238,7 +1259,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   const targetIsUnconscious = target.conditions.includes("unconscious");
 
   const result = resolveAttack({
-    attackerAbilityMod: attack.to_hit - proficiencyBonus(1),
+    attackerAbilityMod: 0,
     proficiencyBonus: 0,
     targetAC: target.ac,
     damageDice: attack.damage.replace(/[+-]\d+$/, ""),
@@ -3302,6 +3323,25 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   const exits = party.dungeonState ? getAvailableExits(party.dungeonState).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })) : [];
   const currentRoom = party.dungeonState ? getCurrentRoom(party.dungeonState) : null;
   return { success: true, data: { advanced: false, room: currentRoom?.name, phase: party.session?.phase, exits, message: "No next_room_id provided. Call advance_scene with a next_room_id from the exits list to move the party." } };
+}
+
+export function handleUnlockExit(userId: string, params: { target_room_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+
+  const currentRoomId = party.dungeonState.currentRoomId;
+  if (!params.target_room_id) return { success: false, error: "target_room_id is required." };
+
+  const exits = getAvailableExits(party.dungeonState);
+  const exit = exits.find((e) => e.roomId === params.target_room_id);
+  if (!exit) return { success: false, error: `No exit to room ${params.target_room_id} from current room.` };
+  if (exit.connectionType !== "locked") return { success: false, error: `Exit to ${exit.roomName} is already unlocked (type: ${exit.connectionType}).` };
+
+  party.dungeonState = unlockConnection(party.dungeonState, currentRoomId, params.target_room_id);
+  logEvent(party, "exit_unlocked", null, { fromRoom: currentRoomId, toRoom: params.target_room_id, roomName: exit.roomName });
+
+  return { success: true, data: { unlocked: true, roomName: exit.roomName, targetRoomId: params.target_room_id } };
 }
 
 export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {

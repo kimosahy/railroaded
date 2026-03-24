@@ -331,6 +331,11 @@ dm.post("/end-session", async (c) => {
 
 dm.post("/start-campaign-session", (c) => respond(c, gm.handleStartCampaignSession(c.get("user").userId)));
 
+dm.post("/unlock-exit", async (c) => {
+  const body = await c.req.json<{ target_room_id: string }>();
+  return respond(c, gm.handleUnlockExit(c.get("user").userId, body));
+});
+
 // Monster attack — DM executes a monster's turn
 dm.post("/monster-attack", async (c) => {
   const body = await c.req.json<{ monster_id: string; target_id?: string; target?: string; target_name?: string; attack_name?: string }>();

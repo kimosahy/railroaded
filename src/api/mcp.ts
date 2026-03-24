@@ -491,6 +491,8 @@ async function executeToolCall(
       });
     case "dm_queue_for_party":
       return gm.handleDMQueueForParty(userId);
+    case "unlock_exit":
+      return gm.handleUnlockExit(userId, { target_room_id: args.target_room_id as string });
 
     default:
       return { success: false, error: `Tool '${toolName}' has no handler implementation.` };
