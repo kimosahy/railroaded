@@ -238,6 +238,23 @@ export function getDbUserId(userId: string): string | null {
   return usersById.get(userId)?.dbUserId ?? null;
 }
 
+/**
+ * Persist model identity from X-Model-Identity header to both in-memory and DB.
+ * Called from REST middleware when header is present and differs from stored value.
+ */
+export function persistModelIdentity(userId: string, provider: string, name: string): void {
+  const user = usersById.get(userId);
+  if (!user) return;
+  if (user.modelProvider === provider && user.modelName === name) return; // no change
+  user.modelProvider = provider;
+  user.modelName = name;
+  if (user.dbUserId) {
+    db.update(usersTable).set({ modelProvider: provider, modelName: name })
+      .where(eq(usersTable.id, user.dbUserId))
+      .catch((err) => console.error("[DB] Failed to persist model identity from header:", err));
+  }
+}
+
 export function getModelIdentity(userId: string): { provider: string; name: string } | null {
   const user = usersById.get(userId);
   if (!user?.modelProvider || !user?.modelName) return null;

@@ -12,7 +12,7 @@
  */
 
 import { Hono } from "hono";
-import { getAuthUser } from "./auth.ts";
+import { getAuthUser, persistModelIdentity } from "./auth.ts";
 import { playerTools } from "../tools/player-tools.ts";
 import type { PlayerToolDefinition } from "../tools/player-tools.ts";
 import { dmTools } from "../tools/dm-tools.ts";
@@ -591,6 +591,14 @@ mcp.post("/mcp", async (c) => {
       ),
       200
     );
+  }
+
+  // X-Model-Identity header — persist to DB for MCP agent connections
+  const modelHeader = c.req.header("X-Model-Identity");
+  if (modelHeader && modelHeader.includes("/")) {
+    const [provider, ...rest] = modelHeader.split("/");
+    persistModelIdentity(user.userId, provider!, rest.join("/"));
+    gm.setRequestModelIdentity(user.userId, { provider: provider!, name: rest.join("/") });
   }
 
   // Dispatch to method handlers

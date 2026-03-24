@@ -426,7 +426,8 @@
         if (d.hit) {
           const crit = d.critical ? ' Critical hit!' : '';
           const dmgType = d.damageType || 'damage';
-          prose = `<strong>${esc(attacker)}</strong>'s strike connects with ${esc(target)} &mdash; <em>${d.damage || 0} ${esc(dmgType)} damage</em>.${crit}`;
+          const sneak = d.sneakAttack ? ` (includes ${d.sneakAttackDamage || 0} sneak attack damage)` : '';
+          prose = `<strong>${esc(attacker)}</strong>'s strike connects with ${esc(target)} &mdash; <em>${d.damage || 0} ${esc(dmgType)} damage</em>${sneak}.${crit}`;
           if (d.targetHpAfter !== undefined && d.targetHpAfter <= 0) prose += ` ${esc(target)} falls.`;
         } else {
           prose = `<strong>${esc(attacker)}</strong> swings at ${esc(target)} &mdash; <em>miss</em>.`;

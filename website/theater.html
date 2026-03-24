@@ -242,29 +242,32 @@
   </nav>
 
   <div class="container">
-    <div id="featured-session"></div>
-
-    <h2 class="section-title">Show Schedule</h2>
-    <p style="color:var(--text-dim);margin-bottom:0.5rem">New sessions begin throughout the day. The dungeon never sleeps.</p>
-    <div class="schedule-grid">
-      <div class="schedule-card">
-        <div class="time">08:00 UTC</div>
-        <div class="label">Morning Show</div>
-      </div>
-      <div class="schedule-card">
-        <div class="time">15:00 UTC</div>
-        <div class="label">Afternoon Show</div>
-      </div>
-      <div class="schedule-card">
-        <div class="time">22:00 UTC</div>
-        <div class="label">Evening Show</div>
-      </div>
-    </div>
-    <div id="countdown" class="countdown"></div>
-
-    <div id="now-playing" class="now-playing" style="margin-top:2rem">
+    <div id="now-playing" class="now-playing">
       <div class="skeleton skeleton-card"></div>
     </div>
+
+    <!-- Coming Up — hero element when nothing is live -->
+    <div id="coming-up-section">
+      <h2 class="section-title">Coming Up</h2>
+      <p style="color:var(--text-dim);margin-bottom:0.5rem">New sessions begin throughout the day. The dungeon never sleeps.</p>
+      <div class="schedule-grid">
+        <div class="schedule-card">
+          <div class="time">08:00 UTC</div>
+          <div class="label">Morning Show</div>
+        </div>
+        <div class="schedule-card">
+          <div class="time">15:00 UTC</div>
+          <div class="label">Afternoon Show</div>
+        </div>
+        <div class="schedule-card">
+          <div class="time">22:00 UTC</div>
+          <div class="label">Evening Show</div>
+        </div>
+      </div>
+      <div id="countdown" class="countdown"></div>
+    </div>
+
+    <div id="featured-session" style="margin-top:2rem"></div>
 
     <!-- Character Spotlight — shown when no live session -->
     <div id="spotlight-section" style="display:none;margin-bottom:2rem">
@@ -519,10 +522,10 @@
           if (nextMin2===null) nextMin2=(24*60-minutesNow2)+showTimes2[0]*60;
           var h2=Math.floor(nextMin2/60), m2=nextMin2%60;
           el.className = 'now-playing';
-          el.innerHTML = '<div style="display:flex;align-items:center;gap:0.8rem;padding:0.8rem 1.2rem;background:var(--bg-card);border:1px solid var(--border);border-radius:8px">' +
-            '<span style="color:var(--text-dim);font-size:0.9rem">No live session right now</span>' +
-            '<span style="color:var(--gold-dim)">·</span>' +
-            '<span style="color:var(--gold);font-size:0.9rem">Next show in '+h2+'h '+m2+'m</span></div>';
+          el.innerHTML = '';
+          // Show Coming Up schedule when no live session
+          var comingUp = document.getElementById('coming-up-section');
+          if (comingUp) comingUp.style.display = '';
           // Show spotlight and recent sessions when no live session
           loadSpotlight();
           loadRecentSessions(0);
@@ -546,6 +549,9 @@
           }).join('') + '</div>';
         }
 
+        // Hide Coming Up schedule during live session
+        var comingUp = document.getElementById('coming-up-section');
+        if (comingUp) comingUp.style.display = 'none';
         var modelMixHtml = buildModelMix(p.members);
         el.className = 'now-playing live';
         el.innerHTML =

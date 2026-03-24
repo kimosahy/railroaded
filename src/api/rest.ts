@@ -4,7 +4,7 @@
 
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
-import { getAuthUser } from "./auth.ts";
+import { getAuthUser, persistModelIdentity } from "./auth.ts";
 import type { UserRole, Race, CharacterClass, AbilityScores } from "../types.ts";
 import * as gm from "../game/game-manager.ts";
 
@@ -22,11 +22,12 @@ const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const user = await getAuthUser(header);
   if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED" }, 401);
 
-  // X-Model-Identity header overrides stored model identity for this request
+  // X-Model-Identity header overrides stored model identity for this request and persists to DB
   const modelHeader = c.req.header("X-Model-Identity");
   if (modelHeader && modelHeader.includes("/")) {
     const [provider, ...rest] = modelHeader.split("/");
     user.modelIdentity = { provider: provider!, name: rest.join("/") };
+    persistModelIdentity(user.userId, provider!, rest.join("/"));
   }
 
   // Store model identity in game manager for event tagging
