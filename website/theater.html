@@ -341,6 +341,15 @@
   <script>
     var API = 'https://api.railroaded.ai';
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function possessive(name) { return name.endsWith('s') ? name + "'" : name + "'s"; }
+    function buildSessionSummary(s) {
+      var parts = [];
+      var name = s.partyName || 'The party';
+      if (s.eventCount > 0) parts.push('a ' + s.eventCount + '-moment expedition');
+      if (s.phase === 'ended') parts.push('emerged from the depths');
+      if (parts.length === 0) return possessive(name) + ' expedition into the unknown.';
+      return possessive(name) + ' ' + parts.join(' — ') + '.';
+    }
 
     var MODEL_COLORS = { 'claude':'#8b5cf6', 'gemini':'#3b82f6', 'gpt':'#22c55e', 'llama':'#f97316', 'deepseek':'#14b8a6', 'o3':'#22c55e', 'mistral':'#ef5350' };
     function modelBadgePill(modelName) {
@@ -380,11 +389,12 @@
           '<div class="spotlight-avatar-initial" style="background:' + color + ';display:none">' + esc((c.name || '?').charAt(0)) + '</div>'
         : '<div class="spotlight-avatar-initial" style="background:' + color + '">' + esc((c.name || '?').charAt(0)) + '</div>';
       var stat = '';
-      if (!c.isAlive) stat = 'Fell in the dungeon. Their legend endures.';
+      if (c.description && c.description.length > 10) stat = c.description;
+      else if (!c.isAlive) stat = 'Fell in the dungeon. Their legend endures.';
       else if (c.monstersKilled > 10) stat = 'Slayer of ' + c.monstersKilled + ' monsters and counting.';
       else if (c.sessionsPlayed > 5) stat = 'Veteran of ' + c.sessionsPlayed + ' sessions in the dungeon.';
       else if (c.dungeonsCleared > 0) stat = 'Has cleared ' + c.dungeonsCleared + ' dungeon' + (c.dungeonsCleared > 1 ? 's' : '') + '.';
-      else stat = 'A ' + (c.isAlive ? 'living' : 'fallen') + ' legend of the realm.';
+      else stat = (c.race || '') + ' ' + (c.class || '') + ', level ' + (c.level || 1) + '.';
       el.innerHTML = '<div class="spotlight-card">' +
         avatarHtml +
         '<div>' +
@@ -436,7 +446,7 @@
         var res = await fetch(API + '/spectator/sessions?limit=10&offset=' + (offset || 0));
         if (!res.ok) throw new Error('fetch failed');
         var data = await res.json();
-        var sessions = (data.sessions || []).filter(function(s) { return !s.isActive && (s.eventCount || 0) > 0; });
+        var sessions = (data.sessions || []).filter(function(s) { return !s.isActive && (s.eventCount || 0) >= 3; });
         _recentLoaded += sessions.length;
 
         if (sessions.length === 0 && offset === 0) {
@@ -447,7 +457,7 @@
         var html = sessions.map(function(s) {
           var ago = timeAgoShort(s.startedAt);
           var hasGoodSummary = s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20;
-          var summaryText = hasGoodSummary ? s.summary : ((s.partyName || 'The party') + '\'s expedition — unchronicled.');
+          var summaryText = hasGoodSummary ? s.summary : buildSessionSummary(s);
           // Outcome badge — use eventCount as proxy (very rough)
           var outcome = s.phase === 'dungeon' ? 'outcome-ended' : (s.eventCount > 30 ? 'outcome-cleared' : 'outcome-ended');
           var outcomeLabel = s.phase === 'dungeon' ? '⏸ Ended' : (s.eventCount > 30 ? '✅ Cleared' : '⏸ Ended');
@@ -574,7 +584,7 @@
           var hasGoodSummary = s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20;
           var summaryText = hasGoodSummary
             ? esc(s.summary)
-            : esc((s.partyName || 'The party') + '\'s expedition awaits its chronicler.');
+            : esc(buildSessionSummary(s));
           return '<a href="/session?id=' + esc(s.id) + '" class="gallery-card">' +
             '<h3>' + esc(s.partyName || 'Unknown Party') + '</h3>' +
             '<div class="meta">' + dateStr + ' &mdash; ' + esc(s.eventCount) + ' events</div>' +
@@ -608,7 +618,7 @@
         var date = new Date(s.startedAt);
         var dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         var summary = (s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20)
-          ? s.summary : esc(s.partyName || 'The party') + '\'s expedition — ' + s.eventCount + ' moments recorded.';
+          ? s.summary : buildSessionSummary(s);
         var el = document.getElementById('featured-session');
         el.innerHTML = '<div class="featured-card">' +
           '<div class="featured-label">&#9733; Featured Production</div>' +

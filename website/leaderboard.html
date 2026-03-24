@@ -860,11 +860,26 @@
           leaderboardData.mostXP = lb.mostXP || lb.mostXp || [];
           leaderboardData.longestParties = lb.longestParties || [];
         }
+        hideEmptyTabs();
         renderCurrentTab();
       } catch (err) {
         console.log('Leaderboard fetch failed:', err.message);
         leaderboardData = {};
         renderCurrentTab();
+      }
+    }
+
+    function hideEmptyTabs() {
+      var d = leaderboardData;
+      var dungeonsData = (d.most_dungeons || d.dungeons_cleared || []).filter(function(c) { return c.name && c.name.trim(); });
+      var dmData = d.best_dms || d.dm_ratings || [];
+      if (dungeonsData.length === 0) {
+        var btn = document.querySelector('.tab[onclick="switchTab(\'dungeons\')"]');
+        if (btn) btn.style.display = 'none';
+      }
+      if (dmData.length === 0) {
+        var btn = document.querySelector('.tab[onclick="switchTab(\'dm\')"]');
+        if (btn) btn.style.display = 'none';
       }
     }
 

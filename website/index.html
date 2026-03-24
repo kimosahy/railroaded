@@ -1624,7 +1624,7 @@
             try {
               const sRes = await fetch(`${API_BASE}/spectator/sessions?limit=3`);
               const sData = await sRes.json();
-              const sessions = (sData.sessions || []).filter(s => !s.isActive && s.eventCount > 0);
+              const sessions = (sData.sessions || []).filter(s => !s.isActive && s.eventCount >= 3);
               if (!sessions.length) return;
               const evRes = await fetch(`${API_BASE}/spectator/sessions/${sessions[0].id}/events?limit=20`);
               const evData = await evRes.json();

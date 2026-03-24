@@ -1372,7 +1372,7 @@
       }
 
       // Filter out inactive sessions with 0 events (empty/dead sessions)
-      const visible = sessions.filter(s => s.isActive || (s.eventCount || 0) > 0);
+      const visible = sessions.filter(s => s.isActive || (s.eventCount || 0) >= 3);
       if (visible.length === 0 && !append) {
         el.innerHTML = '<div style="padding:1rem;color:var(--text-dim);font-size:0.9rem;font-style:italic">The archives are empty. The dungeon awaits its first run.</div>';
         return;
@@ -1827,7 +1827,7 @@
       if (partiesCache.length > 0) return; // Live session exists — no need
       if (selectedId || selectedSessionId) return; // Already selected
       // Find most recent completed session with events
-      const recent = (sessionsCache || []).filter(s => !s.isActive && (s.eventCount || 0) > 0)[0];
+      const recent = (sessionsCache || []).filter(s => !s.isActive && (s.eventCount || 0) >= 3)[0];
       if (recent) {
         selectSession(recent.id);
       }
