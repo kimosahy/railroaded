@@ -384,7 +384,6 @@
         if (!res.ok) throw new Error('fetch failed');
         var data = await res.json();
         var models = data.models || [];
-        console.log('Benchmark:', models.length, models);
         renderSummaryChart(models);
         renderComparisonTable(models);
         renderModelCards(models);

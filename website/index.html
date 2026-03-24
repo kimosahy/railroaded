@@ -1509,7 +1509,24 @@
           return;
         }
 
-        const cards = narrations.map(n => {
+        // Distribute narrations across sessions to avoid showing 8 from the same party
+        const byParty = {};
+        narrations.forEach(n => {
+          const key = n.sessionId || n.partyName || 'unknown';
+          if (!byParty[key]) byParty[key] = [];
+          byParty[key].push(n);
+        });
+        const groups = Object.values(byParty);
+        const interleaved = [];
+        let gi = 0;
+        while (interleaved.length < 8 && groups.some(g => gi < g.length)) {
+          for (const g of groups) { if (gi < g.length) interleaved.push(g[gi]); }
+          gi++;
+        }
+        // If only one party, cap at 3
+        const display = groups.length === 1 ? interleaved.slice(0, 3) : interleaved.slice(0, 8);
+
+        const cards = display.map(n => {
           const ago = timeAgo(new Date(n.createdAt));
           const party = n.partyName ? escapeHtml(n.partyName) : 'Unknown Party';
           return `<div class="ticker-card">
@@ -1743,12 +1760,18 @@
               }
               // Combat start
               if (t === 'combat_start' || t === 'encounter_start') {
-                const count = d.monsterCount || (d.monsters || []).length || 0;
-                if (count >= 3) {
+                const monsters = d.monsters || [];
+                const monsterNames = monsters.map(m => m.name || m.type).filter(Boolean);
+                const count = d.monsterCount || monsters.length || 0;
+                if (count >= 2) {
+                  const partyName = s.partyName || s.party_name || 'The party';
+                  const enemyDesc = monsterNames.length
+                    ? monsterNames.slice(0, 2).join(' and ') + (count > 2 ? ` and ${count - 2} more` : '')
+                    : `${count} enemies`;
                   moments.push({
                     icon: '\u2694\uFE0F',
                     title: 'Ambush!',
-                    desc: 'The party faces ' + count + ' monsters in a fierce battle!',
+                    desc: `${partyName} stumbles into ${enemyDesc} in the dark.`,
                     sessionId: s.id,
                     time: ts
                   });
@@ -1756,26 +1779,47 @@
               }
               // Session/dungeon complete
               if (t === 'session_end' || t === 'dungeon_complete' || t === 'dungeon_cleared') {
+                const partyName = s.partyName || s.party_name || 'The party';
                 moments.push({
                   icon: '\u{1F3F0}',
                   title: 'Dungeon Cleared!',
-                  desc: (s.partyName || s.party_name || 'The party') + ' conquered the dungeon and emerged victorious.',
+                  desc: `${partyName} emerges victorious. The dungeon falls silent.`,
+                  sessionId: s.id,
+                  time: ts
+                });
+              }
+              // Near death
+              if ((t === 'hp_change' || t === 'damage') && d.hpCurrent != null && d.hpCurrent <= 5 && d.hpCurrent > 0) {
+                const name = d.characterName || d.name || 'A hero';
+                moments.push({
+                  icon: '\u2764\uFE0F\u200D\u{1F525}',
+                  title: 'On the Brink',
+                  desc: `${name} staggers at ${d.hpCurrent} HP. One more blow could end it.`,
                   sessionId: s.id,
                   time: ts
                 });
               }
             }
           } catch(e) { /* skip session */ }
-          if (moments.length >= 4) break;
+          if (moments.length >= 8) break;
         }
 
         if (moments.length === 0) return;
+
+        // Dedup by title + desc + sessionId
+        const seen = new Set();
+        const unique = moments.filter(m => {
+          const key = m.sessionId + '::' + m.title + '::' + m.desc;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
 
         const section = document.getElementById('epic-moments-section');
         const container = document.getElementById('epic-moments-container');
         section.style.display = '';
 
-        container.innerHTML = moments.slice(0, 4).map(m => {
+        container.innerHTML = unique.slice(0, 4).map(m => {
           const ago = m.time ? timeAgoShort(m.time) : '';
           return `<a href="/session?id=${encodeURIComponent(m.sessionId)}" class="epic-card">
             <div class="epic-icon">${m.icon}</div>

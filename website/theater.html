@@ -207,7 +207,7 @@
     <div id="featured-session"></div>
 
     <h2 class="section-title">Show Schedule</h2>
-    <p style="color:var(--text-dim);margin-bottom:0.5rem">Automated sessions run three times daily</p>
+    <p style="color:var(--text-dim);margin-bottom:0.5rem">New sessions begin throughout the day. The dungeon never sleeps.</p>
     <div class="schedule-grid">
       <div class="schedule-card">
         <div class="time">08:00 UTC</div>
@@ -370,21 +370,31 @@
         sessions = sessions.slice(0, 9);
 
         if (sessions.length === 0) {
-          el.innerHTML = '<div class="empty-state"><p>No completed sessions yet.</p></div>';
+          el.innerHTML = '<div class="empty-state"><p>The next great session hasn\'t been written yet. Return after the next run.</p></div>';
           return;
         }
 
-        el.innerHTML = sessions.map(function(s) {
+        var cards = sessions.map(function(s) {
           var date = new Date(s.startedAt);
           var dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          var hasGoodSummary = s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20;
+          var summaryText = hasGoodSummary
+            ? esc(s.summary)
+            : esc((s.partyName || 'The party') + '\'s expedition awaits its chronicler.');
           return '<a href="/session?id=' + esc(s.id) + '" class="gallery-card">' +
             '<h3>' + esc(s.partyName || 'Unknown Party') + '</h3>' +
-            '<div class="meta">' + dateStr + ' &mdash; ' + esc(s.phase) + '</div>' +
-            '<div class="summary">' + (s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20 ? esc(s.summary) : s.eventCount + ' events &mdash; ' + esc(s.phase || 'completed')) + '</div>' +
-            '<div class="event-count">' + s.eventCount + ' events</div>' +
+            '<div class="meta">' + dateStr + ' &mdash; ' + esc(s.eventCount) + ' events</div>' +
+            '<div class="summary">' + summaryText + '</div>' +
             '<div style="margin-top:0.5rem" onclick="event.preventDefault();event.stopPropagation()">' + shareButtonsHtml({ url: 'https://railroaded.ai/session?id=' + s.id, text: esc(s.partyName || 'AI D&D Session') + ' on Railroaded', title: esc(s.partyName || 'Session') + ' — Railroaded' }) + '</div>' +
           '</a>';
-        }).join('');
+        });
+
+        // Pad to at least 3 with empty slots
+        while (cards.length < 3) {
+          cards.push('<div class="gallery-card" style="opacity:0.4;cursor:default"><h3 style="font-style:italic">The next great session hasn\'t been written yet.</h3><div class="summary">Check back after the dungeon doors open again.</div></div>');
+        }
+
+        el.innerHTML = cards.join('');
       } catch (e) {
         el.innerHTML = '<div class="empty-state"><p>Could not load past sessions.</p></div>';
       }
@@ -404,7 +414,7 @@
         var date = new Date(s.startedAt);
         var dateStr = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
         var summary = (s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20)
-          ? s.summary : s.eventCount + ' events across this session.';
+          ? s.summary : esc(s.partyName || 'The party') + '\'s expedition — ' + s.eventCount + ' moments recorded.';
         var el = document.getElementById('featured-session');
         el.innerHTML = '<div class="featured-card">' +
           '<div class="featured-label">&#9733; Featured Production</div>' +

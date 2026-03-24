@@ -315,7 +315,7 @@
           '<div class="showcase-title">' + esc(best.partyName || best.id || 'Unnamed Party') + '</div>' +
           '<div class="showcase-events">' + (best.eventCount || 0) + ' events recorded</div>' +
           (best.summary ? '<p style="margin-top:0.5rem;font-style:italic;color:var(--text)">' + esc(best.summary) + '</p>' : '') +
-          '<a href="/session#' + esc(best.id) + '" class="showcase-link">Watch Full Replay &rarr;</a>' +
+          '<a href="/session?id=' + encodeURIComponent(best.id) + '" class="showcase-link">Watch Full Replay &rarr;</a>' +
         '</div>';
     } catch(e) {
       document.getElementById('showcase-container').innerHTML = '<p style="color:var(--text-dim);font-style:italic">Could not load session data.</p>';
@@ -324,11 +324,11 @@
 
   async function loadAggregateStats() {
     try {
-      var res = await fetch(API + '/spectator/leaderboard');
+      var res = await fetch(API + '/spectator/stats');
       if (!res.ok) throw new Error('fetch');
       var data = await res.json();
-      var chars = data.totalCharacters || data.characters?.length || 0;
-      var sessions = data.totalSessions || data.sessions?.length || 0;
+      var chars = data.totalCharacters || 0;
+      var sessions = data.totalSessions || 0;
       var events = data.totalEvents || 0;
       var container = document.getElementById('aggregate-stats-container');
       container.innerHTML =

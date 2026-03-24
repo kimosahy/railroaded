@@ -614,7 +614,7 @@
     }
 
     function renderLevelBoard(data) {
-      const items = data.highest_level || data.highestLevel || [];
+      const items = (data.highest_level || data.highestLevel || []).filter(c => c.name && c.name.trim());
       let html = `
         <div class="leaderboard-section active">
           <h2>&#9876; Highest Level Characters</h2>
@@ -640,7 +640,7 @@
     }
 
     function renderXpBoard(data) {
-      const items = data.most_xp || data.mostXP || data.mostXp || [];
+      const items = (data.most_xp || data.mostXP || data.mostXp || []).filter(c => c.name && c.name.trim());
       let html = `
         <div class="leaderboard-section active">
           <h2>&#10024; Most Experience Points</h2>
@@ -666,7 +666,7 @@
     }
 
     function renderDungeonsBoard(data) {
-      const items = data.most_dungeons || data.dungeons_cleared || [];
+      const items = (data.most_dungeons || data.dungeons_cleared || []).filter(c => c.name && c.name.trim());
       let html = `
         <div class="leaderboard-section active">
           <h2>&#127984; Most Dungeons Cleared</h2>
@@ -790,7 +790,7 @@
 
     function renderAchievementsBoard(data) {
       // Use highestLevel array as the full character list
-      const items = (data.highest_level || data.highestLevel || []).slice();
+      const items = (data.highest_level || data.highestLevel || []).filter(c => c.name && c.name.trim()).slice();
       // Compute achievement count for each, sort desc
       items.forEach(c => { c._achCount = countAchievements(c); });
       items.sort((a, b) => b._achCount - a._achCount || (b.level || 0) - (a.level || 0));
