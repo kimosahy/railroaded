@@ -2788,6 +2788,13 @@ spectator.get("/benchmark", async (c) => {
       bond: charactersTable.bond,
       ideal: charactersTable.ideal,
       fear: charactersTable.fear,
+      flawOpportunities: charactersTable.flawOpportunities,
+      flawActivations: charactersTable.flawActivations,
+      totalActionWords: charactersTable.totalActionWords,
+      totalActions: charactersTable.totalActions,
+      safetyRefusals: charactersTable.safetyRefusals,
+      chatMessages: charactersTable.chatMessages,
+      tacticalChats: charactersTable.tacticalChats,
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
@@ -2814,6 +2821,13 @@ spectator.get("/benchmark", async (c) => {
       hasBonds: number;
       hasIdeals: number;
       hasFears: number;
+      totalFlawOpportunities: number;
+      totalFlawActivations: number;
+      totalActionWords: number;
+      totalActions: number;
+      totalSafetyRefusals: number;
+      totalChatMessages: number;
+      totalTacticalChats: number;
     }>();
 
     for (const r of rows) {
@@ -2830,6 +2844,9 @@ spectator.get("/benchmark", async (c) => {
           totalTimesKnockedOut: 0, totalDungeonsCleared: 0, totalGoldEarned: 0,
           levelSum: 0, classChoices: {}, raceChoices: {},
           hasFlaws: 0, hasBonds: 0, hasIdeals: 0, hasFears: 0,
+          totalFlawOpportunities: 0, totalFlawActivations: 0,
+          totalActionWords: 0, totalActions: 0, totalSafetyRefusals: 0,
+          totalChatMessages: 0, totalTacticalChats: 0,
         };
         modelMap.set(key, entry);
       }
@@ -2850,6 +2867,13 @@ spectator.get("/benchmark", async (c) => {
       if (r.bond && r.bond.length > 0) entry.hasBonds++;
       if (r.ideal && r.ideal.length > 0) entry.hasIdeals++;
       if (r.fear && r.fear.length > 0) entry.hasFears++;
+      entry.totalFlawOpportunities += r.flawOpportunities ?? 0;
+      entry.totalFlawActivations += r.flawActivations ?? 0;
+      entry.totalActionWords += r.totalActionWords ?? 0;
+      entry.totalActions += r.totalActions ?? 0;
+      entry.totalSafetyRefusals += r.safetyRefusals ?? 0;
+      entry.totalChatMessages += r.chatMessages ?? 0;
+      entry.totalTacticalChats += r.tacticalChats ?? 0;
     }
 
     const models = [...modelMap.values()]
@@ -2873,6 +2897,12 @@ spectator.get("/benchmark", async (c) => {
         fearRate: m.characters > 0 ? Math.round((m.hasFears / m.characters) * 100) : 0,
         classChoices: m.classChoices,
         raceChoices: m.raceChoices,
+        behavioralMetrics: {
+          flawActivationRate: m.totalFlawOpportunities > 0 ? +(m.totalFlawActivations / m.totalFlawOpportunities).toFixed(2) : 0,
+          verbosityIndex: m.totalActions > 0 ? +(m.totalActionWords / m.totalActions).toFixed(1) : 0,
+          safetyBleedThrough: m.totalActions > 0 ? +(m.totalSafetyRefusals / m.totalActions).toFixed(2) : 0,
+          communicationQuality: m.totalChatMessages > 0 ? +(m.totalTacticalChats / m.totalChatMessages).toFixed(2) : 0,
+        },
       }))
       .sort((a, b) => b.sessions - a.sessions || b.characters - a.characters);
 
