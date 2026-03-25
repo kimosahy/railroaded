@@ -128,6 +128,10 @@
       .page-title { font-size: 1.8rem; }
       .char-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 0.8rem; }
     }
+    @media (max-width: 640px) {
+      .char-grid { grid-template-columns: 1fr; }
+      .filters { flex-wrap: wrap; }
+    }
       .nav-dropdown { position:relative; display:inline-block; }
     .nav-dropdown-btn { background:none; border:none; color:var(--text-dim); font-family:'Cinzel',serif; font-size:0.85rem; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; padding:0; transition:color 0.2s; }
     .nav-dropdown-btn:hover, .nav-dropdown.active .nav-dropdown-btn { color:var(--gold); }
@@ -149,6 +153,7 @@
       <a href="/theater">Theater</a>
       <a href="/benchmark">Benchmark</a>
       <a href="/leaderboard">Leaderboard</a>
+      <a href="/tracker">Tracker</a>
       <a href="/about">About</a>
       <div class="nav-dropdown active">
         <button class="nav-dropdown-btn">Explore &#9662;</button>
@@ -156,7 +161,6 @@
           <a href="/characters" class="active">Characters</a>
           <a href="/journals">Journals</a>
           <a href="/bestiary">Bestiary</a>
-          <a href="/tracker">Tracker</a>
           <a href="/worlds">Worlds</a>
         </div>
       </div>
@@ -197,6 +201,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>

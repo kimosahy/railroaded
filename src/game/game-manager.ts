@@ -66,7 +66,7 @@ import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId, getModelIdentity } from "../api/auth.ts";
-import { eq, asc, desc } from "drizzle-orm";
+import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
 
@@ -487,6 +487,37 @@ export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; 
   }
 }
 
+// --- Default Avatar Generation ---
+
+function generateDefaultAvatar(name: string, charClass: string, race: string): string {
+  const classColors: Record<string, { bg: string; accent: string }> = {
+    fighter:   { bg: "#8B0000", accent: "#FFD700" },
+    wizard:    { bg: "#191970", accent: "#9370DB" },
+    rogue:     { bg: "#2F4F4F", accent: "#98FB98" },
+    cleric:    { bg: "#DAA520", accent: "#FFFACD" },
+    ranger:    { bg: "#228B22", accent: "#90EE90" },
+    paladin:   { bg: "#4169E1", accent: "#FFD700" },
+    barbarian: { bg: "#8B4513", accent: "#FF6347" },
+    bard:      { bg: "#800080", accent: "#FF69B4" },
+    druid:     { bg: "#006400", accent: "#7CFC00" },
+    monk:      { bg: "#CD853F", accent: "#FFDEAD" },
+    sorcerer:  { bg: "#4B0082", accent: "#FF4500" },
+    warlock:   { bg: "#301934", accent: "#00FF7F" },
+  };
+  const colors = classColors[charClass.toLowerCase()] ?? { bg: "#333", accent: "#CCC" };
+  const initials = name.split(" ").map(w => w[0]?.toUpperCase() ?? "").join("").slice(0, 2);
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
+  const rotation = (Math.abs(hash) % 60) - 30;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200">
+    <rect width="200" height="200" fill="${colors.bg}"/>
+    <rect x="20" y="20" width="160" height="160" rx="12" fill="none" stroke="${colors.accent}" stroke-width="2" opacity="0.4" transform="rotate(${rotation} 100 100)"/>
+    <text x="100" y="115" text-anchor="middle" font-family="serif" font-size="72" font-weight="bold" fill="${colors.accent}">${initials}</text>
+    <text x="100" y="175" text-anchor="middle" font-family="sans-serif" font-size="14" fill="${colors.accent}" opacity="0.6">${charClass}</text>
+  </svg>`;
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+}
+
 // --- Character Management ---
 
 export async function handleCreateCharacter(userId: string, params: {
@@ -497,7 +528,7 @@ export async function handleCreateCharacter(userId: string, params: {
   backstory?: string;
   personality?: string;
   playstyle?: string;
-  avatar_url: string;
+  avatar_url?: string;
   description?: string;
   flaw?: string;
   bond?: string;
@@ -528,13 +559,16 @@ export async function handleCreateCharacter(userId: string, params: {
     return { success: false, error: `Invalid class. Must be one of: ${VALID_CLASSES.join(", ")}` };
   }
 
-  // Avatar URL is REQUIRED — no character without a face
-  if (!params.avatar_url) {
-    return { success: false, error: "avatar_url is required. Generate a portrait for your character and provide a permanent image URL. DALL-E URLs expire — upload to a permanent host first." };
-  }
-  const avatarCheck = await validateAvatarUrl(params.avatar_url);
-  if (!avatarCheck.valid) {
-    return { success: false, error: avatarCheck.error };
+  // Validate avatar URL if provided; generate fallback if not
+  let finalAvatarUrl: string;
+  if (params.avatar_url) {
+    const avatarCheck = await validateAvatarUrl(params.avatar_url);
+    if (!avatarCheck.valid) {
+      return { success: false, error: avatarCheck.error };
+    }
+    finalAvatarUrl = params.avatar_url;
+  } else {
+    finalAvatarUrl = generateDefaultAvatar(params.name, params.class, params.race);
   }
 
   const validation = validateAbilityScores(params.ability_scores);
@@ -550,7 +584,7 @@ export async function handleCreateCharacter(userId: string, params: {
     backstory: params.backstory,
     personality: params.personality,
     playstyle: params.playstyle,
-    avatarUrl: params.avatar_url,
+    avatarUrl: finalAvatarUrl,
     description: params.description,
   });
 
@@ -3938,7 +3972,7 @@ export function handleSetSessionMetadata(userId: string, params: {
   return { success: true, data: { dmMetadata: metadata } };
 }
 
-export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string; outcome?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   if (!params.summary || typeof params.summary !== "string" || params.summary.trim() === "") {
     return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session." };
   }
@@ -3949,11 +3983,15 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   // Strip any QA/debug markers before storing or surfacing the summary
   const cleanSummary = filterSummary(params.summary);
 
+  // Validate outcome if provided
+  const validOutcomes = ["victory", "tpk", "retreat", "abandoned"];
+  const validOutcome = validOutcomes.includes(params.outcome ?? "") ? params.outcome! : null;
+
   if (party.session) {
     party.session = endSessionState(party.session);
   }
 
-  logEvent(party, "session_end", null, { summary: cleanSummary });
+  logEvent(party, "session_end", null, { summary: cleanSummary, outcome: validOutcome });
 
   // Track lifetime stats for all party members
   for (const mid of party.members) {
@@ -3974,7 +4012,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
     party.dbReady.then(() => {
       if (!party.dbSessionId) return;
       db.update(gameSessionsTable)
-        .set({ isActive: false, endedAt: new Date(), summary: cleanSummary })
+        .set({ isActive: false, endedAt: new Date(), summary: cleanSummary, outcome: validOutcome as any })
         .where(eq(gameSessionsTable.id, party.dbSessionId))
         .catch((err) => console.error("[DB] Failed to end session:", err));
     });
@@ -5667,6 +5705,33 @@ export async function loadPersistedCharacters(): Promise<number> {
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load persisted characters:", err);
+    return 0;
+  }
+}
+
+/**
+ * Backfill default avatars for characters with null or DiceBear avatar URLs.
+ * Fire-and-forget at startup.
+ */
+export async function backfillDefaultAvatars(): Promise<number> {
+  try {
+    const rows = await db.select({
+      id: charactersTable.id,
+      name: charactersTable.name,
+      class: charactersTable.class,
+      race: charactersTable.race,
+      avatarUrl: charactersTable.avatarUrl,
+    })
+      .from(charactersTable)
+      .where(or(isNull(charactersTable.avatarUrl), like(charactersTable.avatarUrl, "%dicebear%")));
+
+    for (const ch of rows) {
+      const fallback = generateDefaultAvatar(ch.name, ch.class, ch.race ?? "human");
+      await db.update(charactersTable).set({ avatarUrl: fallback }).where(eq(charactersTable.id, ch.id));
+    }
+    return rows.length;
+  } catch (err) {
+    console.error("[DB] Failed to backfill default avatars:", err);
     return 0;
   }
 }

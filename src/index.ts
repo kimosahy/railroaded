@@ -14,7 +14,7 @@ import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
 import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
-import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs } from "./game/game-manager.ts";
+import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs, backfillDefaultAvatars } from "./game/game-manager.ts";
 
 const app = new Hono();
 
@@ -139,6 +139,11 @@ const campaignCount = await loadCampaigns();
 if (campaignCount > 0) console.log(`  Loaded ${campaignCount} campaigns from DB`);
 const npcCount = await loadNpcs();
 if (npcCount > 0) console.log(`  Loaded ${npcCount} NPCs from DB`);
+
+// Backfill default avatars for characters without one (fire-and-forget)
+backfillDefaultAvatars().then((n) => {
+  if (n > 0) console.log(`  Backfilled ${n} character avatars`);
+}).catch(() => {});
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();

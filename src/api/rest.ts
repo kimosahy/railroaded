@@ -86,7 +86,26 @@ player.post("/character", async (c) => {
   }>();
   const result = await gm.handleCreateCharacter(c.get("user").userId, body);
   if (!result.success) return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
-  return c.json({ character: result.character }, 201);
+  const ch = result.character!;
+  return c.json({
+    character: {
+      id: ch.id,
+      name: ch.name,
+      class: ch.class,
+      race: ch.race,
+      level: ch.level,
+      hpCurrent: ch.hpCurrent,
+      hpMax: ch.hpMax,
+      ac: ch.ac,
+      avatarUrl: ch.avatarUrl,
+      description: ch.description,
+      abilityScores: ch.abilityScores,
+      inventory: ch.inventory,
+      equipment: ch.equipment,
+      features: ch.features,
+      proficiencies: ch.proficiencies,
+    }
+  }, 201);
 });
 
 player.patch("/character", async (c) => {

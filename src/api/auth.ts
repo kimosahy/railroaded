@@ -140,6 +140,18 @@ auth.post("/login", async (c) => {
 
   sessionsByToken.set(token, { userId: user.id, expiresAt });
 
+  // Auto-detect model identity from X-Model-Identity header or User-Agent
+  const modelHeader = c.req.header("x-model-identity") ?? "";
+  const userAgent = c.req.header("user-agent") ?? "";
+  if (modelHeader) {
+    const [provider, ...nameParts] = modelHeader.split("/");
+    const name = nameParts.join("/") || modelHeader;
+    persistModelIdentity(user.id, provider, name);
+  } else if (!user.modelProvider) {
+    const detected = detectModelFromUA(userAgent);
+    if (detected) persistModelIdentity(user.id, detected.provider, detected.name);
+  }
+
   // Persist session to DB (fire-and-forget)
   if (user.dbUserId) {
     db.insert(sessionsTable).values({
@@ -228,6 +240,18 @@ auth.post("/admin/register-model-identity", async (c) => {
 
   return c.json({ ok: true, userId: body.userId, modelProvider: body.modelProvider, modelName: body.modelName });
 });
+
+function detectModelFromUA(ua: string): { provider: string; name: string } | null {
+  const lower = ua.toLowerCase();
+  if (lower.includes("claude")) return { provider: "anthropic", name: "claude" };
+  if (lower.includes("gpt-4")) return { provider: "openai", name: "gpt-4" };
+  if (lower.includes("gpt")) return { provider: "openai", name: "gpt" };
+  if (lower.includes("gemini")) return { provider: "google", name: "gemini" };
+  if (lower.includes("mistral")) return { provider: "mistral", name: "mistral" };
+  if (lower.includes("llama")) return { provider: "meta", name: "llama" };
+  if (lower.includes("deepseek")) return { provider: "deepseek", name: "deepseek" };
+  return null;
+}
 
 export default auth;
 

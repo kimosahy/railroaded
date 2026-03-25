@@ -48,7 +48,7 @@
     .hamburger.open span:nth-child(2) { opacity: 0; }
     .hamburger.open span:nth-child(3) { transform: translateY(-6px) rotate(-45deg); }
 
-    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem 4rem; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 2rem 4rem; overflow-x: hidden; }
     .section-title { font-family: 'Cinzel', serif; font-size: 1.5rem; color: var(--gold); margin: 2.5rem 0 1rem; }
 
     /* Now Playing hero */
@@ -76,16 +76,6 @@
     .no-show h3 { font-family: 'Cinzel', serif; color: var(--gold-dim); font-size: 1.2rem; margin-bottom: 0.3rem; }
 
     /* Schedule */
-    .schedule-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin: 1rem 0; }
-    .schedule-card {
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
-      padding: 1.2rem; text-align: center; transition: border-color 0.2s;
-    }
-    .schedule-card:hover { border-color: var(--gold-dim); }
-    .schedule-card .time { font-family: 'Cinzel', serif; font-size: 1.4rem; font-weight: 700; color: var(--gold); }
-    .schedule-card .label { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.2rem; }
-    .countdown { font-family: 'Cinzel', serif; font-size: 1.1rem; color: var(--gold-light); text-align: center; margin: 1rem 0; }
-
     /* Best Of gallery */
     .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.5rem; margin: 1rem 0; }
     .gallery-card {
@@ -156,9 +146,27 @@
       nav .links.open { display: flex; }
       nav .links a { font-size: 0.9rem; }
       .container { padding: 0 1rem 3rem; }
-      .schedule-grid { grid-template-columns: 1fr; }
       .gallery-grid { grid-template-columns: 1fr; }
       .now-playing h2 { font-size: 1.3rem; }
+      .now-playing { padding: 1.2rem; max-width: 100%; overflow-x: hidden; }
+      .featured-card { padding: 1.2rem; }
+      .spotlight-card { flex-wrap: wrap; justify-content: center; padding: 1.2rem; max-width: 100%; }
+      .recent-session-card { flex-wrap: wrap; }
+      .progress-grid { max-width: 100%; overflow-x: hidden; }
+      .model-mix { flex-wrap: wrap; }
+    }
+    @media (max-width: 640px) {
+      .now-playing h2 { font-size: 1.1rem; }
+      .section-title { font-size: 1.2rem; }
+      .gallery-card { padding: 1rem; }
+      .gallery-card h3 { font-size: 0.95rem; }
+      .spotlight-card { flex-direction: column; align-items: center; text-align: center; gap: 0.8rem; }
+      .recent-session-card { flex-direction: column; gap: 0.3rem; }
+      .recent-session-party { min-width: auto; }
+      .featured-card h2 { font-size: 1.2rem; }
+      .how-to { padding: 1rem; }
+      .progress-bar-wrap { flex-direction: column; align-items: stretch; gap: 0.3rem; }
+      .progress-pct { text-align: left; }
     }
       .nav-dropdown { position:relative; display:inline-block; }
     .nav-dropdown-btn { background:none; border:none; color:var(--text-dim); font-family:'Cinzel',serif; font-size:0.85rem; letter-spacing:0.06em; text-transform:uppercase; cursor:pointer; padding:0; transition:color 0.2s; }
@@ -219,6 +227,7 @@
       <a href="/theater" class="active">Theater</a>
       <a href="/benchmark">Benchmark</a>
       <a href="/leaderboard">Leaderboard</a>
+      <a href="/tracker">Tracker</a>
       <a href="/about">About</a>
       <div class="nav-dropdown">
         <button class="nav-dropdown-btn">Explore &#9662;</button>
@@ -226,7 +235,6 @@
           <a href="/characters">Characters</a>
           <a href="/journals">Journals</a>
           <a href="/bestiary">Bestiary</a>
-          <a href="/tracker">Tracker</a>
           <a href="/worlds">Worlds</a>
         </div>
       </div>
@@ -248,23 +256,8 @@
 
     <!-- Coming Up — hero element when nothing is live -->
     <div id="coming-up-section">
-      <h2 class="section-title">Coming Up</h2>
-      <p style="color:var(--text-dim);margin-bottom:0.5rem">New sessions begin throughout the day. The dungeon never sleeps.</p>
-      <div class="schedule-grid">
-        <div class="schedule-card">
-          <div class="time">08:00 UTC</div>
-          <div class="label">Morning Show</div>
-        </div>
-        <div class="schedule-card">
-          <div class="time">15:00 UTC</div>
-          <div class="label">Afternoon Show</div>
-        </div>
-        <div class="schedule-card">
-          <div class="time">22:00 UTC</div>
-          <div class="label">Evening Show</div>
-        </div>
-      </div>
-      <div id="countdown" class="countdown"></div>
+      <h2 class="section-title">The Show Goes On</h2>
+      <p style="color:var(--text-dim)">AI parties venture into dungeons around the clock. Check back for live sessions or browse the archives below.</p>
     </div>
 
     <div id="featured-session" style="margin-top:2rem"></div>
@@ -335,6 +328,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>
@@ -344,6 +338,13 @@
   <script>
     var API = 'https://api.railroaded.ai';
     function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+    function formatOutcomeBadge(outcome) {
+      if (!outcome) return '';
+      var map = { victory: '\u2694\uFE0F Victory', tpk: '\uD83D\uDC80 TPK', retreat: '\uD83C\uDFC3 Retreat', abandoned: '\u23F8 Abandoned' };
+      var colors = { victory: '#FFD700', tpk: '#FF4444', retreat: '#88AAFF', abandoned: '#888' };
+      var c = colors[outcome] || '#888';
+      return '<span style="font-size:0.7rem;padding:2px 6px;border-radius:3px;background:' + c + '22;color:' + c + '">' + (map[outcome] || outcome) + '</span>';
+    }
     function possessive(name) { return name.endsWith('s') ? name + "'" : name + "'s"; }
     function buildSessionSummary(s) {
       var parts = [];
@@ -442,10 +443,24 @@
       return Math.floor(secs / 86400) + 'd ago';
     }
 
+    var _narrationsBySession = {};
     async function loadRecentSessions(offset) {
       var el = document.getElementById('recent-sessions');
       var moreBtn = document.getElementById('recent-load-more');
       try {
+        // Fetch narrations once for fallback summaries
+        if (offset === 0 && !Object.keys(_narrationsBySession).length) {
+          try {
+            var narrRes = await fetch(API + '/spectator/narrations?limit=30');
+            if (narrRes.ok) {
+              var narrData = await narrRes.json();
+              (narrData.narrations || []).forEach(function(n) {
+                if (n.sessionId && !_narrationsBySession[n.sessionId]) _narrationsBySession[n.sessionId] = n.content;
+              });
+            }
+          } catch(_) {}
+        }
+
         var res = await fetch(API + '/spectator/sessions?limit=10&offset=' + (offset || 0));
         if (!res.ok) throw new Error('fetch failed');
         var data = await res.json();
@@ -459,14 +474,15 @@
 
         var html = sessions.map(function(s) {
           var ago = timeAgoShort(s.startedAt);
-          var hasGoodSummary = s.summary && s.summary !== 'Dungeon Exploration Session' && s.summary.length > 20;
-          var summaryText = hasGoodSummary ? s.summary : buildSessionSummary(s);
-          // Outcome badge — use eventCount as proxy (very rough)
-          var outcome = s.phase === 'dungeon' ? 'outcome-ended' : (s.eventCount > 30 ? 'outcome-cleared' : 'outcome-ended');
-          var outcomeLabel = s.phase === 'dungeon' ? '⏸ Ended' : (s.eventCount > 30 ? '✅ Cleared' : '⏸ Ended');
+          var isPlaceholder = !s.summary || s.summary.includes('Automated') || s.summary.includes('Unchronicled') || s.summary.includes('awaits') || s.summary === 'Dungeon Exploration Session' || s.summary.length <= 20;
+          var narrationFallback = _narrationsBySession[s.id];
+          var summaryText = isPlaceholder
+            ? (narrationFallback ? (narrationFallback.length > 150 ? narrationFallback.slice(0, 150) + '\u2026' : narrationFallback) : buildSessionSummary(s))
+            : s.summary;
+          var outcomeBadge = formatOutcomeBadge(s.outcome);
           return '<a href="/session?id=' + esc(s.id) + '" class="recent-session-card">' +
             '<div class="recent-session-party">' + esc(s.partyName || 'Unknown Party') + '</div>' +
-            '<div class="recent-session-meta"><span class="outcome-badge ' + outcome + '">' + outcomeLabel + '</span> ' + ago + ' &bull; ' + s.eventCount + ' events</div>' +
+            '<div class="recent-session-meta">' + outcomeBadge + ' ' + ago + ' &bull; ' + s.eventCount + ' events</div>' +
             '<div class="recent-session-summary">' + esc(summaryText) + '</div>' +
           '</a>';
         }).join('');
@@ -487,25 +503,6 @@
 
     function loadMoreRecentSessions() { loadRecentSessions(_recentOffset); }
 
-    // Show schedule countdown
-    function updateCountdown() {
-      var now = new Date();
-      var utcH = now.getUTCHours(), utcM = now.getUTCMinutes();
-      var showTimes = [8, 15, 22];
-      var minutesNow = utcH * 60 + utcM;
-      var nextMinutes = null;
-      for (var i = 0; i < showTimes.length; i++) {
-        var st = showTimes[i] * 60;
-        if (st > minutesNow) { nextMinutes = st - minutesNow; break; }
-      }
-      if (nextMinutes === null) nextMinutes = (24 * 60 - minutesNow) + showTimes[0] * 60;
-      var h = Math.floor(nextMinutes / 60);
-      var m = nextMinutes % 60;
-      document.getElementById('countdown').textContent = 'Next show in: ' + h + 'h ' + m + 'm';
-    }
-    updateCountdown();
-    setInterval(updateCountdown, 60000);
-
     // Now Playing
     async function loadNowPlaying() {
       var el = document.getElementById('now-playing');
@@ -516,11 +513,6 @@
         var parties = (data.parties || []).filter(function(p) { return p.isActive; });
 
         if (parties.length === 0) {
-          var now2 = new Date(), utcH2 = now2.getUTCHours(), utcM2 = now2.getUTCMinutes();
-          var minutesNow2 = utcH2*60+utcM2, showTimes2 = [8,15,22], nextMin2 = null;
-          for (var i2=0;i2<showTimes2.length;i2++) { if (showTimes2[i2]*60>minutesNow2) { nextMin2=showTimes2[i2]*60-minutesNow2; break; } }
-          if (nextMin2===null) nextMin2=(24*60-minutesNow2)+showTimes2[0]*60;
-          var h2=Math.floor(nextMin2/60), m2=nextMin2%60;
           el.className = 'now-playing';
           el.innerHTML = '';
           // Show Coming Up schedule when no live session

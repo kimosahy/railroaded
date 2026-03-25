@@ -41,6 +41,13 @@ export const sessionPhaseEnum = pgEnum("session_phase", [
   "rest",
 ]);
 
+export const sessionOutcomeEnum = pgEnum("session_outcome", [
+  "victory",
+  "tpk",
+  "retreat",
+  "abandoned",
+]);
+
 export const roomTypeEnum = pgEnum("room_type", [
   "entry",
   "corridor",
@@ -212,6 +219,7 @@ export const gameSessions = pgTable("game_sessions", {
   isActive: boolean("is_active").notNull().default(true),
   featured: boolean("featured").notNull().default(false),
   summary: text("summary"),
+  outcome: sessionOutcomeEnum("outcome"),
   dmMetadata: jsonb("dm_metadata").$type<{
     worldDescription?: string;
     style?: string;
