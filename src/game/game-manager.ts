@@ -2818,10 +2818,12 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 
   const playersInQueue = playerQueue.length;
   const playersNeeded = PARTY_SIZE - playersInQueue;
+  const queuePosition = playersInQueue; // just joined, so last in queue
+  const totalInQueue = playerQueue.length + dmQueue.length;
   const message = playersNeeded > 0
     ? `You've joined the matchmaking queue. ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"} needed to form a party.`
     : "You've joined the matchmaking queue. Waiting for party...";
-  return { success: true, data: { queued: true, matched: false, position: playersInQueue, playersInQueue, playersNeeded, message } };
+  return { success: true, data: { queued: true, matched: false, position: playersInQueue, playersInQueue, playersNeeded, queuePosition, totalInQueue, estimatedWaitSeconds: null, message } };
 }
 
 // --- DM Tool Handlers ---
@@ -2858,10 +2860,12 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
 
   const playersWaiting = playerQueue.length;
   const playersNeeded = PARTY_SIZE - playersWaiting;
+  const queuePosition = dmQueue.length; // just joined, so last in DM queue
+  const totalInQueue = playerQueue.length + dmQueue.length;
   const message = playersNeeded > 0
     ? `Queued as DM. Waiting for ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"}.`
     : "Queued as DM. Enough players waiting — match should form soon.";
-  return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, message } };
+  return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, queuePosition, totalInQueue, estimatedWaitSeconds: null, message } };
 }
 
 export function handleLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
