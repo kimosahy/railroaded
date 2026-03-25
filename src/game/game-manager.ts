@@ -58,6 +58,7 @@ import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
 import { getRandomTemplate, type DungeonTemplate, type TemplateEncounter, type TemplateLootTable } from "./templates.ts";
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
+import { detectSafetyBleedThrough, detectFlawActivation, detectFlawOpportunity, detectTacticalChat, countWords } from "./metrics.ts";
 import { VALID_RACES, VALID_CLASSES } from "../types.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
 import { parse as parseYAML } from "yaml";
@@ -108,6 +109,14 @@ interface GameCharacter extends CharacterSheet {
   timesKnockedOut: number;
   goldEarned: number;
   relentlessEnduranceUsed: boolean;
+  // Behavioral metrics (Phase 1)
+  flawOpportunities: number;
+  flawActivations: number;
+  totalActionWords: number;
+  totalActions: number;
+  safetyRefusals: number;
+  chatMessages: number;
+  tacticalChats: number;
 }
 
 interface GameParty {
@@ -611,6 +620,13 @@ export async function handleCreateCharacter(userId: string, params: {
     timesKnockedOut: 0,
     goldEarned: 0,
     relentlessEnduranceUsed: false,
+    flawOpportunities: 0,
+    flawActivations: 0,
+    totalActionWords: 0,
+    totalActions: 0,
+    safetyRefusals: 0,
+    chatMessages: 0,
+    tacticalChats: 0,
   };
 
   characters.set(id, character);
@@ -1959,6 +1975,17 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   if (!party) return { success: false, error: "Not in a party." };
   logEvent(party, "chat", char.id, { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message });
 
+  // Behavioral metrics: chat tracking
+  char.chatMessages++;
+  char.totalActionWords += countWords(params.message);
+  const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
+  if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
+  if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
+  if (char.flaw && detectFlawOpportunity(params.message, char.flaw)) {
+    char.flawOpportunities++;
+    if (detectFlawActivation(params.message, char.flaw)) char.flawActivations++;
+  }
+
   return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
 }
 
@@ -1978,6 +2005,14 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
   if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself." };
 
   logEvent(party, "whisper", char.id, { from: char.name, to: target.name, message: params.message });
+
+  // Behavioral metrics: whisper counts as chat
+  char.chatMessages++;
+  char.totalActionWords += countWords(params.message);
+  const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
+  if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
+  if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
+
   return { success: true, data: { from: char.name, to: target.name, message: params.message } };
 }
 
@@ -2731,6 +2766,15 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+
+  // Behavioral metrics: journal entries track verbosity and safety
+  char.totalActionWords += countWords(params.entry);
+  if (detectSafetyBleedThrough(params.entry)) char.safetyRefusals++;
+  if (char.flaw && detectFlawOpportunity(params.entry, char.flaw)) {
+    char.flawOpportunities++;
+    if (detectFlawActivation(params.entry, char.flaw)) char.flawActivations++;
+  }
+
   return { success: true, data: { entry: params.entry, character: char.name } };
 }
 
@@ -5116,8 +5160,21 @@ function formParty(match: MatchResult): void {
   }
 }
 
+// Behavioral metric: player action types that count toward totalActions
+const PLAYER_ACTION_TYPES = new Set([
+  "attack", "spell_cast", "room_enter", "dodge", "dash", "help", "hide",
+  "disengage", "bonus_action", "reaction", "scroll_used", "item_used",
+  "short_rest", "long_rest", "death_save", "end_turn",
+]);
+
 function logEvent(party: GameParty | null, type: string, actorId: string | null, data: Record<string, unknown>): void {
   if (!party) return;
+
+  // Track totalActions for player characters on action events
+  if (actorId && PLAYER_ACTION_TYPES.has(type)) {
+    const char = characters.get(actorId);
+    if (char) char.totalActions++;
+  }
   const timestamp = new Date();
 
   // Inject model identity if the acting user has one registered
@@ -5236,6 +5293,14 @@ function snapshotCharacters(party: GameParty): void {
         criticalHits: char.criticalHits,
         timesKnockedOut: char.timesKnockedOut,
         goldEarned: char.goldEarned,
+        // Behavioral metrics
+        flawOpportunities: char.flawOpportunities,
+        flawActivations: char.flawActivations,
+        totalActionWords: char.totalActionWords,
+        totalActions: char.totalActions,
+        safetyRefusals: char.safetyRefusals,
+        chatMessages: char.chatMessages,
+        tacticalChats: char.tacticalChats,
       };
 
       if (char.dbCharId) {
@@ -5615,6 +5680,14 @@ export async function loadPersistedState(): Promise<number> {
           timesKnockedOut: row.timesKnockedOut ?? 0,
           goldEarned: row.goldEarned ?? 0,
           relentlessEnduranceUsed: false,
+          // Behavioral metrics
+          flawOpportunities: row.flawOpportunities ?? 0,
+          flawActivations: row.flawActivations ?? 0,
+          totalActionWords: row.totalActionWords ?? 0,
+          totalActions: row.totalActions ?? 0,
+          safetyRefusals: row.safetyRefusals ?? 0,
+          chatMessages: row.chatMessages ?? 0,
+          tacticalChats: row.tacticalChats ?? 0,
         };
 
         characters.set(charId, char);

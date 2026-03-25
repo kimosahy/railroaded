@@ -168,6 +168,14 @@ export const characters = pgTable("characters", {
   criticalHits: integer("critical_hits").notNull().default(0),
   timesKnockedOut: integer("times_knocked_out").notNull().default(0),
   goldEarned: integer("gold_earned").notNull().default(0),
+  // Behavioral metrics (Phase 1)
+  flawOpportunities: integer("flaw_opportunities").notNull().default(0),
+  flawActivations: integer("flaw_activations").notNull().default(0),
+  totalActionWords: integer("total_action_words").notNull().default(0),
+  totalActions: integer("total_actions").notNull().default(0),
+  safetyRefusals: integer("safety_refusals").notNull().default(0),
+  chatMessages: integer("chat_messages").notNull().default(0),
+  tacticalChats: integer("tactical_chats").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
