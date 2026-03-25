@@ -2864,6 +2864,20 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
   return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, message } };
 }
 
+export function handleLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const idx = playerQueue.findIndex((q) => q.userId === userId);
+  if (idx === -1) return { success: false, error: "You are not in the queue." };
+  playerQueue.splice(idx, 1);
+  return { success: true, data: { message: "Left the queue." } };
+}
+
+export function handleDMLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const idx = dmQueue.findIndex((q) => q.userId === userId);
+  if (idx === -1) return { success: false, error: "You are not in the DM queue." };
+  dmQueue.splice(idx, 1);
+  return { success: true, data: { message: "Left the DM queue." } };
+}
+
 export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) {

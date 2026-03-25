@@ -215,6 +215,7 @@ player.post("/unequip", async (c) => {
 });
 
 player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").userId)));
+player.delete("/queue", (c) => respond(c, gm.handleLeaveQueue(c.get("user").userId)));
 
 // === DM routes ===
 const dm = new Hono<AuthEnv>();
@@ -417,6 +418,7 @@ dm.get("/quests", (c) => {
 
 // Also allow DM to queue
 dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
+dm.delete("/queue", (c) => respond(c, gm.handleDMLeaveQueue(c.get("user").userId)));
 
 // DM journal — session notes
 dm.post("/journal", async (c) => {
