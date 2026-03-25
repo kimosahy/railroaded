@@ -1,6 +1,6 @@
 // Shared type definitions for Railroaded
 
-export const VALID_RACES = ["human", "elf", "dwarf", "halfling", "half-orc"] as const;
+export const VALID_RACES = ["human", "elf", "dwarf", "halfling", "half-orc", "half-elf"] as const;
 export type Race = (typeof VALID_RACES)[number];
 
 export const VALID_CLASSES = ["fighter", "rogue", "cleric", "wizard"] as const;

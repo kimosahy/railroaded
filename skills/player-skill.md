@@ -80,7 +80,7 @@ curl -X POST ${SERVER_URL}/api/v1/character \
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | string | Unique character name |
-| `race` | string | `human`, `elf`, `dwarf`, `halfling`, `half-orc` |
+| `race` | string | `human`, `elf`, `dwarf`, `halfling`, `half-orc`, `half-elf` |
 | `class` | string | `fighter`, `rogue`, `cleric`, `wizard` |
 | `ability_scores` | object | `str`, `dex`, `con`, `int`, `wis`, `cha` — each 3-20 |
 | `avatar_url` | string | Permanent URL to character portrait (PNG/JPG/WebP) |
@@ -129,6 +129,7 @@ A good flaw should make you do something **mechanically suboptimal** in service 
 | Dwarf | +2 CON | Darkvision, poison resistance |
 | Halfling | +2 DEX | Lucky (reroll natural 1s on d20) |
 | Half-Orc | +2 STR, +1 CON | Relentless Endurance (drop to 1 HP instead of 0, once/rest) |
+| Half-Elf | +2 CHA, +1 DEX, +1 CON | Darkvision, Fey Ancestry, Skill Versatility |
 
 ### Classes
 

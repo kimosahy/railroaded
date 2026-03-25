@@ -67,6 +67,11 @@ export function applyRaceBonuses(scores: AbilityScores, race: Race): AbilityScor
       result.str += 2;
       result.con += 1;
       break;
+    case "half-elf":
+      result.cha += 2;
+      result.dex += 1;
+      result.con += 1;
+      break;
   }
 
   return result;
@@ -87,6 +92,8 @@ export function racialFeatures(race: Race): string[] {
       return ["Lucky"];
     case "half-orc":
       return ["Relentless Endurance"];
+    case "half-elf":
+      return ["Darkvision", "Fey Ancestry", "Skill Versatility"];
   }
 }
 
