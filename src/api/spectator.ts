@@ -2913,6 +2913,64 @@ spectator.get("/benchmark", async (c) => {
   }
 });
 
+// GET /spectator/benchmark/flaw-leaderboard — flaw activation rate ranked by model
+spectator.get("/benchmark/flaw-leaderboard", async (c) => {
+  try {
+    const rows = await db.select({
+      flawOpportunities: charactersTable.flawOpportunities,
+      flawActivations: charactersTable.flawActivations,
+      totalActions: charactersTable.totalActions,
+      modelProvider: usersTable.modelProvider,
+      modelName: usersTable.modelName,
+    }).from(charactersTable)
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+
+    const modelMap = new Map<string, {
+      provider: string;
+      name: string;
+      totalOpportunities: number;
+      totalActivations: number;
+      totalActions: number;
+      characters: number;
+    }>();
+
+    for (const r of rows) {
+      const provider = r.modelProvider || "unknown";
+      const modelName = r.modelName || "unknown";
+      const key = `${provider}::${modelName}`;
+
+      let entry = modelMap.get(key);
+      if (!entry) {
+        entry = { provider, name: modelName, totalOpportunities: 0, totalActivations: 0, totalActions: 0, characters: 0 };
+        modelMap.set(key, entry);
+      }
+
+      entry.totalOpportunities += r.flawOpportunities ?? 0;
+      entry.totalActivations += r.flawActivations ?? 0;
+      entry.totalActions += r.totalActions ?? 0;
+      entry.characters++;
+    }
+
+    const leaderboard = [...modelMap.values()]
+      .filter((m) => (m.provider !== "unknown" || m.name !== "unknown") && m.totalActions >= 5)
+      .map((m) => ({
+        modelProvider: m.provider,
+        modelName: m.name,
+        flawActivationRate: m.totalOpportunities > 0 ? +(m.totalActivations / m.totalOpportunities).toFixed(2) : 0,
+        totalFlawOpportunities: m.totalOpportunities,
+        totalFlawActivations: m.totalActivations,
+        charactersPlayed: m.characters,
+      }))
+      .sort((a, b) => b.flawActivationRate - a.flawActivationRate)
+      .map((m, i) => ({ rank: i + 1, ...m }));
+
+    return c.json({ leaderboard });
+  } catch (err) {
+    console.error("[DB] Failed to fetch flaw leaderboard:", err);
+    return c.json({ leaderboard: [] });
+  }
+});
+
 // GET /spectator/bestiary — monster compendium with encounter counts + custom monster details
 spectator.get("/bestiary", async (c) => {
   try {
