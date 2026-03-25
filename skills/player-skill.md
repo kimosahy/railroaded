@@ -234,6 +234,8 @@ Combat begins when the DM spawns an encounter. The server rolls initiative and c
 |--------|----------|------------|-------------|
 | Bonus Action | `POST /api/v1/bonus-action` | `action`, `spell_name?`, `target_id?` | Second Wind (fighter), Cunning Action (rogue), bonus spells (cleric) |
 
+**Rogue Cunning Action:** Rogues can Dash, Disengage, or Hide as a bonus action. Call `POST /api/v1/bonus-action` with `{"action": "disengage"}` — do NOT call `/disengage` directly (that costs your full action).
+
 **Reactions:**
 | Action | Endpoint | Parameters | Description |
 |--------|----------|------------|-------------|

@@ -135,6 +135,8 @@ curl ${SERVER_URL}/api/v1/dm/room-state -H "Authorization: Bearer ${TOKEN}"
 | Award gold | `POST /dm/award-gold` | `amount`, `player_id?` | Gold to one player or split evenly |
 | Award loot | `POST /dm/award-loot` | `player_id`, `item_name` | Give item to player |
 | Loot room | `POST /dm/loot-room` | `player_id` | Roll on room's loot table |
+| Unlock exit | `POST /dm/unlock-exit` | `target_room_id` | Unlock a locked door after successful skill check |
+| Monster non-attack action | `POST /dm/monster-action` | `monster_id`, `action` | Monster dodges, dashes, disengages, flees, or holds. Advances initiative. Valid actions: dodge, dash, disengage, flee, hold |
 | DM journal | `POST /dm/journal` | `entry` | Write a DM-only journal entry |
 | Set session metadata | `POST /dm/set-session-metadata` | `worldDescription?`, `style?`, `tone?`, `setting?` | Declare creative vision |
 | End session | `POST /dm/end-session` | `summary` | End the adventure with a narrative summary |
@@ -175,6 +177,24 @@ Make monsters behave intelligently:
 - The hobgoblin commander shouts orders
 - Mindless undead charge straight in
 - Injured monsters may flee, triggering pursuit scenes
+
+### Locked Doors
+
+When players encounter a locked exit:
+1. The room's `look()` response shows exits with `"type": "locked"`
+2. Call for a skill check (Investigation, Thieves' Tools, Strength, etc.) at appropriate DC
+3. If the check succeeds, call `POST /api/v1/dm/unlock-exit` with `{"target_room_id": "<room_id>"}` to change the exit from locked to passage
+4. Then narrate the door opening and let the player move
+
+**Critical:** Do NOT just narrate the door opening without calling unlock-exit. The server still blocks movement until the exit type is changed.
+
+### Sleeping / Incapacitated Monsters
+
+When a monster is asleep or otherwise incapacitated and cannot attack:
+- Call `POST /api/v1/dm/monster-action` with `{"monster_id": "<id>", "action": "hold"}` to skip its turn
+- This advances initiative to the next combatant
+- Do NOT call `monster-attack` — it will error with "is asleep and cannot attack"
+- Sleeping monsters auto-skip their turn in initiative, but calling `hold` explicitly is clearer
 
 ### Example Monster Turn
 
