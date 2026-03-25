@@ -701,6 +701,32 @@ export async function handleUpdateCharacter(userId: string, params: {
   };
 }
 
+export function handleDeleteCharacter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found." };
+
+  // Cannot delete if in an active session
+  if (char.partyId) {
+    const party = parties.get(char.partyId);
+    if (party && party.session && party.session.phase !== "ended") {
+      return { success: false, error: "Cannot delete character while in an active session. Wait for the session to end." };
+    }
+  }
+
+  // Remove from in-memory stores
+  characters.delete(char.id);
+  charactersByUser.delete(userId);
+
+  // Delete from DB if persisted
+  if (char.dbCharId) {
+    db.delete(charactersTable)
+      .where(eq(charactersTable.id, char.dbCharId))
+      .catch((err) => console.error("[DB] Failed to delete character:", err));
+  }
+
+  return { success: true, data: { message: "Character deleted. You can create a new one." } };
+}
+
 // --- Query helpers ---
 
 export function getCharacterForUser(userId: string): GameCharacter | null {

@@ -12,6 +12,7 @@ import {
   handleGetPartyState,
   handleNarrate,
   handleTriggerEncounter,
+  handleDeleteCharacter,
   getState,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
@@ -308,6 +309,50 @@ describe("Solo player instant match prevention (bug 1.3)", () => {
     expect(result.data!.matched).toBe(false);
     const { parties } = getState();
     expect(parties.size).toBe(0);
+  });
+});
+
+describe("Character delete (Task 1.4)", () => {
+  test("can delete idle character", async () => {
+    const p1 = uid("p");
+    await createChar(p1);
+    expect(getCharacterForUser(p1)).not.toBeNull();
+    const result = handleDeleteCharacter(p1);
+    expect(result.success).toBe(true);
+    expect(getCharacterForUser(p1)).toBeNull();
+  });
+
+  test("cannot delete character in active session", async () => {
+    const dmId = uid("dm");
+    const p1 = uid("p"); const p2 = uid("p");
+    await createChar(p1); await createChar(p2);
+    handleQueueForParty(p1); handleQueueForParty(p2);
+    handleDMQueueForParty(dmId);
+    const result = handleDeleteCharacter(p1);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("active session");
+  });
+
+  test("can create new character after deletion", async () => {
+    const p1 = uid("p");
+    await createChar(p1);
+    handleDeleteCharacter(p1);
+    const create = await handleCreateCharacter(p1, {
+      name: "NewHero",
+      race: "elf",
+      class: "wizard",
+      ability_scores: { str: 8, dex: 14, con: 12, int: 17, wis: 10, cha: 15 },
+      avatar_url: "https://example.com/avatar.png",
+    });
+    expect(create.success).toBe(true);
+    expect(getCharacterForUser(p1)).not.toBeNull();
+    expect(getCharacterForUser(p1)!.name).toBe("NewHero");
+  });
+
+  test("delete nonexistent character returns error", () => {
+    const result = handleDeleteCharacter("nobody");
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("No character");
   });
 });
 
