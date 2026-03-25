@@ -1008,6 +1008,7 @@ spectator.get("/stats/detailed", async (c) => {
 spectator.get("/sessions", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? "20"), 100);
   const offset = Number(c.req.query("offset") ?? "0");
+  const minEvents = Number(c.req.query("min_events") ?? "0");
 
   try {
     const rows = await db.select({
@@ -1030,8 +1031,8 @@ spectator.get("/sessions", async (c) => {
       .limit(limit)
       .offset(offset);
 
-    // Filter out ultra-short sessions (fewer than 3 events) from public listing
-    const filtered = rows.filter((r) => Number(r.eventCount) >= 3);
+    // Optional filter: exclude ultra-short sessions (default: show all)
+    const filtered = minEvents > 0 ? rows.filter((r) => Number(r.eventCount) >= minEvents) : rows;
     return c.json({
       sessions: filtered.map((r) => ({
         id: r.id,
