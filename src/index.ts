@@ -100,8 +100,9 @@ app.route("/api/v1/profile", profiles);
 // Karma system (award = admin-only, leaderboard + breakdown = public)
 app.route("/api/v1/karma", karmaRouter);
 
-// Spectator endpoints (public, no auth) — mount before REST so /api/v1/spectate bypasses auth
+// Spectator endpoints (public, no auth) — mount before REST so they bypass auth
 app.route("/api/v1/spectate", spectator);
+app.route("/api/v1/spectator", spectator);
 app.route("/spectator", spectator);
 
 // Legacy auth route aliases — return helpful error instead of 401
