@@ -140,3 +140,250 @@ if (target.conditions.includes("asleep")) {
 ```
 
 Also check `handlePlayerAttack` for when players attack sleeping monsters — same pattern applies.
+
+
+## Task 3: Half-Elf Race Support (G0.4)
+
+**Files:** `src/types.ts`, `src/game/character-creation.ts`, `skills/player-skill.md`
+
+### 3a. Add to VALID_RACES
+
+In `src/types.ts` line 3:
+
+```typescript
+export const VALID_RACES = ["human", "elf", "dwarf", "halfling", "half-orc", "half-elf"] as const;
+```
+
+### 3b. Add race bonuses
+
+In `src/game/character-creation.ts`, `applyRaceBonuses()` function (line 45+), add a case:
+
+```typescript
+case "half-elf":
+  return { ...s, cha: s.cha + 2, dex: s.dex + 1, con: s.con + 1 };
+  // D&D 5e: +2 CHA, +1 to two others. We pick DEX+CON as sensible defaults.
+```
+
+### 3c. Add racial features
+
+In `racialFeatures()` (line 78+), add:
+
+```typescript
+case "half-elf":
+  return ["Darkvision", "Fey Ancestry", "Skill Versatility"];
+```
+
+### 3d. Update player skill doc
+
+In `skills/player-skill.md`, add half-elf to the races table with: +2 CHA / +1 DEX / +1 CON, Darkvision, Fey Ancestry, Skill Versatility.
+
+### 3e. Starting equipment
+
+Half-elves don't have special equipment rules — existing defaults apply. Also check `startingEquipment()` and `startingAC()` for any race-gated logic (currently only half-orc and elf have special cases). No changes needed unless those functions have a default fallthrough that would break.
+
+
+---
+
+## Task 4: Attack on Unconscious Player Returns Null (Session 5 Bug)
+
+**File:** `src/game/game-manager.ts`
+
+When an unconscious player calls `/attack`, the response returns `{"hit": null, "damage": null}` instead of a proper error. The `handleBonusAction` correctly returns "You are unconscious and cannot take that action."
+
+The guard function `UNCONSCIOUS_ERROR` exists at line 415. A `requireConscious()` check exists at line 418. Verify it is called before the attack handler processes the request. If not, add an early return:
+
+```typescript
+if (char.conditions.includes("unconscious") || char.conditions.includes("dead")) {
+  return { success: false, error: "You are unconscious and cannot take that action." };
+}
+```
+
+Apply the same pattern to any other action endpoints that return null/undefined instead of a proper error when called by unconscious characters (check `/cast`, `/dash`, `/disengage`, `/hide`).
+
+---
+
+## Task 5: Session Summary Sanitization (G2.1)
+
+**Files:** `src/api/spectator.ts`, `website/theater.html`
+
+### 5a. Expand sanitization patterns
+
+In `sanitizeSummaryForPublic()` (line 38 of `src/api/spectator.ts`), the function already catches exact strings "Automated session" and "Dungeon Exploration Session". Add regex-based filtering for variants:
+
+```typescript
+// After the exact string checks:
+if (/automated session/i.test(cleaned)) return null;
+if (/scheduled dungeon/i.test(cleaned)) return null;
+if (/explored \d+ rooms?/i.test(cleaned) && cleaned.length < 80) return null;
+```
+
+### 5b. Frontend fallback for null summaries
+
+In `website/theater.html` (and any other page rendering session cards), when the summary is null or empty, generate a meaningful fallback from available session data:
+
+```javascript
+function sessionSummary(session) {
+  if (session.summary) return session.summary;
+  const parts = [];
+  if (session.partyName) parts.push(session.partyName);
+  if (session.dungeonName) parts.push(`ventured into ${session.dungeonName}`);
+  if (session.eventCount) parts.push(`${session.eventCount} events`);
+  if (session.outcome) parts.push(session.outcome);
+  return parts.length > 0 ? parts.join(' — ') : null;
+}
+```
+
+### 5c. Hide ultra-short sessions
+
+Sessions with fewer than 3 events should be excluded from public pages. In the spectator API sessions endpoint, add a filter or post-fetch exclusion so empty/trivial sessions don't appear on Theater or homepage.
+
+---
+
+## Task 6: Frontend Copy Fixes (G2.4, G2.5, G2.6)
+
+**Files:** `website/characters.html`, `website/character.html`, `website/benchmark.html`, `website/theater.html`
+
+### 6a. "A living legend of the realm" on every character (G2.4)
+
+In `website/characters.html` and `website/character.html`, find where character bios are rendered. Replace the generic fallback with a hierarchy:
+
+```javascript
+function characterBio(char) {
+  if (char.backstory && char.backstory.length > 10) return char.backstory;
+  return `${capitalize(char.race)} ${capitalize(char.class)}, Level ${char.level}`;
+}
+// Never show "A living legend of the realm" — race/class/level is more informative
+```
+
+### 6b. Benchmark "No models have entered" (G2.5)
+
+In `website/benchmark.html`, find the empty-state text. Replace "No models have entered the dungeon yet" with a dynamic count from the spectator API:
+
+```javascript
+// Fetch from /spectator/stats or /spectator/sessions and display:
+// "${sessionCount} sessions. ${characterCount} characters. The data is building."
+```
+
+### 6c. Theater page contradiction (G2.6)
+
+In `website/theater.html` line 274: "While the Stage is Dark, Meet the Cast" conflicts with line 252: "The dungeon never sleeps." Change line 274 to "Between Shows, Meet the Cast" or "Coming Up Next" — keep "The dungeon never sleeps" (more on-brand).
+
+---
+
+## Task 7: Frontend Visual — Leaderboard + Epic Moments (G3.3, G3.4)
+
+**Files:** `website/leaderboard.html`, `website/index.html`, `website/theme.css`
+
+### 7a. Leaderboard contrast (G3.3)
+
+Character names and XP values have extremely low contrast (light text on dark background). Find the leaderboard table styles and increase text contrast to meet WCAG AA (4.5:1 minimum). Names should use `--text-light` or `--gold-light`, not `--text-dim`.
+
+### 7b. Epic Moments broken images (G3.4)
+
+In `website/index.html`, the "Epic Moments" section shows broken image placeholders (X icons). Check what URLs the `<img>` tags point to — if they're dead external URLs, either:
+- Replace with real session screenshots/art from `website/assets/`
+- Remove the image elements and make the cards text-only with event descriptions
+- Use CSS-based placeholder illustrations
+
+---
+
+## Task 8: Character Avatar Display Fix (G3.1 — Sprint E Debt, 3rd Sprint)
+
+**Files:** `website/characters.html`, `website/character.html`
+
+This is the #1 visual debt item — third sprint requesting it.
+
+Character cards show colored circles with letter initials instead of actual character art. The `avatar_url` field exists in the API. Many old characters have DiceBear URLs (generic cartoon faces) or no avatar at all.
+
+### 8a. Avatar rendering with fallback
+
+Ensure character cards:
+1. If `avatar_url` exists and is NOT a DiceBear URL → display the image with `onerror` fallback
+2. If `avatar_url` is missing, empty, or a DiceBear URL → display the class-colored initial circle (current behavior)
+
+```javascript
+function isValidAvatar(url) {
+  if (!url) return false;
+  if (url.includes('dicebear.com')) return false;
+  return true;
+}
+```
+
+Add `onerror` handlers to all `<img>` tags rendering avatars so dead URLs fall back gracefully to the initial circle instead of showing a broken image icon.
+
+### 8b. Apply to all avatar locations
+
+Check and fix avatar rendering on: character cards (`/characters`), character profiles (`/character?id=X`), Theater "Meet the Cast" section, leaderboard rows, and any homepage character displays.
+
+---
+
+## Task 9: Model Badge Display (G3.2 — Sprint E Debt, 3rd Sprint)
+
+**Files:** `website/characters.html`, `website/character.html`, `website/theater.html`, `website/leaderboard.html`, `website/index.html`, `website/session.html`
+
+The model identity system is fully built on the backend (Sprint D). The spectator API returns `model: { provider, name }` on characters and events. The frontend just needs to render it.
+
+### 9a. Create a reusable badge component
+
+```javascript
+function modelBadge(model) {
+  if (!model || !model.name) return '';
+  const colors = {
+    'anthropic': '#d97706',   // amber for Claude
+    'openai': '#10b981',      // green for GPT
+    'google': '#3b82f6',      // blue for Gemini
+    'meta': '#8b5cf6',        // purple for Llama
+  };
+  const color = colors[model.provider?.toLowerCase()] || '#6b7280';
+  return `<span class="model-badge" style="background:${color}20;color:${color};border:1px solid ${color}40;padding:2px 8px;border-radius:4px;font-size:0.75rem;font-weight:600;">${model.name}</span>`;
+}
+```
+
+### 9b. Add badges to all character/event displays
+
+Insert `modelBadge(character.model)` or `modelBadge(event.model)` into:
+- Character cards on `/characters`
+- Character profile header on `/character?id=X`
+- Session event feed on `/session?id=X`
+- Leaderboard rows on `/leaderboard`
+- Theater "Meet the Cast" section on `/theater`
+- Quote cards / narration attribution wherever displayed
+- Homepage character mentions if any
+
+---
+
+## Priority Order
+
+1. **Task 2** — Sleep spell deadlock (P0, combat-breaking)
+2. **Task 1** — Skill doc updates (root cause fix for G0.1 locked doors — P0)
+3. **Task 4** — Unconscious attack null response
+4. **Task 3** — Half-elf race
+5. **Task 8** — Character avatars (Sprint E debt, 3rd sprint)
+6. **Task 9** — Model badges (Sprint E debt, 3rd sprint)
+7. **Task 5** — Session summary sanitization
+8. **Task 6** — Frontend copy fixes
+9. **Task 7** — Leaderboard contrast + Epic Moments
+
+---
+
+## Items NOT in This Sprint (Deferred)
+
+| Spec Item | Reason |
+|-----------|--------|
+| G1.1 — DiceBear avatar URLs in DB | Data migration — needs a script to re-generate avatars for existing characters. Separate task. |
+| G1.2, G5.3 — Auto-journal generation | Feature scope too large for this sprint. |
+| G1.3 — Empty tavern posts | Content seeding task, not a code fix. |
+| G1.4 — monstersKilled=0 | Needs investigation — may be legitimate (clerics don't kill). |
+| G3.5-G3.8 — Stats labels, empty tabs, pagination, filtering | Polish — defer to Sprint H. |
+| G4.1-G4.5 — Live indicator, replay embed, search, filters, reminders | Feature additions — defer to Sprint H. |
+| G2.2, G2.3 — Hero text grammar, CTA copy | Already fixed in current codebase. |
+
+---
+
+## Testing Notes
+
+- Use `./test-runner.sh` (not `bun test` directly) — hard 30s kill timer prevents DB pool hang
+- No local Postgres — tests that need DB will skip/mock
+- After Tasks 1-4 (backend), do a quick manual verification by reading the relevant handler code paths
+- After Tasks 5-9 (frontend), open `website/` files in browser and verify visually
+- Commit after each task, not at the end
