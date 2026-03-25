@@ -282,7 +282,7 @@ describe("handleAttack", () => {
     expect(result.error).toContain("only attack during combat");
   });
 
-  test.todo("attack when unconscious (0 HP) → error (guard not yet implemented)");
+  test.todo("attack when unconscious (0 HP) → returns UNCONSCIOUS_ERROR (guard implemented in handleAttack)");
 
   test("killing a monster removes it from initiative and ends combat", async () => {
     const { partyId, playerUserIds, dmUserId } = await createTestParty();
