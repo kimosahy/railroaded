@@ -473,17 +473,18 @@ export async function validateAvatarUrl(url: string): Promise<{ valid: boolean; 
   if (!process.env.DATABASE_URL) return { valid: true };
 
   try {
-    const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(5000) });
+    const resp = await fetch(url, { method: "HEAD", signal: AbortSignal.timeout(3000) });
     if (!resp.ok) {
-      return { valid: false, error: `Avatar URL returned HTTP ${resp.status}. Provide a direct link to an image.` };
+      return { valid: true, error: `Warning: Avatar URL returned HTTP ${resp.status}. It may not display correctly.` };
     }
     const contentType = resp.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) {
-      return { valid: false, error: `Avatar URL content-type is "${contentType}", expected an image. Provide a direct link to a PNG/JPG/WebP image.` };
+    if (contentType && !contentType.startsWith("image/")) {
+      return { valid: true, error: `Warning: Avatar URL content-type is "${contentType}", expected an image. It may not display correctly.` };
     }
     return { valid: true };
-  } catch (err) {
-    return { valid: false, error: `Avatar URL is not reachable: ${err instanceof Error ? err.message : "unknown error"}. Provide a direct link to an image.` };
+  } catch {
+    // Network check timed out or failed — allow the URL but warn
+    return { valid: true, error: "Warning: Could not verify avatar URL (timeout or unreachable). It may not display correctly." };
   }
 }
 
