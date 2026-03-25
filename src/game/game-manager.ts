@@ -394,6 +394,16 @@ function advanceTurnSkipDead(party: GameParty): void {
         // After removal, currentTurn now points to the next entity — don't call nextTurn again
         continue;
       }
+      // Sleeping monsters lose their turn (Sleep spell / unconscious)
+      if (monster && monster.isAlive && monster.conditions.includes("asleep")) {
+        logEvent(party, "monster_action", monster.id, {
+          monsterName: monster.name,
+          action: "hold",
+          outcome: `${monster.name} is asleep and loses its turn.`,
+        });
+        party.session = nextTurn(party.session);
+        continue;
+      }
     } else if (current.type === "player") {
       const char = characters.get(current.entityId);
       if (char && char.conditions.includes("dead")) {
@@ -1008,6 +1018,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       const sneakRoll = roll(sneakDice);
       sneakAttackBonus = sneakRoll.total;
     }
+    console.log(`[SNEAK] ${char.name}: allyInMelee=${allyInMelee}, critical=${result.critical}, triggered=${allyInMelee || result.critical}`);
   }
 
   if (result.hit) {
@@ -1016,6 +1027,12 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     // Update monster in party
     const idx = party.monsters.findIndex((m) => m.id === target.id);
     if (idx !== -1) party.monsters[idx] = monster;
+
+    // D&D 5e: damage wakes sleeping creatures
+    if (!killed && monster.conditions.includes("asleep")) {
+      monster.conditions = removeCondition(monster.conditions, "asleep");
+      logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+    }
 
     // Track lifetime stats
     char.totalDamageDealt += totalDmg;
@@ -1634,6 +1651,12 @@ export function handleCast(userId: string, params: { spell_name: string; target_
           const idx = party.monsters.findIndex((m) => m.id === target.id);
           if (idx !== -1) party.monsters[idx] = monster;
 
+          // D&D 5e: damage wakes sleeping creatures
+          if (!killed && monster.conditions.includes("asleep")) {
+            monster.conditions = removeCondition(monster.conditions, "asleep");
+            logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+          }
+
           targetKilled = killed;
           targetCurrentHP = monster.hpCurrent;
 
@@ -2060,6 +2083,11 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
           const { monster } = damageMonster(target, actualDamage);
           const idx = party.monsters.findIndex((m) => m.id === target.id);
           if (idx !== -1) party.monsters[idx] = monster;
+          // D&D 5e: damage wakes sleeping creatures
+          if (monster.isAlive && monster.conditions.includes("asleep")) {
+            monster.conditions = removeCondition(monster.conditions, "asleep");
+            logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+          }
         }
       }
     }
@@ -2245,6 +2273,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
             const { monster } = damageMonster(target, actualDamage);
             const idx = party.monsters.findIndex((m) => m.id === target.id);
             if (idx !== -1) party.monsters[idx] = monster;
+            // D&D 5e: damage wakes sleeping creatures
+            if (monster.isAlive && monster.conditions.includes("asleep")) {
+              monster.conditions = removeCondition(monster.conditions, "asleep");
+              logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+            }
           }
         }
       }
@@ -2397,6 +2430,11 @@ export function handleReaction(userId: string, params: { action: string; spell_n
             const { monster, killed } = damageMonster(target, actualDamage);
             const idx = party.monsters.findIndex((m) => m.id === target.id);
             if (idx !== -1) party.monsters[idx] = monster;
+            // D&D 5e: damage wakes sleeping creatures
+            if (!killed && monster.conditions.includes("asleep")) {
+              monster.conditions = removeCondition(monster.conditions, "asleep");
+              logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+            }
             char.totalDamageDealt += actualDamage;
             if (killed) {
               char.monstersKilled++;
@@ -2449,6 +2487,12 @@ export function handleReaction(userId: string, params: { action: string; spell_n
         const { monster, killed } = damageMonster(target, result.totalDamage);
         const idx = party.monsters.findIndex((m) => m.id === target.id);
         if (idx !== -1) party.monsters[idx] = monster;
+
+        // D&D 5e: damage wakes sleeping creatures
+        if (!killed && monster.conditions.includes("asleep")) {
+          monster.conditions = removeCondition(monster.conditions, "asleep");
+          logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+        }
 
         // Track lifetime stats
         char.totalDamageDealt += result.totalDamage;
@@ -3167,6 +3211,11 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
 
     const dmgRoll = roll(damageNotation);
     monster.hpCurrent = Math.max(0, monster.hpCurrent - dmgRoll.total);
+    // D&D 5e: damage wakes sleeping creatures
+    if (monster.hpCurrent > 0 && monster.conditions.includes("asleep")) {
+      monster.conditions = removeCondition(monster.conditions, "asleep");
+      logEvent(party, "condition_removed", monster.id ?? null, { targetName: monster.name, condition: "asleep", reason: "took_damage" });
+    }
     const killed = monster.hpCurrent === 0;
     if (killed) {
       monster.isAlive = false;
