@@ -39,8 +39,11 @@ function sanitizeSummaryForPublic(summary: string | null, context?: { partyName?
   const cleaned = gm.filterSummary(summary);
   // Reject fully-debug or mechanical summaries — let the frontend narrate
   if (!cleaned || cleaned.length < 3 || gm.summaryContainsDebugText(cleaned)) return null;
-  // Also reject known generic fallback strings
+  // Also reject known generic fallback strings and mechanical patterns
   if (cleaned === "Dungeon Exploration Session" || cleaned === "Automated session") return null;
+  if (/automated session/i.test(cleaned)) return null;
+  if (/scheduled dungeon/i.test(cleaned)) return null;
+  if (/explored \d+ rooms?/i.test(cleaned) && cleaned.length < 80) return null;
   return cleaned;
 }
 
@@ -1026,8 +1029,10 @@ spectator.get("/sessions", async (c) => {
       .limit(limit)
       .offset(offset);
 
+    // Filter out ultra-short sessions (fewer than 3 events) from public listing
+    const filtered = rows.filter((r) => Number(r.eventCount) >= 3);
     return c.json({
-      sessions: rows.map((r) => ({
+      sessions: filtered.map((r) => ({
         id: r.id,
         partyId: r.partyId,
         partyName: r.partyName ?? null,
