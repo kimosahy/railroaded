@@ -2721,6 +2721,11 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     }
   }
 
+  // Prevent duplicate queue entries
+  if (playerQueue.some((q) => q.userId === userId)) {
+    return { success: false, error: "Already in the queue." };
+  }
+
   const entry: QueueEntry = {
     userId,
     characterId: char.id,

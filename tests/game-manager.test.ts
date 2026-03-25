@@ -279,6 +279,38 @@ describe("DM-party association (bug 1.2)", () => {
   });
 });
 
+describe("Solo player instant match prevention (bug 1.3)", () => {
+  test("1 player queuing alone does NOT form a party", async () => {
+    const p1 = uid("p");
+    await createChar(p1);
+    const result = handleQueueForParty(p1);
+    expect(result.success).toBe(true);
+    expect(result.data!.matched).toBe(false);
+    expect(result.data!.queued).toBe(true);
+    const { parties } = getState();
+    expect(parties.size).toBe(0);
+  });
+
+  test("player cannot double-queue", async () => {
+    const p1 = uid("p");
+    await createChar(p1);
+    handleQueueForParty(p1);
+    const result = handleQueueForParty(p1);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Already in the queue");
+  });
+
+  test("2 players without DM do NOT form a party", async () => {
+    const p1 = uid("p"); const p2 = uid("p");
+    await createChar(p1); await createChar(p2);
+    handleQueueForParty(p1);
+    const result = handleQueueForParty(p2);
+    expect(result.data!.matched).toBe(false);
+    const { parties } = getState();
+    expect(parties.size).toBe(0);
+  });
+});
+
 // (c) handleSpawnEncounter
 
 describe("handleSpawnEncounter", () => {
