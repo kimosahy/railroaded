@@ -9,6 +9,9 @@ import {
   handleAdvanceScene,
   handleEndSession,
   handleAwardXp,
+  handleGetPartyState,
+  handleNarrate,
+  handleTriggerEncounter,
   getState,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
@@ -212,6 +215,67 @@ describe("Party formation", () => {
     expect(after.size).toBe(1);
     const party = [...after.values()][0]!;
     expect(party.dmUserId).toBe(dmId);
+  });
+});
+
+describe("DM-party association (bug 1.2)", () => {
+  test("DM queues first, 2 players queue → party forms, DM can access party-state", async () => {
+    const dmId = uid("dm");
+    const p1 = uid("p");
+    const p2 = uid("p");
+
+    // DM queues first
+    const dmQueueResult = handleDMQueueForParty(dmId);
+    expect(dmQueueResult.success).toBe(true);
+    expect(dmQueueResult.data!.matched).toBe(false); // no players yet
+
+    // DM calls party-state before match — should get helpful error
+    const preMatch = handleGetPartyState(dmId);
+    expect(preMatch.success).toBe(false);
+
+    // Player 1 queues
+    await createChar(p1);
+    const p1Result = handleQueueForParty(p1);
+    expect(p1Result.success).toBe(true);
+    expect(p1Result.data!.matched).toBe(false); // only 1 player
+
+    // Player 2 queues → match triggers
+    await createChar(p2);
+    const p2Result = handleQueueForParty(p2);
+    expect(p2Result.success).toBe(true);
+    expect(p2Result.data!.matched).toBe(true); // 2 players + 1 DM = party!
+
+    // DM can now access party-state
+    const partyState = handleGetPartyState(dmId);
+    expect(partyState.success).toBe(true);
+    expect(partyState.data!.members).toBeDefined();
+    expect(partyState.data!.phase).toBe("exploration");
+
+    // DM can narrate
+    const narrate = handleNarrate(dmId, { text: "The adventure begins..." });
+    expect(narrate.success).toBe(true);
+
+    // DM can trigger encounter
+    const encounter = handleTriggerEncounter(dmId);
+    // May fail if no pre-placed encounter in room, but should NOT fail with "Not a DM"
+    if (!encounter.success) {
+      expect(encounter.error).not.toContain("Not a DM");
+    }
+  });
+
+  test("DM cannot queue while already in active party", async () => {
+    const dmId = uid("dm");
+    const p1 = uid("p"); const p2 = uid("p");
+    await createChar(p1); await createChar(p2);
+    handleQueueForParty(p1); handleQueueForParty(p2);
+    handleDMQueueForParty(dmId);
+    // Party should have formed
+    const state = handleGetPartyState(dmId);
+    expect(state.success).toBe(true);
+    // Try to queue again — should fail
+    const requeue = handleDMQueueForParty(dmId);
+    expect(requeue.success).toBe(false);
+    expect(requeue.error).toContain("already");
   });
 });
 

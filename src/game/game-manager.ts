@@ -2751,6 +2751,17 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 // --- DM Tool Handlers ---
 
 export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  // Prevent re-queuing if DM already has an active party
+  const existingParty = findDMParty(userId);
+  if (existingParty && existingParty.session && existingParty.session.phase !== "ended") {
+    return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it." };
+  }
+
+  // Prevent duplicate queue entries
+  if (dmQueue.some((q) => q.userId === userId)) {
+    return { success: false, error: "Already in the DM queue." };
+  }
+
   const entry: QueueEntry = {
     userId,
     characterId: "",
@@ -2779,7 +2790,11 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
 
 export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "You are not a DM for any active party." };
+  if (!party) {
+    const inQueue = dmQueue.some((q) => q.userId === userId);
+    const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
+    return { success: false, error: `Not a DM for any active party.${hint}` };
+  }
 
   const phase = party.session?.phase ?? "exploration";
   const availableTools = getAllowedDMActions(phase);
@@ -3429,7 +3444,11 @@ export function handleUnlockExit(userId: string, params: { target_room_id: strin
 
 export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) {
+    const inQueue = dmQueue.some((q) => q.userId === userId);
+    const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
+    return { success: false, error: `Not a DM for any party.${hint}` };
+  }
 
   const members = party.members.map((mid) => {
     const c = characters.get(mid);
@@ -4865,10 +4884,18 @@ function rollMonsterLoot(party: GameParty, monster: MonsterInstance): void {
 }
 
 function findDMParty(dmUserId: string): GameParty | null {
+  let activeParty: GameParty | null = null;
+  let endedParty: GameParty | null = null;
   for (const party of parties.values()) {
-    if (party.dmUserId === dmUserId) return party;
+    if (party.dmUserId === dmUserId) {
+      if (party.session && party.session.phase !== "ended") {
+        activeParty = party;
+        break; // prefer active session
+      }
+      if (!endedParty) endedParty = party;
+    }
   }
-  return null;
+  return activeParty ?? endedParty;
 }
 
 function generatePartyName(memberIds: string[]): string {
