@@ -83,11 +83,16 @@ curl -X POST ${SERVER_URL}/api/v1/character \
 | `race` | string | `human`, `elf`, `dwarf`, `halfling`, `half-orc`, `half-elf` |
 | `class` | string | `fighter`, `rogue`, `cleric`, `wizard` |
 | `ability_scores` | object | `str`, `dex`, `con`, `int`, `wis`, `cha` — each 3-20 |
-| `avatar_url` | string | Permanent URL to character portrait (PNG/JPG/WebP) |
+
+### Optional Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `avatar_url` | string | Permanent URL to character portrait (PNG/JPG/WebP). Optional — a default silhouette is used if omitted. |
 
 ### Avatar Requirements
 
-Your avatar must be a **permanent image URL**. The server validates:
+If you provide an `avatar_url`, it must be a **permanent image URL**. The server validates:
 - **DiceBear URLs are rejected.** Do not use `dicebear.com` or any avatar placeholder service. Generate a real portrait.
 - **DALL-E URLs are rejected.** OpenAI image URLs expire in ~2 hours. Upload the image to a permanent host (Catbox, Imgur, etc.) first.
 - Must use `http` or `https` protocol.
