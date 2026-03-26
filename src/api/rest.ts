@@ -224,10 +224,15 @@ dm.use("/*", requireRole("dm"));
 dm.get("/actions", (c) => respond(c, gm.handleGetDmActions(c.get("user").userId)));
 
 dm.post("/narrate", async (c) => {
-  const body = await c.req.json<{ text?: string; message?: string; style?: string }>();
+  const body = await c.req.json<{
+    text?: string; message?: string; style?: string;
+    type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
+    npcId?: string; npc_id?: string; metadata?: Record<string, unknown>;
+    meta?: { intent?: string; reasoning?: string; references?: string[] };
+  }>();
   const text = body.text ?? body.message;
   if (!text) return respond(c, { success: false, error: "Missing 'text' (or 'message') field in narration body." });
-  return respond(c, gm.handleNarrate(c.get("user").userId, { text, style: body.style }));
+  return respond(c, gm.handleNarrate(c.get("user").userId, { text, style: body.style, type: body.type, npcId: body.npcId ?? body.npc_id, metadata: body.metadata, meta: body.meta }));
 });
 
 dm.post("/narrate-to", async (c) => {
@@ -343,7 +348,7 @@ dm.post("/story-flag", async (c) => {
 });
 
 dm.post("/set-session-metadata", async (c) => {
-  const body = await c.req.json<{ worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number }>();
+  const body = await c.req.json<{ worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number; title?: string; description?: string }>();
   return respond(c, gm.handleSetSessionMetadata(c.get("user").userId, body));
 });
 
@@ -371,6 +376,12 @@ dm.post("/monster-action", async (c) => {
   return respond(c, gm.handleMonsterAction(c.get("user").userId, body));
 });
 
+// Force-skip current combatant's turn (AFK/disconnect recovery)
+dm.post("/skip-turn", async (c) => {
+  const body = await c.req.json<{ reason?: string }>().catch(() => ({}));
+  return respond(c, gm.handleForceSkipTurn(c.get("user").userId, body));
+});
+
 // Convenience aliases for combat flow
 dm.post("/next-turn", (c) => {
   return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST" }, 400);
@@ -378,7 +389,7 @@ dm.post("/next-turn", (c) => {
 
 // NPC management
 dm.post("/npc", async (c) => {
-  const body = await c.req.json<{ name: string; description: string; personality?: string; location?: string; disposition?: number; tags?: string[] }>();
+  const body = await c.req.json<{ name: string; description: string; personality?: string; location?: string; disposition?: number; tags?: string[]; knowledge?: string[]; goals?: string[]; relationships?: Record<string, string>; standingOrders?: string }>();
   return respond(c, gm.handleCreateNpc(c.get("user").userId, body));
 });
 
@@ -391,7 +402,7 @@ dm.get("/npcs", (c) => {
 });
 
 dm.patch("/npc/:npc_id", async (c) => {
-  const body = await c.req.json<{ description?: string; personality?: string; location?: string; tags?: string[]; is_alive?: boolean }>();
+  const body = await c.req.json<{ description?: string; personality?: string; location?: string; tags?: string[]; is_alive?: boolean; knowledge?: string[]; goals?: string[]; relationships?: Record<string, string>; standingOrders?: string }>();
   return respond(c, gm.handleUpdateNpc(c.get("user").userId, { npc_id: c.req.param("npc_id"), ...body }));
 });
 
@@ -424,6 +435,67 @@ dm.delete("/queue", (c) => respond(c, gm.handleDMLeaveQueue(c.get("user").userId
 dm.post("/journal", async (c) => {
   const body = await c.req.json<{ entry: string }>();
   return respond(c, gm.handleDMJournal(c.get("user").userId, body));
+});
+
+// --- Sprint J: Conversation lifecycle ---
+dm.post("/start-conversation", async (c) => {
+  const body = await c.req.json<{
+    participants: { type: "player" | "npc"; id: string; name: string }[];
+    context: string;
+    geometry?: string;
+  }>();
+  return respond(c, gm.handleStartConversation(c.get("user").userId, body));
+});
+
+dm.post("/end-conversation", async (c) => {
+  const body = await c.req.json<{
+    conversationId: string;
+    outcome: string;
+    relationshipDelta?: Record<string, number>;
+  }>();
+  return respond(c, gm.handleEndConversation(c.get("user").userId, body));
+});
+
+// --- Sprint J: Information items ---
+dm.post("/info", async (c) => {
+  const body = await c.req.json();
+  return respond(c, gm.handleCreateInfoItem(c.get("user").userId, body));
+});
+
+dm.post("/reveal-info", async (c) => {
+  const body = await c.req.json();
+  return respond(c, gm.handleRevealInfo(c.get("user").userId, body));
+});
+
+dm.patch("/info/:infoId", async (c) => {
+  const body = await c.req.json();
+  return respond(c, gm.handleUpdateInfoItem(c.get("user").userId, { infoId: c.req.param("infoId"), ...body }));
+});
+
+dm.get("/info", (c) => respond(c, gm.handleListInfoItems(c.get("user").userId)));
+
+// --- Sprint J: Session clocks ---
+dm.post("/clock", async (c) => {
+  const body = await c.req.json();
+  return respond(c, gm.handleCreateClock(c.get("user").userId, body));
+});
+
+dm.post("/clock/:clockId/advance", async (c) => {
+  const body = await c.req.json<{ turns?: number }>().catch(() => ({}));
+  return respond(c, gm.handleAdvanceClock(c.get("user").userId, { clockId: c.req.param("clockId"), ...body }));
+});
+
+dm.post("/clock/:clockId/resolve", async (c) => {
+  const body = await c.req.json<{ outcome: string }>();
+  return respond(c, gm.handleResolveClock(c.get("user").userId, { clockId: c.req.param("clockId"), ...body }));
+});
+
+dm.get("/clocks", (c) => respond(c, gm.handleListClocks(c.get("user").userId)));
+
+// --- Sprint J: Time passage ---
+dm.post("/advance-time", async (c) => {
+  const body = await c.req.json<{ amount: number; unit: "minutes" | "hours" | "days" | "weeks"; narrative: string }>();
+  return respond(c, gm.handleAdvanceTime(c.get("user").userId, body));
 });
 
 rest.route("/dm", dm);

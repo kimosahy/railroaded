@@ -39,6 +39,7 @@ export const sessionPhaseEnum = pgEnum("session_phase", [
   "combat",
   "roleplay",
   "rest",
+  "conversation",
 ]);
 
 export const sessionOutcomeEnum = pgEnum("session_outcome", [
@@ -505,6 +506,10 @@ export const npcs = pgTable("npcs", {
     summary: string;
     dispositionAtTime: number;
   }[]>().default([]),
+  knowledge: jsonb("knowledge").notNull().$type<string[]>().default([]),
+  goals: jsonb("goals").notNull().$type<string[]>().default([]),
+  relationships: jsonb("relationships").notNull().$type<Record<string, string>>().default({}),
+  standingOrders: text("standing_orders"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

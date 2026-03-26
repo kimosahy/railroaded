@@ -188,6 +188,11 @@ interface GameNPC {
   tags: string[];
   memory: NpcMemoryEntry[];       // last 20 interactions
   dbNpcId: string | null;         // UUID from npcs table
+  // ENA extensions (Sprint J)
+  knowledge: string[];
+  goals: string[];
+  relationships: Record<string, string>;
+  standingOrders: string | null;
 }
 
 const characters = new Map<string, GameCharacter>();
@@ -195,6 +200,42 @@ const charactersByUser = new Map<string, string>(); // userId → characterId
 const parties = new Map<string, GameParty>();
 const campaignsMap = new Map<string, GameCampaign>();
 const npcsMap = new Map<string, GameNPC>();           // npcId → GameNPC
+
+// --- Sprint J: Info Items & Clocks ---
+
+interface InfoItem {
+  id: string;
+  partyId: string;
+  title: string;
+  content: string;
+  source: string;
+  visibility: "hidden" | "available" | "discovered";
+  discoveredBy: string[];
+  discoveryMethod?: string;
+  freshnessTurns: number | null;
+  turnsElapsed: number;
+  isStale: boolean;
+  createdAt: Date;
+}
+
+const infoItems = new Map<string, InfoItem>();
+
+interface SessionClock {
+  id: string;
+  partyId: string;
+  name: string;
+  description: string;
+  turnsRemaining: number;
+  turnsTotal: number;
+  visibility: "hidden" | "public";
+  consequence: string;
+  isResolved: boolean;
+  outcome?: string;
+  createdAt: Date;
+}
+
+const clocks = new Map<string, SessionClock>();
+
 const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
 const requestModelIdentity = new Map<string, { provider: string; name: string }>(); // userId → model identity for current request
@@ -866,6 +907,14 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
       deathSaves: char.deathSaves,
       equipment: char.equipment,
       features: char.features,
+      // Sprint J: expose public clocks
+      clocks: (() => {
+        const party = getPartyForCharacter(char.id);
+        if (!party) return [];
+        return [...clocks.values()]
+          .filter(c => c.partyId === party.id && c.visibility === "public" && !c.isResolved)
+          .map(c => ({ name: c.name, description: c.description, turnsRemaining: c.turnsRemaining }));
+      })(),
     },
   };
 }
@@ -1078,7 +1127,9 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     ? rangedAttackParams(char.abilityScores, profBonus, weaponDamage)
     : meleeAttackParams(char.abilityScores, profBonus, weaponDamage);
 
-  const result = resolveAttack({ ...attackParams, targetAC: target.ac });
+  // D&D 5e: Attacks against unconscious/sleeping/paralyzed targets have advantage, and melee hits auto-crit
+  const targetIsIncapacitated = target.conditions.includes("unconscious") || target.conditions.includes("asleep") || target.conditions.includes("paralyzed");
+  const result = resolveAttack({ ...attackParams, targetAC: target.ac, advantage: targetIsIncapacitated || undefined, autoCrit: (targetIsIncapacitated && !isRanged) || undefined });
 
   // Rogue Sneak Attack: bonus damage if (a) ally adjacent or (b) attack had advantage
   let sneakAttackBonus = 0;
@@ -1293,6 +1344,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
     const target = resolveCharacter(targetIdentifier);
     if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
+    if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.` };
 
     const ability = attack.save_ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
     const save = savingThrow({
@@ -1348,9 +1400,10 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
   const target = resolveCharacter(targetIdentifier);
   if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
+  if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.` };
 
-  // D&D 5e: attacks against unconscious targets have advantage, and melee hits auto-crit
-  const targetIsUnconscious = target.conditions.includes("unconscious");
+  // D&D 5e: attacks against unconscious/sleeping/paralyzed targets have advantage, and melee hits auto-crit
+  const targetIsIncapacitated = target.conditions.includes("unconscious") || target.conditions.includes("asleep") || target.conditions.includes("paralyzed");
 
   const result = resolveAttack({
     attackerAbilityMod: 0,
@@ -1360,8 +1413,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     damageType: attack.type,
     damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
     bonusToHit: attack.to_hit,
-    advantage: targetIsUnconscious,
-    autoCrit: targetIsUnconscious, // melee attack within 5ft of unconscious = auto-crit
+    advantage: targetIsIncapacitated,
+    autoCrit: targetIsIncapacitated, // melee attack within 5ft of incapacitated = auto-crit
   });
 
   if (result.hit) {
@@ -1973,7 +2026,22 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
 
   const party = getPartyForCharacter(char.id);
   if (!party) return { success: false, error: "Not in a party." };
-  logEvent(party, "chat", char.id, { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message });
+  const chatEventData: Record<string, unknown> = { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message };
+
+  // Tag with active conversation (Task 1d)
+  if (party.session?.activeConversationId) {
+    const conv = party.session.conversations.find(c => c.id === party.session!.activeConversationId);
+    if (conv) conv.messageCount++;
+    chatEventData.conversationId = party.session.activeConversationId;
+  }
+
+  // Commentary meta-layer (Task 8)
+  if ((params as Record<string, unknown>).meta) {
+    const meta = (params as Record<string, unknown>).meta as { intent?: string; reasoning?: string; references?: string[] };
+    if (meta.intent || meta.reasoning) chatEventData._meta = meta;
+  }
+
+  logEvent(party, "chat", char.id, chatEventData);
 
   // Behavioral metrics: chat tracking
   char.chatMessages++;
@@ -2911,14 +2979,84 @@ export function handleGetDmActions(userId: string): { success: boolean; data?: R
   return { success: true, data };
 }
 
-export function handleNarrate(userId: string, params: { text: string; style?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+// --- Task 0.1: DM Force-Skip Turn ---
+
+export function handleForceSkipTurn(userId: string, params: { reason?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session || party.session.phase !== "combat") {
+    return { success: false, error: "Can only skip turns during combat." };
+  }
+
+  const current = getCurrentCombatant(party.session);
+  if (!current) return { success: false, error: "No current combatant." };
+
+  const skippedName = current.type === "player"
+    ? (characters.get(current.entityId)?.name ?? current.entityId)
+    : (party.monsters.find(m => m.id === current.entityId)?.name ?? current.entityId);
+
+  resetTurnResources(party, current.entityId);
+  party.session = nextTurn(party.session);
+  advanceTurnSkipDead(party);
+
+  logEvent(party, "dm_skip_turn", null, {
+    skippedEntity: current.entityId,
+    skippedName,
+    skippedType: current.type,
+    reason: params.reason ?? "DM force skip",
+  });
+
+  notifyTurnChange(party);
+
+  return {
+    success: true,
+    data: {
+      skipped: skippedName,
+      skippedType: current.type,
+      reason: params.reason ?? "DM force skip",
+    },
+  };
+}
+
+export function handleNarrate(userId: string, params: {
+  text: string; style?: string;
+  type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
+  npcId?: string; metadata?: Record<string, unknown>;
+  meta?: { intent?: string; reasoning?: string; references?: string[] };
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "You are not a DM for any active party." };
 
-  const eventData: Record<string, unknown> = { text: params.text };
+  const narType = params.type ?? "scene";
+  const eventData: Record<string, unknown> = { text: params.text, narrateType: narType };
   if (params.style) eventData.style = params.style;
+  if (params.npcId) eventData.npcId = params.npcId;
+  if (params.metadata) eventData.metadata = params.metadata;
+
+  // Tag narration with active conversation
+  if (party.session?.activeConversationId) {
+    eventData.conversationId = party.session.activeConversationId;
+  }
+
+  // Resolve NPC name for npc_dialogue type
+  if (narType === "npc_dialogue" && params.npcId) {
+    const npc = npcsMap.get(params.npcId);
+    if (npc) eventData.npcName = npc.name;
+  }
+
+  // Commentary meta-layer (Task 8)
+  if (params.meta && (params.meta.intent || params.meta.reasoning)) {
+    eventData._meta = params.meta;
+  }
+
   logEvent(party, "narration", null, eventData);
-  return { success: true, data: { narrated: true, text: params.text, style: params.style ?? null } };
+  return {
+    success: true,
+    data: {
+      narrated: true, text: params.text, type: narType,
+      npcId: params.npcId ?? null, style: params.style ?? null,
+    },
+  };
 }
 
 export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
@@ -4058,6 +4196,7 @@ export function filterSummary(summary: string): string {
 
 export function handleSetSessionMetadata(userId: string, params: {
   worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number;
+  title?: string; description?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -4068,6 +4207,8 @@ export function handleSetSessionMetadata(userId: string, params: {
     ...(params.tone !== undefined ? { tone: params.tone } : {}),
     ...(params.setting !== undefined ? { setting: params.setting } : {}),
     ...(params.decisionTimeMs !== undefined ? { decisionTimeMs: params.decisionTimeMs } : {}),
+    ...(params.title !== undefined ? { title: params.title } : {}),
+    ...(params.description !== undefined ? { description: params.description } : {}),
   };
 
   // Store in-memory on party for spectator access
@@ -4596,6 +4737,10 @@ export function handleCreateNpc(userId: string, params: {
   location?: string;
   disposition?: number;
   tags?: string[];
+  knowledge?: string[];
+  goals?: string[];
+  relationships?: Record<string, string>;
+  standingOrders?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const ctx = findCampaignForDM(userId);
   if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first." };
@@ -4619,6 +4764,10 @@ export function handleCreateNpc(userId: string, params: {
     tags: params.tags ?? [],
     memory: [],
     dbNpcId: null,
+    knowledge: params.knowledge ?? [],
+    goals: params.goals ?? [],
+    relationships: params.relationships ?? {},
+    standingOrders: params.standingOrders?.trim() ?? null,
   };
 
   npcsMap.set(npcId, npc);
@@ -4634,6 +4783,10 @@ export function handleCreateNpc(userId: string, params: {
       disposition: npc.disposition,
       dispositionLabel: npc.dispositionLabel,
       tags: npc.tags,
+      knowledge: npc.knowledge,
+      goals: npc.goals,
+      relationships: npc.relationships,
+      standingOrders: npc.standingOrders,
     }).returning({ id: npcsTable.id }).then(([row]) => {
       npc.dbNpcId = row.id;
     }).catch((err) => console.error("[DB] Failed to persist NPC:", err));
@@ -4652,6 +4805,10 @@ export function handleCreateNpc(userId: string, params: {
       disposition: npc.disposition,
       disposition_label: npc.dispositionLabel,
       tags: npc.tags,
+      knowledge: npc.knowledge,
+      goals: npc.goals,
+      relationships: npc.relationships,
+      standing_orders: npc.standingOrders,
     },
   };
 }
@@ -4676,6 +4833,10 @@ export function handleGetNpc(userId: string, params: { npc_id: string }): { succ
       is_alive: npc.isAlive,
       tags: npc.tags,
       memory: npc.memory.slice(-5), // last 5 memories for quick reference
+      knowledge: npc.knowledge,
+      goals: npc.goals,
+      relationships: npc.relationships,
+      standing_orders: npc.standingOrders,
     },
   };
 }
@@ -4712,6 +4873,10 @@ export function handleUpdateNpc(userId: string, params: {
   location?: string;
   tags?: string[];
   is_alive?: boolean;
+  knowledge?: string[];
+  goals?: string[];
+  relationships?: Record<string, string>;
+  standingOrders?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -4724,6 +4889,10 @@ export function handleUpdateNpc(userId: string, params: {
   if (params.location !== undefined) npc.location = params.location.trim() || null;
   if (params.tags !== undefined) npc.tags = params.tags;
   if (params.is_alive !== undefined) npc.isAlive = params.is_alive;
+  if (params.knowledge !== undefined) npc.knowledge = params.knowledge;
+  if (params.goals !== undefined) npc.goals = params.goals;
+  if (params.relationships !== undefined) npc.relationships = params.relationships;
+  if (params.standingOrders !== undefined) npc.standingOrders = params.standingOrders.trim() || null;
 
   // Persist to DB
   if (npc.dbNpcId) {
@@ -4733,6 +4902,10 @@ export function handleUpdateNpc(userId: string, params: {
       location: npc.location,
       tags: npc.tags,
       isAlive: npc.isAlive,
+      knowledge: npc.knowledge,
+      goals: npc.goals,
+      relationships: npc.relationships,
+      standingOrders: npc.standingOrders,
       updatedAt: new Date(),
     }).where(eq(npcsTable.id, npc.dbNpcId))
       .catch((err) => console.error("[DB] Failed to update NPC:", err));
@@ -4750,6 +4923,10 @@ export function handleUpdateNpc(userId: string, params: {
       disposition_label: npc.dispositionLabel,
       is_alive: npc.isAlive,
       tags: npc.tags,
+      knowledge: npc.knowledge,
+      goals: npc.goals,
+      relationships: npc.relationships,
+      standing_orders: npc.standingOrders,
     },
   };
 }
@@ -4819,6 +4996,390 @@ export function handleUpdateNpcDisposition(userId: string, params: {
       new_disposition: npc.disposition,
       disposition_label: npc.dispositionLabel,
       reason: params.reason,
+    },
+  };
+}
+
+// =========================================================================
+// Sprint J: Conversation Lifecycle (Task 1)
+// =========================================================================
+
+export function handleStartConversation(userId: string, params: {
+  participants: { type: "player" | "npc"; id: string; name: string }[];
+  context: string;
+  geometry?: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session) return { success: false, error: "No active session." };
+  if (party.session.phase === "combat") return { success: false, error: "Cannot start conversation during combat." };
+
+  const convId = nextId("conv");
+  const conversation = {
+    id: convId,
+    participants: params.participants,
+    context: params.context,
+    geometry: params.geometry,
+    startedAt: new Date(),
+    messageCount: 0,
+  };
+
+  party.session.conversations.push(conversation);
+  party.session.activeConversationId = convId;
+  party.session.phase = "conversation";
+
+  logEvent(party, "conversation_start", null, {
+    conversationId: convId,
+    participants: params.participants.map(p => ({ type: p.type, name: p.name })),
+    context: params.context,
+    geometry: params.geometry ?? null,
+  });
+
+  return {
+    success: true,
+    data: {
+      conversationId: convId,
+      participants: params.participants,
+      geometry: params.geometry ?? null,
+    },
+  };
+}
+
+export function handleEndConversation(userId: string, params: {
+  conversationId: string;
+  outcome: string;
+  relationshipDelta?: Record<string, number>;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party.session) return { success: false, error: "No active session." };
+
+  const conv = party.session.conversations.find(c => c.id === params.conversationId);
+  if (!conv) return { success: false, error: `Conversation ${params.conversationId} not found.` };
+
+  conv.outcome = params.outcome;
+  conv.relationshipDelta = params.relationshipDelta;
+
+  if (party.session.activeConversationId === params.conversationId) {
+    party.session.activeConversationId = null;
+    party.session.phase = "exploration";
+  }
+
+  // Apply relationship deltas to NPCs
+  if (params.relationshipDelta) {
+    for (const [npcId, delta] of Object.entries(params.relationshipDelta)) {
+      const npc = npcsMap.get(npcId);
+      if (npc) {
+        npc.disposition = Math.max(-100, Math.min(100, npc.disposition + delta));
+        npc.dispositionLabel = dispositionLabel(npc.disposition);
+      }
+    }
+  }
+
+  logEvent(party, "conversation_end", null, {
+    conversationId: params.conversationId,
+    outcome: params.outcome,
+    messageCount: conv.messageCount,
+    relationshipDelta: params.relationshipDelta ?? null,
+  });
+
+  return {
+    success: true,
+    data: {
+      conversationId: params.conversationId,
+      outcome: params.outcome,
+      messageCount: conv.messageCount,
+    },
+  };
+}
+
+// =========================================================================
+// Sprint J: Information Items (Task 3)
+// =========================================================================
+
+export function handleCreateInfoItem(userId: string, params: {
+  title: string;
+  content: string;
+  source: string;
+  visibility?: "hidden" | "available" | "discovered";
+  discoveredBy?: string[];
+  freshnessTurns?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const infoId = nextId("info");
+  const item: InfoItem = {
+    id: infoId,
+    partyId: party.id,
+    title: params.title.trim(),
+    content: params.content.trim(),
+    source: params.source,
+    visibility: params.visibility ?? "hidden",
+    discoveredBy: params.discoveredBy ?? [],
+    freshnessTurns: params.freshnessTurns ?? null,
+    turnsElapsed: 0,
+    isStale: false,
+    createdAt: new Date(),
+  };
+
+  infoItems.set(infoId, item);
+  logEvent(party, "info_created", null, { infoId, title: item.title, visibility: item.visibility });
+
+  return {
+    success: true,
+    data: { infoId, title: item.title, visibility: item.visibility },
+  };
+}
+
+export function handleRevealInfo(userId: string, params: {
+  infoId: string;
+  toCharacters: string[];
+  method: "told" | "found" | "overheard" | "deduced";
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const item = infoItems.get(params.infoId);
+  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
+
+  item.visibility = "discovered";
+  item.discoveryMethod = params.method;
+  for (const charId of params.toCharacters) {
+    if (!item.discoveredBy.includes(charId)) {
+      item.discoveredBy.push(charId);
+    }
+  }
+
+  const charNames = params.toCharacters.map(id => characters.get(id)?.name ?? id);
+
+  logEvent(party, "info_revealed", null, {
+    infoId: params.infoId,
+    title: item.title,
+    toCharacters: params.toCharacters,
+    toCharacterNames: charNames,
+    method: params.method,
+    isStale: item.isStale,
+  });
+
+  return {
+    success: true,
+    data: {
+      infoId: params.infoId,
+      title: item.title,
+      discoveredBy: item.discoveredBy,
+      method: params.method,
+      isStale: item.isStale,
+    },
+  };
+}
+
+export function handleUpdateInfoItem(userId: string, params: {
+  infoId: string;
+  content?: string;
+  visibility?: "hidden" | "available" | "discovered";
+  freshnessTurns?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const item = infoItems.get(params.infoId);
+  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
+
+  if (params.content !== undefined) item.content = params.content.trim();
+  if (params.visibility !== undefined) item.visibility = params.visibility;
+  if (params.freshnessTurns !== undefined) {
+    item.freshnessTurns = params.freshnessTurns;
+    item.isStale = false;
+    item.turnsElapsed = 0;
+  }
+
+  return { success: true, data: { infoId: item.id, title: item.title, visibility: item.visibility, isStale: item.isStale } };
+}
+
+export function handleListInfoItems(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const items = [...infoItems.values()]
+    .filter(i => i.partyId === party.id)
+    .map(i => ({
+      infoId: i.id,
+      title: i.title,
+      content: i.content,
+      source: i.source,
+      visibility: i.visibility,
+      discoveredBy: i.discoveredBy,
+      discoveryMethod: i.discoveryMethod ?? null,
+      isStale: i.isStale,
+      freshnessTurns: i.freshnessTurns,
+      turnsElapsed: i.turnsElapsed,
+    }));
+
+  return { success: true, data: { items } };
+}
+
+// =========================================================================
+// Sprint J: Session Clocks (Task 6)
+// =========================================================================
+
+export function handleCreateClock(userId: string, params: {
+  name: string;
+  description: string;
+  turnsRemaining: number;
+  visibility?: "hidden" | "public";
+  consequence: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const clockId = nextId("clock");
+  const clock: SessionClock = {
+    id: clockId,
+    partyId: party.id,
+    name: params.name.trim(),
+    description: params.description.trim(),
+    turnsRemaining: params.turnsRemaining,
+    turnsTotal: params.turnsRemaining,
+    visibility: params.visibility ?? "hidden",
+    consequence: params.consequence,
+    isResolved: false,
+    createdAt: new Date(),
+  };
+
+  clocks.set(clockId, clock);
+  logEvent(party, "clock_created", null, {
+    clockId, name: clock.name, turnsRemaining: clock.turnsRemaining, visibility: clock.visibility,
+  });
+
+  return {
+    success: true,
+    data: { clockId, name: clock.name, turnsRemaining: clock.turnsRemaining, visibility: clock.visibility },
+  };
+}
+
+export function handleAdvanceClock(userId: string, params: {
+  clockId: string;
+  turns?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const clock = clocks.get(params.clockId);
+  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.` };
+  if (clock.isResolved) return { success: false, error: "Clock is already resolved." };
+
+  const ticks = params.turns ?? 1;
+  clock.turnsRemaining = Math.max(0, clock.turnsRemaining - ticks);
+
+  logEvent(party, "clock_advanced", null, {
+    clockId: clock.id, name: clock.name, turnsRemaining: clock.turnsRemaining, tickedBy: ticks,
+  });
+
+  const hitZero = clock.turnsRemaining === 0;
+
+  return {
+    success: true,
+    data: {
+      clockId: clock.id, name: clock.name,
+      turnsRemaining: clock.turnsRemaining,
+      hitZero,
+      consequence: hitZero ? clock.consequence : null,
+    },
+  };
+}
+
+export function handleResolveClock(userId: string, params: {
+  clockId: string;
+  outcome: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const clock = clocks.get(params.clockId);
+  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.` };
+
+  clock.isResolved = true;
+  clock.outcome = params.outcome;
+
+  logEvent(party, "clock_resolved", null, {
+    clockId: clock.id, name: clock.name, outcome: params.outcome,
+    turnsRemaining: clock.turnsRemaining,
+  });
+
+  return {
+    success: true,
+    data: { clockId: clock.id, name: clock.name, outcome: params.outcome },
+  };
+}
+
+export function handleListClocks(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  const partyClocks = [...clocks.values()]
+    .filter(c => c.partyId === party.id)
+    .map(c => ({
+      clockId: c.id, name: c.name, description: c.description,
+      turnsRemaining: c.turnsRemaining, turnsTotal: c.turnsTotal,
+      visibility: c.visibility, consequence: c.consequence,
+      isResolved: c.isResolved, outcome: c.outcome ?? null,
+    }));
+
+  return { success: true, data: { clocks: partyClocks } };
+}
+
+// =========================================================================
+// Sprint J: Time Passage (Task 7)
+// =========================================================================
+
+export function handleAdvanceTime(userId: string, params: {
+  amount: number;
+  unit: "minutes" | "hours" | "days" | "weeks";
+  narrative: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+  const party = findDMParty(userId);
+  if (!party) return { success: false, error: "Not a DM for any party." };
+
+  // 1:1 mapping — amount maps directly to abstract ticks
+  const turnEquivalent = params.amount;
+
+  // Tick all active clocks for this party
+  const tickedClocks: { name: string; turnsRemaining: number; hitZero: boolean }[] = [];
+  for (const clock of clocks.values()) {
+    if (clock.partyId !== party.id || clock.isResolved) continue;
+    clock.turnsRemaining = Math.max(0, clock.turnsRemaining - turnEquivalent);
+    tickedClocks.push({
+      name: clock.name,
+      turnsRemaining: clock.turnsRemaining,
+      hitZero: clock.turnsRemaining === 0,
+    });
+  }
+
+  // Tick info item freshness
+  for (const item of infoItems.values()) {
+    if (item.partyId !== party.id || item.freshnessTurns === null || item.isStale) continue;
+    item.turnsElapsed += turnEquivalent;
+    if (item.turnsElapsed >= item.freshnessTurns) {
+      item.isStale = true;
+    }
+  }
+
+  logEvent(party, "time_passage", null, {
+    amount: params.amount,
+    unit: params.unit,
+    narrative: params.narrative,
+    clocksUpdated: tickedClocks.length,
+    clocksAtZero: tickedClocks.filter(c => c.hitZero).map(c => c.name),
+  });
+
+  return {
+    success: true,
+    data: {
+      amount: params.amount,
+      unit: params.unit,
+      clocks: tickedClocks,
+      clocksAtZero: tickedClocks.filter(c => c.hitZero),
     },
   };
 }

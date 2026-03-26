@@ -15,6 +15,17 @@ export function freshTurnResources(): TurnResources {
   return { actionUsed: false, bonusUsed: false, reactionUsed: false };
 }
 
+export interface ConversationState {
+  id: string;
+  participants: { type: "player" | "npc"; id: string; name: string }[];
+  context: string;
+  geometry?: string;
+  startedAt: Date;
+  messageCount: number;
+  outcome?: string;
+  relationshipDelta?: Record<string, number>;
+}
+
 export interface SessionState {
   id: string;
   partyId: string;
@@ -25,6 +36,8 @@ export interface SessionState {
   isActive: boolean;
   startedAt: Date;
   endedAt: Date | null;
+  conversations: ConversationState[];
+  activeConversationId: string | null;
 }
 
 export interface InitiativeSlot {
@@ -50,6 +63,8 @@ export function createSession(params: SessionCreateParams): Omit<SessionState, "
     isActive: true,
     startedAt: new Date(),
     endedAt: null,
+    conversations: [],
+    activeConversationId: null,
   };
 }
 
@@ -165,6 +180,16 @@ export function enterRest(session: SessionState): SessionState {
 }
 
 /**
+ * Transition to conversation phase.
+ */
+export function enterConversation(session: SessionState): SessionState {
+  return {
+    ...session,
+    phase: "conversation",
+  };
+}
+
+/**
  * End the session.
  */
 export function endSession(session: SessionState): SessionState {
@@ -195,6 +220,8 @@ export function getTickDuration(phase: SessionPhase): number {
     case "roleplay":
       return 0; // no hard limit
     case "rest":
+      return 0; // no hard limit
+    case "conversation":
       return 0; // no hard limit
   }
 }

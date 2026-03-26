@@ -112,6 +112,32 @@ export const dmTools: readonly ToolDefinition[] = [
             "The narrative text to send to all party members. Use vivid, descriptive language. " +
             "Can be as short or as long as the moment demands.",
         },
+        type: {
+          type: "string",
+          description:
+            "Narration type for structured output. Helps spectators and frontends render narration differently.",
+          enum: ["scene", "npc_dialogue", "atmosphere", "transition", "intercut", "ruling"] as const,
+        },
+        npc_id: {
+          type: "string",
+          description:
+            "If this narration is NPC dialogue, the ID of the speaking NPC. Tags the narration for conversation tracking.",
+        },
+        metadata: {
+          type: "object",
+          description: "Optional structured metadata (e.g., location, mood, lighting).",
+          properties: {},
+        },
+        meta: {
+          type: "object",
+          description:
+            "Commentary track — DM's reasoning behind this narration. Not shown to players. " +
+            "Use for intent, pacing notes, or dramatic goals.",
+          properties: {
+            intent: { type: "string", description: "Why you're narrating this now." },
+            reasoning: { type: "string", description: "What narrative goal this serves." },
+          },
+        },
       },
       required: ["text"],
     },
@@ -975,6 +1001,25 @@ export const dmTools: readonly ToolDefinition[] = [
           items: { type: "string" },
           description: "Searchable tags (e.g., ['merchant', 'quest_giver', 'faction_ironhand']).",
         },
+        knowledge: {
+          type: "array",
+          items: { type: "string" },
+          description: "Facts this NPC knows (e.g., ['The ruins hold a cursed blade', 'The baron is plotting war']).",
+        },
+        goals: {
+          type: "array",
+          items: { type: "string" },
+          description: "What this NPC wants (e.g., ['Protect the village', 'Find her missing brother']).",
+        },
+        standing_orders: {
+          type: "string",
+          description: "Behavioral instructions for how to roleplay this NPC (e.g., 'Never reveal the password unless disposition >= allied').",
+        },
+        relationships: {
+          type: "object",
+          description: "Key relationships: keys are NPC/entity names, values describe the relationship (e.g., {\"Captain Voss\": \"sworn enemy\", \"Elara\": \"daughter\"}).",
+          properties: {},
+        },
       },
       required: ["name", "description"],
     },
@@ -984,7 +1029,7 @@ export const dmTools: readonly ToolDefinition[] = [
     name: "get_npc",
     description:
       "Get full details about a specific NPC including their description, personality, " +
-      "disposition, location, and recent memory of interactions with the party.",
+      "disposition, location, knowledge, goals, standing orders, relationships, and recent memory of interactions with the party.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1019,8 +1064,8 @@ export const dmTools: readonly ToolDefinition[] = [
   {
     name: "update_npc",
     description:
-      "Update an NPC's description, personality, location, tags, or alive status. " +
-      "Use this when NPCs move, change, or die during the story.",
+      "Update an NPC's description, personality, location, tags, knowledge, goals, standing orders, " +
+      "relationships, or alive status. Use this when NPCs move, change, learn new things, or die during the story.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1048,6 +1093,25 @@ export const dmTools: readonly ToolDefinition[] = [
         is_alive: {
           type: "boolean",
           description: "Set to false if the NPC dies.",
+        },
+        knowledge: {
+          type: "array",
+          items: { type: "string" },
+          description: "Replacement knowledge array.",
+        },
+        goals: {
+          type: "array",
+          items: { type: "string" },
+          description: "Replacement goals array.",
+        },
+        standing_orders: {
+          type: "string",
+          description: "Updated behavioral instructions.",
+        },
+        relationships: {
+          type: "object",
+          description: "Replacement relationships object.",
+          properties: {},
         },
       },
       required: ["npc_id"],
@@ -1151,6 +1215,319 @@ export const dmTools: readonly ToolDefinition[] = [
       },
     },
     handler: "handleListQuests",
+  },
+
+  // -- ENA: Conversation management -------------------------------------------
+
+  {
+    name: "skip_turn",
+    description:
+      "Force-skip the current combatant's turn. Use when a monster or player is stuck, " +
+      "incapacitated, or the DM decides to move combat along. Resets turn resources and " +
+      "advances to the next combatant in initiative order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: {
+          type: "string",
+          description: "Why this turn is being skipped (e.g., 'Monster is stunned', 'Player disconnected').",
+        },
+      },
+      required: [],
+    },
+    handler: "handleForceSkipTurn",
+  },
+  {
+    name: "start_conversation",
+    description:
+      "Begin a structured conversation between players and NPCs. Sets the session phase to " +
+      "'conversation' and tracks all messages exchanged. Use when players engage in meaningful " +
+      "dialogue with an NPC. All party_chat messages during the conversation are tagged and counted.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        participants: {
+          type: "array",
+          description: "Who is in the conversation. Each entry has a type (player/npc), id, and name.",
+          items: {
+            type: "object",
+            properties: {
+              type: { type: "string", enum: ["player", "npc"] as const, description: "Whether this is a player or NPC." },
+              id: { type: "string", description: "Character ID or NPC ID." },
+              name: { type: "string", description: "Display name." },
+            },
+            required: ["type", "id", "name"],
+          },
+          minItems: 2,
+        },
+        context: {
+          type: "string",
+          description: "What this conversation is about (e.g., 'Negotiating passage through the gate').",
+        },
+        geometry: {
+          type: "string",
+          description: "Physical arrangement (e.g., 'across a tavern table', 'through prison bars').",
+        },
+      },
+      required: ["participants", "context"],
+    },
+    handler: "handleStartConversation",
+  },
+  {
+    name: "end_conversation",
+    description:
+      "End the current structured conversation. Records outcome and any relationship changes. " +
+      "Transitions session phase back to exploration.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        conversation_id: {
+          type: "string",
+          description: "The conversation ID (from start_conversation).",
+        },
+        outcome: {
+          type: "string",
+          description: "How the conversation ended (e.g., 'Alliance formed', 'Negotiations broke down').",
+        },
+        relationship_delta: {
+          type: "object",
+          description: "NPC disposition changes from this conversation. Keys are NPC IDs, values are numeric changes.",
+          properties: {},
+        },
+      },
+      required: ["conversation_id", "outcome"],
+    },
+    handler: "handleEndConversation",
+  },
+
+  // -- ENA: Information items -------------------------------------------------
+
+  {
+    name: "create_info",
+    description:
+      "Create a piece of discoverable information in the world. Hidden by default — use " +
+      "reveal_info to let specific characters learn it. Information items have freshness " +
+      "that decays over time (via advance_time), making old intel less reliable.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: {
+          type: "string",
+          description: "Short title (e.g., 'Secret passage behind the waterfall').",
+        },
+        content: {
+          type: "string",
+          description: "The actual information content.",
+        },
+        source: {
+          type: "string",
+          description: "Where this info comes from (e.g., 'overheard in tavern', 'ancient tome', 'NPC confession').",
+        },
+        visibility: {
+          type: "string",
+          enum: ["hidden", "available", "discovered"] as const,
+          description: "Initial visibility. 'hidden' = not yet findable, 'available' = can be discovered, 'discovered' = already known. Default: hidden.",
+        },
+        freshness_turns: {
+          type: "integer",
+          description: "How many time-advance ticks before this info becomes stale. Default: 10.",
+          minimum: 1,
+        },
+      },
+      required: ["title", "content", "source"],
+    },
+    handler: "handleCreateInfoItem",
+  },
+  {
+    name: "reveal_info",
+    description:
+      "Reveal a piece of information to specific characters. Changes the info item's visibility " +
+      "to 'discovered' and logs who learned it and how.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        info_id: {
+          type: "string",
+          description: "The information item ID (from create_info or list_info).",
+        },
+        to_characters: {
+          type: "array",
+          items: { type: "string" },
+          description: "Character IDs who learn this information.",
+        },
+        method: {
+          type: "string",
+          description: "How they learned it (e.g., 'perception check', 'NPC told them', 'found a note').",
+        },
+      },
+      required: ["info_id", "to_characters", "method"],
+    },
+    handler: "handleRevealInfo",
+  },
+  {
+    name: "update_info",
+    description:
+      "Update an existing information item's content, visibility, or freshness.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        info_id: {
+          type: "string",
+          description: "The information item ID.",
+        },
+        content: {
+          type: "string",
+          description: "Updated content.",
+        },
+        visibility: {
+          type: "string",
+          enum: ["hidden", "available", "discovered"] as const,
+          description: "New visibility state.",
+        },
+        freshness_turns: {
+          type: "integer",
+          description: "Reset freshness to this many turns.",
+          minimum: 0,
+        },
+      },
+      required: ["info_id"],
+    },
+    handler: "handleUpdateInfoItem",
+  },
+  {
+    name: "list_info",
+    description:
+      "List all information items in the current session with their visibility, freshness, " +
+      "and who has discovered them. Use to track what the party knows and doesn't know.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleListInfoItems",
+  },
+
+  // -- ENA: Session clocks ----------------------------------------------------
+
+  {
+    name: "create_clock",
+    description:
+      "Create a ticking deadline. Clocks count down when advance_time is called and fire " +
+      "consequences when they hit zero. Use to create urgency — 'The Baron's army arrives " +
+      "in 20 turns.' Public clocks are visible to players via get_status; hidden clocks are DM-only.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Clock name shown to players if public (e.g., 'Ritual Countdown').",
+        },
+        description: {
+          type: "string",
+          description: "What happens when this clock runs out.",
+        },
+        turns_remaining: {
+          type: "integer",
+          description: "How many time-advance ticks until the clock fires.",
+          minimum: 1,
+        },
+        visibility: {
+          type: "string",
+          enum: ["public", "hidden"] as const,
+          description: "Whether players can see this clock. Default: public.",
+        },
+        consequence: {
+          type: "string",
+          description: "What happens when the clock hits zero (e.g., 'The portal closes permanently').",
+        },
+      },
+      required: ["name", "turns_remaining", "consequence"],
+    },
+    handler: "handleCreateClock",
+  },
+  {
+    name: "advance_clock",
+    description:
+      "Manually advance a specific clock by a number of turns. Use for targeted clock " +
+      "manipulation outside of the regular advance_time flow.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        clock_id: {
+          type: "string",
+          description: "The clock ID (from create_clock or list_clocks).",
+        },
+        turns: {
+          type: "integer",
+          description: "How many turns to advance. Default: 1.",
+          minimum: 1,
+        },
+      },
+      required: ["clock_id"],
+    },
+    handler: "handleAdvanceClock",
+  },
+  {
+    name: "resolve_clock",
+    description:
+      "Manually resolve a clock before it hits zero. Use when the party prevents or triggers " +
+      "the clock's consequence early (e.g., they disarm the bomb, or the ritual completes ahead of schedule).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        clock_id: {
+          type: "string",
+          description: "The clock ID.",
+        },
+        outcome: {
+          type: "string",
+          description: "What happened (e.g., 'Party disarmed the trap', 'Ritual completed early').",
+        },
+      },
+      required: ["clock_id", "outcome"],
+    },
+    handler: "handleResolveClock",
+  },
+  {
+    name: "list_clocks",
+    description:
+      "List all session clocks with their current turns remaining, visibility, and resolution status.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleListClocks",
+  },
+
+  // -- ENA: Time passage ------------------------------------------------------
+
+  {
+    name: "advance_time",
+    description:
+      "Advance time in the session. Ticks all active clocks, decays info item freshness, " +
+      "and logs a time passage event. Use between scenes, during long rests, or to create " +
+      "pacing. Any clocks that hit zero will fire their consequences.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        amount: {
+          type: "integer",
+          description: "How many units of time pass.",
+          minimum: 1,
+        },
+        unit: {
+          type: "string",
+          description: "Time unit (e.g., 'minutes', 'hours', 'days').",
+        },
+        narrative: {
+          type: "string",
+          description: "Brief description of what happens during this time passage (e.g., 'The party rests by the fire as night falls').",
+        },
+      },
+      required: ["amount", "unit", "narrative"],
+    },
+    handler: "handleAdvanceTime",
   },
 ] as const;
 

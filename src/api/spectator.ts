@@ -28,6 +28,7 @@ import {
   monsterTemplates as monsterTemplatesTable,
   customMonsterTemplates as customMonsterTemplatesTable,
   users as usersTable,
+  npcs as npcsTable,
 } from "../db/schema.ts";
 import { getModelIdentity } from "./auth.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
@@ -1123,6 +1124,51 @@ spectator.get("/sessions/:id", async (c) => {
       .where(eq(narrationsTable.sessionId, sessionId))
       .orderBy(asc(narrationsTable.createdAt));
 
+    // Extract conversations from events (Task 9)
+    const conversationStarts = events.filter(e => e.type === "conversation_start");
+    const conversationEnds = events.filter(e => e.type === "conversation_end");
+    const conversations = conversationStarts.map(start => {
+      const startData = start.data as Record<string, unknown>;
+      const convId = startData.conversationId as string;
+      const end = conversationEnds.find(e => (e.data as Record<string, unknown>).conversationId === convId);
+      const endData = end?.data as Record<string, unknown> | undefined;
+      return {
+        conversationId: convId,
+        participants: startData.participants,
+        context: startData.context,
+        geometry: startData.geometry ?? null,
+        messageCount: endData?.messageCount ?? 0,
+        outcome: endData?.outcome ?? null,
+        startedAt: start.createdAt.toISOString(),
+        endedAt: end?.createdAt?.toISOString() ?? null,
+      };
+    });
+
+    // Extract clocks from events (Task 10) — public clocks only
+    const clockCreates = events.filter(e => e.type === "clock_created");
+    const clockAdvances = events.filter(e => e.type === "clock_advanced");
+    const clockResolves = events.filter(e => e.type === "clock_resolved");
+    const sessionClocks = clockCreates
+      .filter(e => (e.data as Record<string, unknown>).visibility === "public")
+      .map(create => {
+        const d = create.data as Record<string, unknown>;
+        const clockId = d.clockId as string;
+        const advances = clockAdvances.filter(a => (a.data as Record<string, unknown>).clockId === clockId);
+        const lastAdvance = advances[advances.length - 1];
+        const currentTurns = lastAdvance
+          ? (lastAdvance.data as Record<string, unknown>).turnsRemaining as number
+          : d.turnsRemaining as number;
+        const resolution = clockResolves.find(r => (r.data as Record<string, unknown>).clockId === clockId);
+        return {
+          clockId,
+          name: d.name,
+          description: d.description ?? null,
+          turnsRemaining: currentTurns,
+          isResolved: !!resolution,
+          outcome: resolution ? (resolution.data as Record<string, unknown>).outcome : null,
+        };
+      });
+
     return c.json({
       id: session.id,
       partyId: session.partyId,
@@ -1160,6 +1206,8 @@ spectator.get("/sessions/:id", async (c) => {
         content: n.content,
         createdAt: n.createdAt.toISOString(),
       })),
+      conversations,
+      clocks: sessionClocks,
       eventCount: events.length,
     });
   } catch (err) {
@@ -1249,6 +1297,77 @@ spectator.get("/sessions/:id/session-zero", async (c) => {
   } catch (err) {
     console.error("[DB] Failed to fetch session-zero data:", err);
     return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
+  }
+});
+
+// GET /spectator/sessions/:id/npcs — NPC cards for a session (Task 11)
+spectator.get("/sessions/:id/npcs", async (c) => {
+  const sessionId = c.req.param("id");
+
+  try {
+    // Get the party for this session
+    const [session] = await db.select({ partyId: gameSessionsTable.partyId })
+      .from(gameSessionsTable)
+      .where(eq(gameSessionsTable.id, sessionId));
+
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    // Get the campaign for this party
+    const [party] = await db.select({ campaignId: partiesTable.campaignId })
+      .from(partiesTable)
+      .where(eq(partiesTable.id, session.partyId));
+
+    if (!party?.campaignId) return c.json({ sessionId, npcs: [] });
+
+    // Query NPCs directly from DB
+    const sessionNpcs = await db.select({
+      id: npcsTable.id,
+      name: npcsTable.name,
+      description: npcsTable.description,
+      disposition: npcsTable.disposition,
+      dispositionLabel: npcsTable.dispositionLabel,
+      location: npcsTable.location,
+      tags: npcsTable.tags,
+      knowledge: npcsTable.knowledge,
+      goals: npcsTable.goals,
+      isAlive: npcsTable.isAlive,
+    })
+      .from(npcsTable)
+      .where(eq(npcsTable.campaignId, party.campaignId));
+
+    // Count conversations per NPC from events
+    const convEvents = await db.select({ data: sessionEventsTable.data })
+      .from(sessionEventsTable)
+      .where(and(
+        eq(sessionEventsTable.sessionId, sessionId),
+        eq(sessionEventsTable.type, "conversation_start")
+      ));
+
+    const npcCards = sessionNpcs.map(npc => {
+      const conversationCount = convEvents.filter(e => {
+        const participants = (e.data as Record<string, unknown>).participants as { name: string }[];
+        return participants?.some(p => p.name === npc.name);
+      }).length;
+
+      return {
+        npcId: npc.id,
+        name: npc.name,
+        description: npc.description,
+        disposition: npc.disposition,
+        dispositionLabel: npc.dispositionLabel,
+        location: npc.location,
+        tags: npc.tags,
+        knowledge: npc.knowledge,
+        goals: npc.goals,
+        isAlive: npc.isAlive,
+        conversationCount,
+      };
+    });
+
+    return c.json({ sessionId, npcs: npcCards });
+  } catch (err) {
+    console.error("[DB] Failed to fetch session NPCs:", err);
+    return c.json({ error: "Failed to fetch NPCs" }, 500);
   }
 });
 

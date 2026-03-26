@@ -28,7 +28,7 @@ export type Condition =
   | "dead"
   | "stable";
 
-export type SessionPhase = "exploration" | "combat" | "roleplay" | "rest";
+export type SessionPhase = "exploration" | "combat" | "roleplay" | "rest" | "conversation";
 
 export type PartyStatus =
   | "forming"

@@ -46,6 +46,40 @@ export interface TemplateNPC {
   name: string;
   description: string;
   dialogue: string[];
+  // ENA extensions (all optional for backward compat)
+  disposition?: string;
+  knowledge?: string[];
+  goals?: string[];
+  standingOrders?: string;
+  relationships?: Record<string, string>;
+}
+
+export interface TemplateClock {
+  name: string;
+  description: string;
+  turnsRemaining: number;
+  visibility: "hidden" | "public";
+  consequence: string;
+}
+
+export interface TemplateInfoItem {
+  title: string;
+  content: string;
+  visibility: "hidden" | "available";
+  source: string;
+  freshnessTurns?: number;
+}
+
+export interface TemplateSecret {
+  fact: string;
+  surfaceCondition: string;
+  dramaticWeight: "low" | "medium" | "high";
+}
+
+export interface TemplateConstraint {
+  description: string;
+  blocks: string;
+  forces: string;
 }
 
 export interface DungeonTemplate {
@@ -60,6 +94,12 @@ export interface DungeonTemplate {
   lootTables: TemplateLootTable[];
   npcs: TemplateNPC[];
   entryRoomId: string;
+  // ENA extensions
+  clocks: TemplateClock[];
+  infoItems: TemplateInfoItem[];
+  secrets: TemplateSecret[];
+  designedConstraints: TemplateConstraint[];
+  narrativeHooks: string[];
 }
 
 // --- YAML shape ---
@@ -99,7 +139,17 @@ interface YAMLTemplate {
     name: string;
     description: string;
     dialogue: string[];
+    disposition?: string;
+    knowledge?: string[];
+    goals?: string[];
+    standing_orders?: string;
+    relationships?: Record<string, string>;
   }[];
+  clocks?: { name: string; description: string; turns_remaining: number; visibility?: string; consequence: string }[];
+  info_items?: { title: string; content: string; visibility?: string; source?: string; freshness_turns?: number }[];
+  secrets?: { fact: string; surface_condition: string; dramatic_weight?: string }[];
+  designed_constraints?: { description: string; blocks: string; forces: string }[];
+  narrative_hooks?: string[];
 }
 
 // --- In-memory store ---
@@ -170,6 +220,39 @@ function parseTemplate(raw: YAMLTemplate): DungeonTemplate {
     name: n.name,
     description: n.description.trim(),
     dialogue: n.dialogue,
+    disposition: n.disposition,
+    knowledge: n.knowledge,
+    goals: n.goals,
+    standingOrders: n.standing_orders,
+    relationships: n.relationships,
+  }));
+
+  const templateClocks: TemplateClock[] = (raw.clocks ?? []).map(c => ({
+    name: c.name,
+    description: c.description,
+    turnsRemaining: c.turns_remaining,
+    visibility: (c.visibility ?? "hidden") as "hidden" | "public",
+    consequence: c.consequence,
+  }));
+
+  const templateInfoItems: TemplateInfoItem[] = (raw.info_items ?? []).map(i => ({
+    title: i.title,
+    content: i.content,
+    visibility: (i.visibility ?? "hidden") as "hidden" | "available",
+    source: i.source ?? "environment",
+    freshnessTurns: i.freshness_turns,
+  }));
+
+  const secrets: TemplateSecret[] = (raw.secrets ?? []).map(s => ({
+    fact: s.fact,
+    surfaceCondition: s.surface_condition,
+    dramaticWeight: (s.dramatic_weight ?? "medium") as "low" | "medium" | "high",
+  }));
+
+  const designedConstraints: TemplateConstraint[] = (raw.designed_constraints ?? []).map(dc => ({
+    description: dc.description,
+    blocks: dc.blocks,
+    forces: dc.forces,
   }));
 
   // Entry room is the first room with type "entry", or just the first room
@@ -187,6 +270,11 @@ function parseTemplate(raw: YAMLTemplate): DungeonTemplate {
     lootTables,
     npcs,
     entryRoomId: entryRoom?.id ?? "",
+    clocks: templateClocks,
+    infoItems: templateInfoItems,
+    secrets,
+    designedConstraints,
+    narrativeHooks: raw.narrative_hooks ?? raw.story_hooks ?? [],
   };
 }
 
