@@ -1304,21 +1304,36 @@ spectator.get("/sessions/:id/session-zero", async (c) => {
 spectator.get("/sessions/:id/npcs", async (c) => {
   const sessionId = c.req.param("id");
 
+  // Validate UUID format — in-memory IDs (e.g. "session-1") would crash the DB query
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(sessionId)) {
+    return c.json({ sessionId, npcs: [] });
+  }
+
+  let session;
   try {
-    // Get the party for this session
-    const [session] = await db.select({ partyId: gameSessionsTable.partyId })
+    [session] = await db.select({ partyId: gameSessionsTable.partyId })
       .from(gameSessionsTable)
       .where(eq(gameSessionsTable.id, sessionId));
+  } catch (err) {
+    console.error("[Spectator NPCs] Session lookup failed:", err);
+    return c.json({ error: "Session lookup failed" }, 500);
+  }
+  if (!session) return c.json({ error: "Session not found" }, 404);
 
-    if (!session) return c.json({ error: "Session not found" }, 404);
-
-    // Get the campaign for this party
-    const [party] = await db.select({ campaignId: partiesTable.campaignId })
+  let party;
+  try {
+    [party] = await db.select({ campaignId: partiesTable.campaignId })
       .from(partiesTable)
       .where(eq(partiesTable.id, session.partyId));
+  } catch (err) {
+    console.error("[Spectator NPCs] Party lookup failed:", err);
+    return c.json({ error: "Party lookup failed" }, 500);
+  }
 
-    if (!party?.campaignId) return c.json({ sessionId, npcs: [] });
+  if (!party?.campaignId) return c.json({ sessionId, npcs: [] });
 
+  try {
     // Query NPCs directly from DB
     const sessionNpcs = await db.select({
       id: npcsTable.id,
@@ -1366,7 +1381,7 @@ spectator.get("/sessions/:id/npcs", async (c) => {
 
     return c.json({ sessionId, npcs: npcCards });
   } catch (err) {
-    console.error("[DB] Failed to fetch session NPCs:", err);
+    console.error("[Spectator NPCs] NPC query failed:", err);
     return c.json({ error: "Failed to fetch NPCs" }, 500);
   }
 });
@@ -1533,9 +1548,15 @@ export function formatActivityEvent(
     case "narration": {
       const text = data.text as string | undefined;
       if (!text) return null;
-      return text.length > 100
-        ? `\u{1F4DC} ${text.substring(0, 97)}...`
-        : `\u{1F4DC} ${text}`;
+      const narType = data.narrateType as string | undefined;
+      const icon = narType === "intercut" ? "\u{1F3AC}"
+        : narType === "npc_dialogue" ? "\u{1F4AC}"
+        : narType === "atmosphere" ? "\u{1F32B}\uFE0F"
+        : narType === "transition" ? "\u{1F6AA}"
+        : narType === "ruling" ? "\u2696\uFE0F"
+        : "\u{1F4DC}";
+      const truncated = text.length > 100 ? `${text.substring(0, 97)}...` : text;
+      return `${icon} ${truncated}`;
     }
     default:
       return null;

@@ -470,6 +470,22 @@ function advanceTurnSkipDead(party: GameParty): void {
   notifyTurnChange(party);
 }
 
+// --- Auto-advance: skip to next turn when action AND bonus are both used ---
+
+function checkAutoAdvanceTurn(party: GameParty, characterId: string): void {
+  if (!party.session || party.session.phase !== "combat") return;
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.entityId !== characterId) return;
+
+  const resources = getTurnResources(party, characterId);
+  // Auto-advance if action AND bonus action are both used (movement is free, don't gate on it)
+  if (resources.actionUsed && resources.bonusUsed) {
+    logEvent(party, "turn_auto_advanced", characterId, { reason: "all_resources_used" });
+    // advanceTurnSkipDead calls nextTurn internally, resets resources, and notifies
+    advanceTurnSkipDead(party);
+  }
+}
+
 // --- Unconscious / Incapacitated Guard ---
 
 const UNCONSCIOUS_ERROR = "You are unconscious and cannot take that action.";
@@ -1206,6 +1222,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       }
     }
 
+    checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
       data: {
@@ -1222,6 +1239,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     hit: false, fumble: result.fumble,
   });
 
+  checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
     data: {
@@ -1697,6 +1715,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
       hpPool: result.totalEffect, affectedMonsters,
     });
 
+    checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
       data: {
@@ -1876,6 +1895,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     responseData.killed = targetKilled;
   }
 
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
     data: responseData,
@@ -1894,6 +1914,7 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
 }
 
@@ -1909,6 +1930,7 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
 }
 
@@ -1924,6 +1946,7 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
 }
 
@@ -1939,6 +1962,7 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
 }
 
@@ -1960,6 +1984,7 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
     dc: 10,
     proficiencyBonus: char.proficiencies.includes("Stealth") ? proficiencyBonus(char.level) : 0,
   });
+  if (party) checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
     data: { action: "hide", roll: result.roll.total, hidden: result.success },
@@ -2466,6 +2491,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
         bonusData.damageHalved = bonusSaved && spell.level > 0;
       }
 
+      checkAutoAdvanceTurn(party, char.id);
       return { success: true, data: bonusData };
     }
 
@@ -2476,6 +2502,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: params.action, cunningAction: true });
+      checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
         data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.` },
@@ -2494,6 +2521,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       });
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "hide", cunningAction: true, roll: hideResult.roll.total, hidden: hideResult.success });
+      checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
         data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10 },
@@ -2514,6 +2542,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total });
+      checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
         data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax },
@@ -4942,6 +4971,10 @@ export function handleUpdateNpcDisposition(userId: string, params: {
   const npc = npcsMap.get(params.npc_id);
   if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.` };
 
+  if (typeof params.change !== "number" || !isFinite(params.change)) {
+    return { success: false, error: "Parameter 'change' must be a finite number (e.g., +10 or -5). It represents the delta, not the target value." };
+  }
+
   const oldDisp = npc.disposition;
   npc.disposition = Math.max(-100, Math.min(100, npc.disposition + params.change));
   npc.dispositionLabel = dispositionLabel(npc.disposition);
@@ -5225,10 +5258,10 @@ export function handleListInfoItems(userId: string): { success: boolean; data?: 
 
 export function handleCreateClock(userId: string, params: {
   name: string;
-  description: string;
+  description?: string;
   turnsRemaining: number;
   visibility?: "hidden" | "public";
-  consequence: string;
+  consequence?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -5238,11 +5271,11 @@ export function handleCreateClock(userId: string, params: {
     id: clockId,
     partyId: party.id,
     name: params.name.trim(),
-    description: params.description.trim(),
+    description: (params.description ?? "").trim(),
     turnsRemaining: params.turnsRemaining,
     turnsTotal: params.turnsRemaining,
-    visibility: params.visibility ?? "hidden",
-    consequence: params.consequence,
+    visibility: params.visibility ?? "public",
+    consequence: (params.consequence ?? "").trim(),
     isResolved: false,
     createdAt: new Date(),
   };

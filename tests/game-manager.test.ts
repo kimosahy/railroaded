@@ -13,6 +13,10 @@ import {
   handleNarrate,
   handleTriggerEncounter,
   handleDeleteCharacter,
+  handleCreateCampaign,
+  handleCreateNpc,
+  handleUpdateNpcDisposition,
+  handleBonusAction,
   getState,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
@@ -645,5 +649,67 @@ describe("handleEndSession", () => {
 
     handleEndSession(dmUserId, { summary: "Done" });
     expect(char.xp).toBe(xpBefore + 100); // persists
+  });
+});
+
+// (h) handleUpdateNpcDisposition — change validation
+
+describe("handleUpdateNpcDisposition", () => {
+  test("rejects non-numeric change param", async () => {
+    const { dmUserId } = await createTestParty();
+    handleCreateCampaign(dmUserId, { name: "TestCampaign" });
+    const npcResult = handleCreateNpc(dmUserId, {
+      name: "Bartender",
+      description: "A gruff barkeep",
+    });
+    expect(npcResult.success).toBe(true);
+    const npcId = npcResult.data!.npc_id as string;
+
+    const result = handleUpdateNpcDisposition(dmUserId, {
+      npc_id: npcId,
+      change: undefined as unknown as number,
+      reason: "testing",
+    });
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("finite number");
+  });
+});
+
+// (i) Auto-advance turn when all combat resources used
+
+describe("Auto-advance turn on resources exhausted", () => {
+  test("action only → turn does NOT advance; action + bonus → turn auto-advances", async () => {
+    const { partyId, playerUserIds, dmUserId } = await createTestParty();
+    handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
+    const { parties } = getState();
+    const party = parties.get(partyId)!;
+
+    // Find a player character in the initiative order
+    const char = getCharacterForUser(playerUserIds[0]!)!;
+    const playerIdx = party.session!.initiativeOrder.findIndex((s) => s.entityId === char.id);
+    party.session!.currentTurn = playerIdx;
+
+    // Give the character Cunning Action (rogue feature) for bonus action access
+    char.class = "rogue";
+    char.features.push("Cunning Action");
+
+    const monsterId = party.monsters[0]!.id;
+    // Set monster AC low so attack hits easily
+    party.monsters[0]!.ac = 1;
+    party.monsters[0]!.hpCurrent = 999; // don't let it die
+
+    // Attack (uses action) — turn should NOT advance yet
+    const attackResult = handleAttack(playerUserIds[0]!, { target_id: monsterId });
+    expect(attackResult.success).toBe(true);
+    // Check if still this character's turn (action used, bonus not used)
+    const currentAfterAttack = party.session!.initiativeOrder[party.session!.currentTurn]!;
+    expect(currentAfterAttack.entityId).toBe(char.id);
+
+    // Use bonus action (Cunning Action: dash for rogue) — now both used, turn should auto-advance
+    const bonusResult = handleBonusAction(playerUserIds[0]!, { action: "dash" });
+    expect(bonusResult.success).toBe(true);
+    // Turn should have auto-advanced — current combatant should be different
+    const currentAfterBonus = party.session!.initiativeOrder[party.session!.currentTurn]!;
+    expect(currentAfterBonus.entityId).not.toBe(char.id);
   });
 });
