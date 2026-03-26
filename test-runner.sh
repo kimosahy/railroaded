@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run bun test with a hard 30s timeout. Tests complete in <5s; the hang is DB pool cleanup.
-/Users/karim/.bun/bin/bun test "$@" &
+/opt/homebrew/bin/bun test "$@" &
 PID=$!
 ( sleep 30 && kill $PID 2>/dev/null ) &
 TIMER=$!

@@ -352,7 +352,14 @@ async function executeToolCall(
 
     // --- DM tools ---
     case "narrate":
-      return gm.handleNarrate(userId, { text: args.text as string });
+      return gm.handleNarrate(userId, {
+        text: args.text as string,
+        style: args.style as string | undefined,
+        type: args.type as "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling" | undefined,
+        npcId: args.npc_id as string | undefined,
+        metadata: args.metadata as Record<string, unknown> | undefined,
+        meta: args.meta as { intent?: string; reasoning?: string; references?: string[] } | undefined,
+      });
     case "narrate_to":
       return gm.handleNarrateTo(userId, { player_id: args.player_id as string, text: args.text as string });
     case "spawn_encounter":
@@ -450,6 +457,10 @@ async function executeToolCall(
         location: args.location as string | undefined,
         disposition: args.disposition as number | undefined,
         tags: args.tags as string[] | undefined,
+        knowledge: args.knowledge as string[] | undefined,
+        goals: args.goals as string[] | undefined,
+        relationships: args.relationships as Record<string, string> | undefined,
+        standingOrders: args.standing_orders as string | undefined,
       });
     case "get_npc":
       return gm.handleGetNpc(userId, { npc_id: args.npc_id as string });
@@ -493,6 +504,79 @@ async function executeToolCall(
       return gm.handleDMQueueForParty(userId);
     case "unlock_exit":
       return gm.handleUnlockExit(userId, { target_room_id: args.target_room_id as string });
+
+    // --- Sprint J: Conversations ---
+    case "start_conversation":
+      return gm.handleStartConversation(userId, {
+        participants: args.participants as { name: string; type: "player" | "npc"; id: string }[],
+        context: args.context as string,
+        geometry: args.geometry as string | undefined,
+      });
+    case "end_conversation":
+      return gm.handleEndConversation(userId, {
+        conversationId: args.conversation_id as string,
+        outcome: args.outcome as string,
+        relationshipDelta: args.relationship_delta as Record<string, number> | undefined,
+      });
+
+    // --- Sprint J: Information items ---
+    case "create_info":
+      return gm.handleCreateInfoItem(userId, {
+        title: args.title as string,
+        content: args.content as string,
+        source: args.source as string,
+        visibility: args.visibility as "hidden" | "available" | "discovered" | undefined,
+        freshnessTurns: args.freshness_turns as number | undefined,
+      });
+    case "reveal_info":
+      return gm.handleRevealInfo(userId, {
+        infoId: args.info_id as string,
+        toCharacters: args.to_characters as string[],
+        method: args.method as "told" | "found" | "overheard" | "deduced",
+      });
+    case "update_info":
+      return gm.handleUpdateInfoItem(userId, {
+        infoId: args.info_id as string,
+        content: args.content as string | undefined,
+        visibility: args.visibility as "hidden" | "available" | "discovered" | undefined,
+        freshnessTurns: args.freshness_turns as number | undefined,
+      });
+    case "list_info":
+      return gm.handleListInfoItems(userId);
+
+    // --- Sprint J: Clocks ---
+    case "create_clock":
+      return gm.handleCreateClock(userId, {
+        name: args.name as string,
+        description: (args.description as string) ?? "",
+        turnsRemaining: args.turns_remaining as number,
+        visibility: args.visibility as "hidden" | "public" | undefined,
+        consequence: (args.consequence as string) ?? "",
+      });
+    case "advance_clock":
+      return gm.handleAdvanceClock(userId, {
+        clockId: args.clock_id as string,
+        turns: args.turns as number | undefined,
+      });
+    case "resolve_clock":
+      return gm.handleResolveClock(userId, {
+        clockId: args.clock_id as string,
+        outcome: args.outcome as string,
+      });
+    case "list_clocks":
+      return gm.handleListClocks(userId);
+
+    // --- Sprint J: Time & Turn ---
+    case "advance_time":
+      return gm.handleAdvanceTime(userId, {
+        amount: args.amount as number,
+        unit: args.unit as "minutes" | "hours" | "days" | "weeks",
+        narrative: args.narrative as string,
+      });
+    case "skip_turn":
+      return gm.handleForceSkipTurn(userId, {
+        reason: args.reason as string | undefined,
+      });
 
     default:
       return { success: false, error: `Tool '${toolName}' has no handler implementation.` };
