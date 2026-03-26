@@ -587,6 +587,8 @@ export function handleCreateInfoItem(userId: string, params: {
 }
 ```
 
+**MCP tool description note:** The `freshnessTurns` field uses abstract ticks, NOT real time units. `advance_time` maps `amount` 1:1 to ticks regardless of unit — so "3 days" and "3 minutes" both tick freshness by 3. Tell the DM explicitly: "freshnessTurns are abstract ticks. Each call to advance_time ticks by amount regardless of unit. For precise decay control, coordinate freshnessTurns with your expected advance_time calls."
+
 **`handleRevealInfo`:**
 ```typescript
 export function handleRevealInfo(userId: string, params: {
@@ -897,7 +899,18 @@ Include them in the returned `DungeonTemplate` object. Default all to `[]` for b
 
 ### 5c. Auto-create blueprint entities on session start
 
-In `game-manager.ts`, find where sessions are initialized from a template (search for `loadTemplatesFromDisk` usage or where template rooms/monsters are set up at session start). After the existing room/encounter setup:
+In `game-manager.ts`, the `formParty` function at **line 5091** handles session creation from templates. The key block is at **~line 5134-5140**:
+
+```typescript
+const template = getRandomTemplate();
+party.templateEncounters = template ? encountersFromTemplate(template) : new Map();
+party.templateLootTables = template ? lootTablesFromTemplate(template) : new Map();
+party.dungeonState = template
+  ? dungeonStateFromTemplate(template)
+  : createDungeonState(fallbackRooms(), fallbackConnections(), "room-1");
+```
+
+**After this block**, add blueprint entity creation:
 
 1. For each template NPC → call `handleCreateNpc` internally (or directly create `GameNPC` objects and insert into `npcsMap`)
 2. For each template clock → create via the clock system (Task 6)
@@ -1105,8 +1118,9 @@ export function handleAdvanceTime(userId: string, params: {
   if (!party) return { success: false, error: "Not a DM for any party." };
 
   // Convert to abstract "turns" for clock ticking
-  // Simple heuristic: each clock tick = 1 turn regardless of time unit
-  // The DM can use advance-clock for precise control
+  // DESIGN NOTE: 1:1 mapping — "advance 3 days" = tick 3 turns, same as "advance 3 minutes" = tick 3 turns.
+  // This is intentional. Clock granularity is set at clock creation time. For precise control, DM uses advance_clock directly.
+  // The MCP tool description MUST state this clearly so the DM agent doesn't assume time-unit-aware decay.
   const turnEquivalent = params.amount;
 
   // Tick all active clocks for this party
@@ -1202,15 +1216,12 @@ function extractMeta(body: Record<string, unknown>): { intent?: string; reasonin
 
 Then in key action endpoints (attack, cast, move, chat, narrate, end-turn, etc.), pass `body.meta` through to the game-manager handler, which forwards it to `logEvent`.
 
-**The simplest approach:** Rather than modifying every handler signature, add meta as an optional field on the `logEvent` calls in the handlers that accept `body.meta`. Focus on these high-value endpoints:
-- `handleAttack` → player combat decisions
-- `handleCast` → spell choices
-- `handleMove` → movement decisions
-- `handlePartyChat` → dialogue intent
-- `handleNarrate` → DM narrative intent
-- `handleVoiceNpc` → NPC characterization
-- `handleStartConversation` / `handleEndConversation` → conversation framing
-- `handleEndTurn` → turn economy decisions
+**The simplest approach (v1 — 3 endpoints only):** Rather than modifying every handler, scope v1 to the 3 highest-signal commentary moments:
+- `handleNarrate` → DM narrative intent (why this scene, why this tone)
+- `handleAttack` → player combat decisions (why this target, what's the strategy)
+- `handlePartyChat` → dialogue intent (what are they trying to accomplish in this conversation)
+
+Add meta extraction to these 3 handlers only. Each handler accepts optional `meta` in its params and passes it to `logEvent`. Mark as expandable to other endpoints in future sprints.
 
 ### 8b. Add spectator commentary endpoint
 
@@ -1342,7 +1353,9 @@ Add `clocks: sessionClocks` to the response. Only public clocks shown — hidden
 
 **Files:** `src/api/spectator.ts`
 
-### 11a. Add NPC endpoint to spectator
+### 11a. Add NPC endpoint to spectator — query DB directly
+
+NPCs are already persisted to the `npcs` table (Task 2 extends it with ENA fields). Query the DB directly rather than reconstructing from events — it's simpler, more reliable, and survives event log truncation.
 
 Add a new route:
 
@@ -1350,44 +1363,62 @@ Add a new route:
 spectator.get("/sessions/:id/npcs", async (c) => {
   const sessionId = c.req.param("id");
 
-  const events = await db.select({
-    type: sessionEventsTable.type,
-    data: sessionEventsTable.data,
+  // Get the party for this session
+  const [session] = await db.select({ partyId: gameSessionsTable.partyId })
+    .from(gameSessionsTable)
+    .where(eq(gameSessionsTable.id, sessionId));
+
+  if (!session) return c.json({ error: "Session not found" }, 404);
+
+  // Get the campaign for this party
+  const [party] = await db.select({ campaignId: partiesTable.campaignId })
+    .from(partiesTable)
+    .where(eq(partiesTable.id, session.partyId));
+
+  if (!party?.campaignId) return c.json({ sessionId, npcs: [] });
+
+  // Query NPCs directly from DB
+  const sessionNpcs = await db.select({
+    id: npcsTable.id,
+    name: npcsTable.name,
+    description: npcsTable.description,
+    disposition: npcsTable.disposition,
+    dispositionLabel: npcsTable.dispositionLabel,
+    location: npcsTable.location,
+    tags: npcsTable.tags,
+    knowledge: npcsTable.knowledge,
+    goals: npcsTable.goals,
+    isAlive: npcsTable.isAlive,
   })
+    .from(npcsTable)
+    .where(eq(npcsTable.campaignId, party.campaignId));
+
+  // Count conversations per NPC from events (lightweight supplemental query)
+  const convEvents = await db.select({ data: sessionEventsTable.data })
     .from(sessionEventsTable)
-    .where(
-      and(
-        eq(sessionEventsTable.sessionId, sessionId),
-        inArray(sessionEventsTable.type, ["npc_created", "conversation_start", "conversation_end", "info_revealed"])
-      )
-    );
+    .where(and(
+      eq(sessionEventsTable.sessionId, sessionId),
+      eq(sessionEventsTable.type, "conversation_start")
+    ));
 
-  // Build NPC cards from events
-  const npcCreates = events.filter(e => e.type === "npc_created");
-  const convStarts = events.filter(e => e.type === "conversation_start");
-
-  const npcCards = npcCreates.map(e => {
-    const d = e.data as Record<string, unknown>;
-    const npcId = d.npcId as string;
-    const npcName = d.name as string;
-
-    // Count conversations this NPC participated in
-    const conversationCount = convStarts.filter(cs => {
-      const participants = (cs.data as Record<string, unknown>).participants as { name: string }[];
-      return participants?.some(p => p.name === npcName);
+  const npcCards = sessionNpcs.map(npc => {
+    const conversationCount = convEvents.filter(e => {
+      const participants = (e.data as Record<string, unknown>).participants as { name: string }[];
+      return participants?.some(p => p.name === npc.name);
     }).length;
 
-    // Get revealed knowledge (only what spectators should see)
-    const revealedInfo = events
-      .filter(e => e.type === "info_revealed" && (e.data as Record<string, unknown>).source === npcId)
-      .map(e => (e.data as Record<string, unknown>).title as string);
-
     return {
-      npcId,
-      name: npcName,
-      disposition: d.disposition ?? 0,
+      npcId: npc.id,
+      name: npc.name,
+      description: npc.description,
+      disposition: npc.disposition,
+      dispositionLabel: npc.dispositionLabel,
+      location: npc.location,
+      tags: npc.tags,
+      knowledge: npc.knowledge,  // only public-facing knowledge
+      goals: npc.goals,
+      isAlive: npc.isAlive,
       conversationCount,
-      revealedKnowledge: revealedInfo,
     };
   });
 
