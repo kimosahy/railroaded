@@ -3159,7 +3159,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   const players = party.members
     .map((mid) => characters.get(mid))
     .filter(Boolean)
-    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex }));
+    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex ?? (c!.abilityScores as any).dexterity ?? 10 }));
 
   const initiative = rollEncounterInitiative(players, monsters);
   const slots: InitiativeSlot[] = initiative.map((e) => ({
