@@ -5057,9 +5057,18 @@ export function handleStartConversation(userId: string, params: {
     messageCount: 0,
   };
 
-  party.session.conversations.push(conversation);
-  party.session.activeConversationId = convId;
-  party.session.phase = "conversation";
+  try {
+    party.session.conversations.push(conversation);
+    party.session.activeConversationId = convId;
+    party.session.phase = "conversation";
+  } catch (err) {
+    // Rollback: remove conversation if push succeeded but later line failed
+    const idx = party.session.conversations.findIndex(c => c.id === convId);
+    if (idx !== -1) party.session.conversations.splice(idx, 1);
+    party.session.activeConversationId = null;
+    party.session.phase = "exploration";
+    return { success: false, error: `Failed to start conversation: ${(err as Error).message}` };
+  }
 
   logEvent(party, "conversation_start", null, {
     conversationId: convId,
@@ -5088,7 +5097,15 @@ export function handleEndConversation(userId: string, params: {
   if (!party.session) return { success: false, error: "No active session." };
 
   const conv = party.session.conversations.find(c => c.id === params.conversationId);
-  if (!conv) return { success: false, error: `Conversation ${params.conversationId} not found.` };
+  if (!conv) {
+    // Orphan recovery: if phase is stuck on "conversation" but no matching conversation exists, reset
+    if (party.session.phase === "conversation") {
+      party.session.phase = "exploration";
+      party.session.activeConversationId = null;
+      return { success: true, data: { recovered: true, message: "Orphaned conversation phase reset to exploration." } };
+    }
+    return { success: false, error: `Conversation ${params.conversationId} not found.` };
+  }
 
   conv.outcome = params.outcome;
   conv.relationshipDelta = params.relationshipDelta;
