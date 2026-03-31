@@ -4764,12 +4764,12 @@ export function handleCreateNpc(userId: string, params: {
   description: string;
   personality?: string;
   location?: string;
-  disposition?: number;
+  disposition?: number | string;
   tags?: string[];
   knowledge?: string[];
   goals?: string[];
   relationships?: Record<string, string>;
-  standingOrders?: string;
+  standingOrders?: string | string[];
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const ctx = findCampaignForDM(userId);
   if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first." };
@@ -4778,7 +4778,16 @@ export function handleCreateNpc(userId: string, params: {
     return { success: false, error: "NPC name is required." };
   }
 
-  const disp = Math.max(-100, Math.min(100, params.disposition ?? 0));
+  // Coerce string dispositions to numbers
+  let rawDisp: number | string = params.disposition ?? 0;
+  if (typeof rawDisp === "string") {
+    const dispMap: Record<string, number> = {
+      hostile: -100, unfriendly: -50, wary: -25,
+      neutral: 0, friendly: 50, allied: 75, devoted: 100,
+    };
+    rawDisp = dispMap[rawDisp.toLowerCase()] ?? 0;
+  }
+  const disp = Math.max(-100, Math.min(100, rawDisp as number));
   const npcId = nextId("npc");
   const npc: GameNPC = {
     id: npcId,
@@ -4796,7 +4805,7 @@ export function handleCreateNpc(userId: string, params: {
     knowledge: params.knowledge ?? [],
     goals: params.goals ?? [],
     relationships: params.relationships ?? {},
-    standingOrders: params.standingOrders?.trim() ?? null,
+    standingOrders: (Array.isArray(params.standingOrders) ? params.standingOrders.join("; ") : params.standingOrders)?.trim() ?? null,
   };
 
   npcsMap.set(npcId, npc);
@@ -4905,7 +4914,7 @@ export function handleUpdateNpc(userId: string, params: {
   knowledge?: string[];
   goals?: string[];
   relationships?: Record<string, string>;
-  standingOrders?: string;
+  standingOrders?: string | string[];
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -4921,7 +4930,10 @@ export function handleUpdateNpc(userId: string, params: {
   if (params.knowledge !== undefined) npc.knowledge = params.knowledge;
   if (params.goals !== undefined) npc.goals = params.goals;
   if (params.relationships !== undefined) npc.relationships = params.relationships;
-  if (params.standingOrders !== undefined) npc.standingOrders = params.standingOrders.trim() || null;
+  if (params.standingOrders !== undefined) {
+    const so = Array.isArray(params.standingOrders) ? params.standingOrders.join("; ") : params.standingOrders;
+    npc.standingOrders = so?.trim() || null;
+  }
 
   // Persist to DB
   if (npc.dbNpcId) {
