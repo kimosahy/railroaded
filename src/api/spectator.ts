@@ -1386,6 +1386,67 @@ spectator.get("/sessions/:id/npcs", async (c) => {
   }
 });
 
+// GET /spectator/sessions/:id/clocks — active clocks for a session
+spectator.get("/sessions/:id/clocks", (c) => {
+  const sessionId = c.req.param("id");
+  const state = gm.getState();
+
+  let targetParty: any = null;
+  for (const [, p] of state.parties) {
+    if (p.session?.id === sessionId) {
+      targetParty = p;
+      break;
+    }
+  }
+
+  if (!targetParty) {
+    return c.json({ sessionId, clocks: [], error: "Session not found or not active" });
+  }
+
+  const partyClocks = [...state.clocks.values()]
+    .filter((ck) => ck.partyId === targetParty!.id && ck.visibility === "public")
+    .map((ck) => ({
+      clockId: ck.id,
+      name: ck.name,
+      description: ck.description,
+      turnsRemaining: ck.turnsRemaining,
+      turnsTotal: ck.turnsTotal,
+      isResolved: ck.isResolved,
+      outcome: ck.outcome ?? null,
+    }));
+
+  return c.json({ sessionId, clocks: partyClocks });
+});
+
+// GET /spectator/sessions/:id/conversations — conversation history for a session
+spectator.get("/sessions/:id/conversations", (c) => {
+  const sessionId = c.req.param("id");
+  const state = gm.getState();
+
+  let targetSession: any = null;
+  for (const [, p] of state.parties) {
+    if (p.session?.id === sessionId) {
+      targetSession = p.session;
+      break;
+    }
+  }
+
+  if (!targetSession) {
+    return c.json({ sessionId, conversations: [], error: "Session not found or not active" });
+  }
+
+  const convos = (targetSession.conversations ?? []).map((conv: any) => ({
+    conversationId: conv.id,
+    participants: conv.participants?.map((p: any) => ({ type: p.type, name: p.name })) ?? [],
+    context: conv.context,
+    status: conv.outcome ? "ended" : "active",
+    startedAt: conv.startedAt,
+    outcome: conv.outcome ?? null,
+  }));
+
+  return c.json({ sessionId, conversations: convos });
+});
+
 // GET /spectator/sessions/:id/events — all events for a session
 spectator.get("/sessions/:id/events", async (c) => {
   const sessionId = c.req.param("id");

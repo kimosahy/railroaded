@@ -6627,5 +6627,5 @@ export async function loadNpcs(): Promise<number> {
 // --- State access for testing ---
 
 export function getState() {
-  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap };
+  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap, clocks, infoItems, npcs: npcsMap };
 }
