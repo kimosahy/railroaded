@@ -4742,12 +4742,12 @@ function persistCampaignState(campaign: GameCampaign): void {
 // --- NPC Management ---
 
 function dispositionLabel(value: number): string {
-  if (value <= -50) return "hostile";
-  if (value <= -25) return "unfriendly";
+  if (value <= -75) return "hostile";
+  if (value <= -37) return "unfriendly";
   if (value < 0) return "wary";
-  if (value === 0) return "neutral";
-  if (value <= 25) return "friendly";
-  if (value <= 50) return "allied";
+  if (value < 25) return "neutral";
+  if (value <= 62) return "friendly";
+  if (value <= 87) return "allied";
   return "devoted";
 }
 
@@ -5205,6 +5205,10 @@ export function handleRevealInfo(userId: string, params: {
   const item = infoItems.get(params.infoId);
   if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
 
+  if (!params.toCharacters || !Array.isArray(params.toCharacters) || params.toCharacters.length === 0) {
+    return { success: false, error: "to_characters must be a non-empty array of character IDs." };
+  }
+
   item.visibility = "discovered";
   item.discoveryMethod = params.method;
   for (const charId of params.toCharacters) {
@@ -5294,6 +5298,10 @@ export function handleCreateClock(userId: string, params: {
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!params.turnsRemaining || typeof params.turnsRemaining !== "number" || params.turnsRemaining < 1) {
+    return { success: false, error: "turns_remaining is required and must be a positive integer." };
+  }
 
   const clockId = nextId("clock");
   const clock: SessionClock = {
