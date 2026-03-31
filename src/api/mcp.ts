@@ -477,6 +477,10 @@ async function executeToolCall(
         location: args.location as string | undefined,
         tags: args.tags as string[] | undefined,
         is_alive: args.is_alive as boolean | undefined,
+        knowledge: args.knowledge as string[] | undefined,
+        goals: args.goals as string[] | undefined,
+        relationships: args.relationships as Record<string, string> | undefined,
+        standingOrders: args.standing_orders as string | undefined,
       });
     case "update_npc_disposition":
       return gm.handleUpdateNpcDisposition(userId, {
