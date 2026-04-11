@@ -147,37 +147,55 @@ export function getAllowedActions(
  * Get allowed DM actions for a phase.
  */
 export function getAllowedDMActions(phase: SessionPhase): string[] {
+  // Always available regardless of phase
   const always = [
     "narrate", "narrate_to", "get_party_state", "get_room_state",
     "voice_npc", "advance_scene",
+    // Read-only / management tools available in all phases
+    "list_items", "list_monster_templates", "get_campaign", "list_npcs",
+    "list_quests", "list_info", "list_clocks",
+    // Campaign & world tools usable anytime
+    "set_story_flag", "create_npc", "get_npc", "update_npc", "update_npc_disposition",
+    "add_quest", "update_quest",
+    // ENA: Information & clocks usable anytime
+    "create_info", "reveal_info", "update_info",
+    "create_clock", "advance_clock", "resolve_clock",
+    "advance_time",
   ];
 
   switch (phase) {
     case "exploration":
       return [
         ...always,
-        "spawn_encounter", "request_check", "request_save",
+        "spawn_encounter", "trigger_encounter", "request_check", "request_save",
         "request_group_check", "request_contested_check", "deal_environment_damage",
-        "award_xp", "award_loot", "end_session",
+        "award_xp", "award_loot", "award_gold", "loot_room",
+        "interact_with_feature", "override_room_description", "unlock_exit",
+        "start_conversation", "end_conversation",
+        "create_custom_monster", "end_session",
       ];
     case "combat":
       return [
         ...always,
-        "monster_attack", "request_check", "request_save",
+        "monster_attack", "skip_turn", "request_check", "request_save",
         "request_contested_check", "deal_environment_damage",
-        "award_xp", "award_loot",
+        "award_xp", "award_loot", "award_gold",
       ];
     case "roleplay":
       return [
         ...always,
         "request_check", "request_save", "request_group_check",
         "request_contested_check",
-        "spawn_encounter", "award_xp", "award_loot", "end_session",
+        "spawn_encounter", "trigger_encounter",
+        "award_xp", "award_loot", "award_gold",
+        "interact_with_feature", "override_room_description", "unlock_exit",
+        "start_conversation", "end_conversation",
+        "create_custom_monster", "end_session",
       ];
     case "rest":
       return [
         ...always,
-        "award_xp", "end_session",
+        "award_xp", "award_gold", "end_session",
       ];
   }
 }

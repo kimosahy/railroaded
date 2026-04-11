@@ -233,4 +233,49 @@ describe("getAllowedDMActions", () => {
     expect(actions).not.toContain("spawn_encounter");
     expect(actions).not.toContain("monster_attack");
   });
+
+  test("ENA tools (info, clocks, conversations) are discoverable", () => {
+    // Info & clocks available in all phases
+    for (const phase of ["exploration", "combat", "roleplay", "rest"] as const) {
+      const actions = getAllowedDMActions(phase);
+      expect(actions).toContain("create_info");
+      expect(actions).toContain("reveal_info");
+      expect(actions).toContain("list_info");
+      expect(actions).toContain("create_clock");
+      expect(actions).toContain("advance_clock");
+      expect(actions).toContain("list_clocks");
+      expect(actions).toContain("advance_time");
+    }
+    // Conversations available in exploration and roleplay
+    expect(getAllowedDMActions("exploration")).toContain("start_conversation");
+    expect(getAllowedDMActions("roleplay")).toContain("start_conversation");
+    expect(getAllowedDMActions("exploration")).toContain("end_conversation");
+    expect(getAllowedDMActions("roleplay")).toContain("end_conversation");
+  });
+
+  test("NPC/quest/campaign tools are discoverable in all phases", () => {
+    for (const phase of ["exploration", "combat", "roleplay", "rest"] as const) {
+      const actions = getAllowedDMActions(phase);
+      expect(actions).toContain("list_npcs");
+      expect(actions).toContain("create_npc");
+      expect(actions).toContain("list_quests");
+      expect(actions).toContain("get_campaign");
+      expect(actions).toContain("set_story_flag");
+    }
+  });
+
+  test("exploration includes feature interaction and loot tools", () => {
+    const actions = getAllowedDMActions("exploration");
+    expect(actions).toContain("interact_with_feature");
+    expect(actions).toContain("override_room_description");
+    expect(actions).toContain("unlock_exit");
+    expect(actions).toContain("loot_room");
+    expect(actions).toContain("award_gold");
+    expect(actions).toContain("trigger_encounter");
+  });
+
+  test("combat includes skip_turn", () => {
+    const actions = getAllowedDMActions("combat");
+    expect(actions).toContain("skip_turn");
+  });
 });
