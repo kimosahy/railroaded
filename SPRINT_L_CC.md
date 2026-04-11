@@ -24,7 +24,7 @@ export function rollD20(
   modifier: number = 0,
   randomFn?: (sides: number) => number
 ): DiceRollResult {
-  if (isNaN(modifier)) modifier = 0;
+  if (!Number.isFinite(modifier)) modifier = 0;
   return roll(`1d20${modifier >= 0 ? "+" : ""}${modifier}`, randomFn);
 }
 ```
@@ -32,7 +32,7 @@ export function rollD20(
 **B. `src/engine/dice.ts` line 216 — guard abilityModifier:**
 ```typescript
 export function abilityModifier(score: number): number {
-  if (score === undefined || score === null || isNaN(score)) return 0;
+  if (!Number.isFinite(score)) return 0;
   return Math.floor((score - 10) / 2);
 }
 ```
@@ -78,35 +78,29 @@ Apply the same pattern at lines 1234 and 1299 (the other "Session not found" ret
 Do NOT rewrite the spectator lookup logic. Just add logging so the next playtest gives us diagnostic data.
 
 ---
-## Task 3: Add Missing REST Routes for ENA Tools (B072 — P2)
+## Task 3: Audit ENA Tool Exposure — REST, DM Action Discovery, OpenAPI (B072 — P2)
 
-**Problem:** Some Sprint J MCP tools lack REST route equivalents. MCP is canonical (Karim directive), but REST parity helps testing and backwards compatibility.
+**Problem:** Sprint J added ENA tools to MCP, but it's unclear whether all of them are properly exposed through REST routes AND through the DM action discovery system (`dmActionRoutes` / `getAllowedDMActions`). This is an audit task — do NOT blindly add routes.
 
-**File:** `src/api/rest.ts`
+**IMPORTANT: Most ENA tools already have REST equivalents under resource-style URLs.** For example:
+- `update_info` → `PATCH /info/:infoId` (line ~470)
+- `add_quest` → `POST /quest` (line ~415)
+- `update_quest` → `PATCH /quest/:quest_id` (line ~420)
+- `get_campaign` → `GET /campaign` (line ~343)
+- `set_story_flag` → `POST /story-flag` (line ~345)
 
-**Check which of these MCP tools are missing REST routes and add them:**
+**Step 1 — Inventory MCP tools vs REST routes:**
+Cross-reference every tool in `src/tools/dm-tools.ts` against `src/api/rest.ts`. Build a table:
+| MCP Tool Name | REST Route | Exists? |
+For each tool, note the REST path if it exists, even if the naming convention differs (e.g., MCP `add_quest` = REST `POST /quest`).
 
-Missing tools to check (cross-reference `src/tools/dm-tools.ts` tool names against `src/api/rest.ts` route definitions):
-- `update_info` — should map to `dm.post("/update-info", ...)`
-- `add_quest` — should map to `dm.post("/add-quest", ...)`
-- `update_quest` — should map to `dm.post("/update-quest", ...)`
-- `get_campaign` — should map to `dm.get("/campaign", ...)`
-- `set_story_flag` — should map to `dm.post("/story-flag", ...)`
+**Step 2 — Check DM action discovery:**
+In `src/game/game-manager.ts`, check `dmActionRoutes` and `getAllowedDMActions`. Verify that all ENA tools appear in the action discovery response so the DM agent knows they exist. If any are missing from discovery, add them.
 
-**Pattern to follow** (copy from existing routes like `narrate` at line ~226):
-```typescript
-dm.post("/update-info", async (c) => {
-  const body = await c.req.json();
-  return respond(c, gm.handleToolCall(c.get("user").userId, "update_info", body));
-});
-```
+**Step 3 — Only add REST routes for genuinely missing tools:**
+If any MCP tool has NO REST equivalent at all (not even under a different URL pattern), add a route following the resource-style convention already in use (`POST /resource`, `PATCH /resource/:id`, `GET /resources`). Do NOT create duplicate alias routes for tools that already have REST equivalents.
 
-Each route should:
-1. Extract the body via `c.req.json()`
-2. Call `gm.handleToolCall(userId, toolName, body)`
-3. Return via `respond(c, ...)`
-
-Only add routes that are genuinely missing. Some may already be wired under different URL patterns — check before adding duplicates.
+**Output:** Add a comment block at the top of your commit message listing the audit results (which tools have REST parity, which were missing, which were added).
 
 ---
 
@@ -123,4 +117,4 @@ After all tasks:
 One commit per task:
 1. `Sprint L Task 1: Fix NaN initiative — defensive guards in dice.ts + game-manager.ts`
 2. `Sprint L Task 2: Add spectator session lookup logging`
-3. `Sprint L Task 3: Wire missing REST routes for ENA tools`
+3. `Sprint L Task 3: Audit ENA tool exposure — REST + DM action discovery`
