@@ -37,11 +37,12 @@ export function abilityModifier(score: number): number {
 }
 ```
 
-**C. `src/game/game-manager.ts` line 3162 — null-coalesce dexScore:**
+**C. `src/game/game-manager.ts` line 3162 — ALREADY PARTIALLY FIXED upstream:**
+Line now reads: `c!.abilityScores.dex ?? (c!.abilityScores as any).dexterity ?? 10`
+This handles the `.dex` vs `.dexterity` mismatch and defaults to 10. BUT it doesn't guard against `abilityScores` itself being undefined. Add optional chaining:
 ```typescript
-.map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores?.dex ?? 10 }));
+.map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores?.dex ?? (c!.abilityScores as any)?.dexterity ?? 10 }));
 ```
-The `?? 10` defaults to average human dexterity (modifier +0) if ability scores are missing.
 
 **Tests:** Add a test in the combat/encounters test file:
 - `rollInitiative` with `dexScore: undefined` should NOT throw — should use modifier 0
