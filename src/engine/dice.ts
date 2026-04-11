@@ -175,6 +175,7 @@ export function rollD20(
   modifier: number = 0,
   randomFn?: (sides: number) => number
 ): DiceRollResult {
+  if (!Number.isFinite(modifier)) modifier = 0;
   return roll(`1d20${modifier >= 0 ? "+" : ""}${modifier}`, randomFn);
 }
 
@@ -214,6 +215,7 @@ export function rollAbilityScores(
  * modifier = floor((score - 10) / 2)
  */
 export function abilityModifier(score: number): number {
+  if (!Number.isFinite(score)) return 0;
   return Math.floor((score - 10) / 2);
 }
 

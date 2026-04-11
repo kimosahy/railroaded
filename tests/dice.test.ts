@@ -248,4 +248,28 @@ describe("abilityModifier", () => {
     expect(abilityModifier(18)).toBe(4);
     expect(abilityModifier(20)).toBe(5);
   });
+
+  test("returns 0 for undefined/NaN/Infinity scores", () => {
+    expect(abilityModifier(undefined as any)).toBe(0);
+    expect(abilityModifier(NaN)).toBe(0);
+    expect(abilityModifier(Infinity)).toBe(0);
+    expect(abilityModifier(-Infinity)).toBe(0);
+  });
+});
+
+describe("rollD20 — NaN guard", () => {
+  test("NaN modifier treated as 0", () => {
+    const result = rollD20(NaN, makeRoller([15]));
+    expect(result.total).toBe(15);
+  });
+
+  test("undefined modifier treated as 0", () => {
+    const result = rollD20(undefined as any, makeRoller([12]));
+    expect(result.total).toBe(12);
+  });
+
+  test("Infinity modifier treated as 0", () => {
+    const result = rollD20(Infinity, makeRoller([10]));
+    expect(result.total).toBe(10);
+  });
 });

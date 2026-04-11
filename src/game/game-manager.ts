@@ -1023,25 +1023,68 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
 };
 
 const dmActionRoutes: Record<string, { method: string; path: string }> = {
+  // Core actions (always or multi-phase)
   narrate:                    { method: "POST", path: "/api/v1/dm/narrate" },
   narrate_to:                 { method: "POST", path: "/api/v1/dm/narrate-to" },
+  get_party_state:            { method: "GET",  path: "/api/v1/dm/party-state" },
+  get_room_state:             { method: "GET",  path: "/api/v1/dm/room-state" },
+  voice_npc:                  { method: "POST", path: "/api/v1/dm/voice-npc" },
+  advance_scene:              { method: "POST", path: "/api/v1/dm/advance-scene" },
+  end_session:                { method: "POST", path: "/api/v1/dm/end-session" },
+  // Encounter & combat
   spawn_encounter:            { method: "POST", path: "/api/v1/dm/spawn-encounter" },
   trigger_encounter:          { method: "POST", path: "/api/v1/dm/trigger-encounter" },
-  voice_npc:                  { method: "POST", path: "/api/v1/dm/voice-npc" },
+  monster_attack:             { method: "POST", path: "/api/v1/dm/monster-attack" },
+  skip_turn:                  { method: "POST", path: "/api/v1/dm/skip-turn" },
+  // Checks & saves
   request_check:              { method: "POST", path: "/api/v1/dm/request-check" },
   request_save:               { method: "POST", path: "/api/v1/dm/request-save" },
   request_group_check:        { method: "POST", path: "/api/v1/dm/request-group-check" },
   request_contested_check:    { method: "POST", path: "/api/v1/dm/request-contested-check" },
   deal_environment_damage:    { method: "POST", path: "/api/v1/dm/deal-environment-damage" },
-  advance_scene:              { method: "POST", path: "/api/v1/dm/advance-scene" },
-  unlock_exit:                { method: "POST", path: "/api/v1/dm/unlock-exit" },
-  get_party_state:            { method: "GET",  path: "/api/v1/dm/party-state" },
-  get_room_state:             { method: "GET",  path: "/api/v1/dm/room-state" },
-  monster_attack:             { method: "POST", path: "/api/v1/dm/monster-attack" },
+  // Awards & loot
   award_xp:                   { method: "POST", path: "/api/v1/dm/award-xp" },
   award_loot:                 { method: "POST", path: "/api/v1/dm/award-loot" },
   award_gold:                 { method: "POST", path: "/api/v1/dm/award-gold" },
-  end_session:                { method: "POST", path: "/api/v1/dm/end-session" },
+  loot_room:                  { method: "POST", path: "/api/v1/dm/loot-room" },
+  list_items:                 { method: "GET",  path: "/api/v1/dm/items" },
+  // Room & feature interaction
+  interact_with_feature:      { method: "POST", path: "/api/v1/dm/interact-feature" },
+  override_room_description:  { method: "POST", path: "/api/v1/dm/override-room-description" },
+  unlock_exit:                { method: "POST", path: "/api/v1/dm/unlock-exit" },
+  // Campaign & session management
+  create_campaign:            { method: "POST", path: "/api/v1/dm/campaign" },
+  get_campaign:               { method: "GET",  path: "/api/v1/dm/campaign" },
+  set_story_flag:             { method: "POST", path: "/api/v1/dm/story-flag" },
+  start_campaign_session:     { method: "POST", path: "/api/v1/dm/start-campaign-session" },
+  // Monster templates
+  create_custom_monster:      { method: "POST", path: "/api/v1/dm/create-custom-monster" },
+  list_monster_templates:     { method: "GET",  path: "/api/v1/dm/monster-templates" },
+  // NPCs
+  create_npc:                 { method: "POST", path: "/api/v1/dm/npc" },
+  get_npc:                    { method: "GET",  path: "/api/v1/dm/npc/:npc_id" },
+  list_npcs:                  { method: "GET",  path: "/api/v1/dm/npcs" },
+  update_npc:                 { method: "PATCH", path: "/api/v1/dm/npc/:npc_id" },
+  update_npc_disposition:     { method: "POST", path: "/api/v1/dm/npc/:npc_id/disposition" },
+  // Quests
+  add_quest:                  { method: "POST", path: "/api/v1/dm/quest" },
+  update_quest:               { method: "PATCH", path: "/api/v1/dm/quest/:quest_id" },
+  list_quests:                { method: "GET",  path: "/api/v1/dm/quests" },
+  // ENA: Conversations
+  start_conversation:         { method: "POST", path: "/api/v1/dm/start-conversation" },
+  end_conversation:           { method: "POST", path: "/api/v1/dm/end-conversation" },
+  // ENA: Information
+  create_info:                { method: "POST", path: "/api/v1/dm/info" },
+  reveal_info:                { method: "POST", path: "/api/v1/dm/reveal-info" },
+  update_info:                { method: "PATCH", path: "/api/v1/dm/info/:infoId" },
+  list_info:                  { method: "GET",  path: "/api/v1/dm/info" },
+  // ENA: Clocks
+  create_clock:               { method: "POST", path: "/api/v1/dm/clock" },
+  advance_clock:              { method: "POST", path: "/api/v1/dm/clock/:clockId/advance" },
+  resolve_clock:              { method: "POST", path: "/api/v1/dm/clock/:clockId/resolve" },
+  list_clocks:                { method: "GET",  path: "/api/v1/dm/clocks" },
+  // ENA: Time
+  advance_time:               { method: "POST", path: "/api/v1/dm/advance-time" },
 };
 
 function buildActionRoutes(actions: string[], routeMap: Record<string, { method: string; path: string }>): Record<string, { method: string; path: string }> {
@@ -3159,7 +3202,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   const players = party.members
     .map((mid) => characters.get(mid))
     .filter(Boolean)
-    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex ?? (c!.abilityScores as any).dexterity ?? 10 }));
+    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores?.dex ?? (c!.abilityScores as any)?.dexterity ?? 10 }));
 
   const initiative = rollEncounterInitiative(players, monsters);
   const slots: InitiativeSlot[] = initiative.map((e) => ({

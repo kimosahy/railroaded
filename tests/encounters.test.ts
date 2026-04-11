@@ -150,6 +150,18 @@ describe("rollEncounterInitiative", () => {
     }
   });
 
+  test("handles undefined dexScore without throwing", () => {
+    const players = [
+      { id: "p1", name: "Fighter", dexScore: undefined as any },
+    ];
+    const monsters = spawnMonsters([{ templateName: "Goblin", count: 1, template: goblinTemplate }]);
+    const init = rollEncounterInitiative(players, monsters, makeRoller([10, 12]));
+    expect(init).toHaveLength(2);
+    for (const entry of init) {
+      expect(Number.isFinite(entry.initiative)).toBe(true);
+    }
+  });
+
   test("sorted by initiative descending", () => {
     const players = [{ id: "p1", name: "Fighter", dexScore: 10 }];
     const monsters = spawnMonsters([{ templateName: "Goblin", count: 1, template: goblinTemplate }]);
