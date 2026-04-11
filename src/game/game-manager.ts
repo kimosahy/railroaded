@@ -3159,7 +3159,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   const players = party.members
     .map((mid) => characters.get(mid))
     .filter(Boolean)
-    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex }));
+    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores.dex ?? (c!.abilityScores as any).dexterity ?? 10 }));
 
   const initiative = rollEncounterInitiative(players, monsters);
   const slots: InitiativeSlot[] = initiative.map((e) => ({
@@ -4742,12 +4742,12 @@ function persistCampaignState(campaign: GameCampaign): void {
 // --- NPC Management ---
 
 function dispositionLabel(value: number): string {
-  if (value <= -50) return "hostile";
-  if (value <= -25) return "unfriendly";
+  if (value <= -75) return "hostile";
+  if (value <= -37) return "unfriendly";
   if (value < 0) return "wary";
-  if (value === 0) return "neutral";
-  if (value <= 25) return "friendly";
-  if (value <= 50) return "allied";
+  if (value < 25) return "neutral";
+  if (value <= 62) return "friendly";
+  if (value <= 87) return "allied";
   return "devoted";
 }
 
@@ -4764,12 +4764,12 @@ export function handleCreateNpc(userId: string, params: {
   description: string;
   personality?: string;
   location?: string;
-  disposition?: number;
+  disposition?: number | string;
   tags?: string[];
   knowledge?: string[];
   goals?: string[];
   relationships?: Record<string, string>;
-  standingOrders?: string;
+  standingOrders?: string | string[];
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const ctx = findCampaignForDM(userId);
   if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first." };
@@ -4778,7 +4778,16 @@ export function handleCreateNpc(userId: string, params: {
     return { success: false, error: "NPC name is required." };
   }
 
-  const disp = Math.max(-100, Math.min(100, params.disposition ?? 0));
+  // Coerce string dispositions to numbers
+  let rawDisp: number | string = params.disposition ?? 0;
+  if (typeof rawDisp === "string") {
+    const dispMap: Record<string, number> = {
+      hostile: -100, unfriendly: -50, wary: -25,
+      neutral: 0, friendly: 50, allied: 75, devoted: 100,
+    };
+    rawDisp = dispMap[rawDisp.toLowerCase()] ?? 0;
+  }
+  const disp = Math.max(-100, Math.min(100, rawDisp as number));
   const npcId = nextId("npc");
   const npc: GameNPC = {
     id: npcId,
@@ -4796,7 +4805,7 @@ export function handleCreateNpc(userId: string, params: {
     knowledge: params.knowledge ?? [],
     goals: params.goals ?? [],
     relationships: params.relationships ?? {},
-    standingOrders: params.standingOrders?.trim() ?? null,
+    standingOrders: (Array.isArray(params.standingOrders) ? params.standingOrders.join("; ") : params.standingOrders)?.trim() ?? null,
   };
 
   npcsMap.set(npcId, npc);
@@ -4905,7 +4914,7 @@ export function handleUpdateNpc(userId: string, params: {
   knowledge?: string[];
   goals?: string[];
   relationships?: Record<string, string>;
-  standingOrders?: string;
+  standingOrders?: string | string[];
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
@@ -4921,7 +4930,10 @@ export function handleUpdateNpc(userId: string, params: {
   if (params.knowledge !== undefined) npc.knowledge = params.knowledge;
   if (params.goals !== undefined) npc.goals = params.goals;
   if (params.relationships !== undefined) npc.relationships = params.relationships;
-  if (params.standingOrders !== undefined) npc.standingOrders = params.standingOrders.trim() || null;
+  if (params.standingOrders !== undefined) {
+    const so = Array.isArray(params.standingOrders) ? params.standingOrders.join("; ") : params.standingOrders;
+    npc.standingOrders = so?.trim() || null;
+  }
 
   // Persist to DB
   if (npc.dbNpcId) {
@@ -5057,9 +5069,18 @@ export function handleStartConversation(userId: string, params: {
     messageCount: 0,
   };
 
-  party.session.conversations.push(conversation);
-  party.session.activeConversationId = convId;
-  party.session.phase = "conversation";
+  try {
+    party.session.conversations.push(conversation);
+    party.session.activeConversationId = convId;
+    party.session.phase = "conversation";
+  } catch (err) {
+    // Rollback: remove conversation if push succeeded but later line failed
+    const idx = party.session.conversations.findIndex(c => c.id === convId);
+    if (idx !== -1) party.session.conversations.splice(idx, 1);
+    party.session.activeConversationId = null;
+    party.session.phase = "exploration";
+    return { success: false, error: `Failed to start conversation: ${(err as Error).message}` };
+  }
 
   logEvent(party, "conversation_start", null, {
     conversationId: convId,
@@ -5088,7 +5109,15 @@ export function handleEndConversation(userId: string, params: {
   if (!party.session) return { success: false, error: "No active session." };
 
   const conv = party.session.conversations.find(c => c.id === params.conversationId);
-  if (!conv) return { success: false, error: `Conversation ${params.conversationId} not found.` };
+  if (!conv) {
+    // Orphan recovery: if phase is stuck on "conversation" but no matching conversation exists, reset
+    if (party.session.phase === "conversation") {
+      party.session.phase = "exploration";
+      party.session.activeConversationId = null;
+      return { success: true, data: { recovered: true, message: "Orphaned conversation phase reset to exploration." } };
+    }
+    return { success: false, error: `Conversation ${params.conversationId} not found.` };
+  }
 
   conv.outcome = params.outcome;
   conv.relationshipDelta = params.relationshipDelta;
@@ -5175,6 +5204,10 @@ export function handleRevealInfo(userId: string, params: {
 
   const item = infoItems.get(params.infoId);
   if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
+
+  if (!params.toCharacters || !Array.isArray(params.toCharacters) || params.toCharacters.length === 0) {
+    return { success: false, error: "to_characters must be a non-empty array of character IDs." };
+  }
 
   item.visibility = "discovered";
   item.discoveryMethod = params.method;
@@ -5265,6 +5298,10 @@ export function handleCreateClock(userId: string, params: {
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party." };
+
+  if (!params.turnsRemaining || typeof params.turnsRemaining !== "number" || params.turnsRemaining < 1) {
+    return { success: false, error: "turns_remaining is required and must be a positive integer." };
+  }
 
   const clockId = nextId("clock");
   const clock: SessionClock = {
@@ -6598,5 +6635,5 @@ export async function loadNpcs(): Promise<number> {
 // --- State access for testing ---
 
 export function getState() {
-  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap };
+  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap, clocks, infoItems, npcs: npcsMap };
 }
