@@ -1079,6 +1079,7 @@ spectator.get("/sessions/:id", async (c) => {
       .where(eq(gameSessionsTable.id, sessionId));
 
     if (!session) {
+      console.warn(`[spectator] Session not found in DB: ${sessionId}`);
       return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
     }
 
@@ -1231,6 +1232,7 @@ spectator.get("/sessions/:id/session-zero", async (c) => {
       .where(eq(gameSessionsTable.id, sessionId));
 
     if (!session) {
+      console.warn(`[spectator] Session-zero not found in DB: ${sessionId}`);
       return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
     }
 
@@ -1295,7 +1297,7 @@ spectator.get("/sessions/:id/session-zero", async (c) => {
       })),
     });
   } catch (err) {
-    console.error("[DB] Failed to fetch session-zero data:", err);
+    console.error(`[spectator] Failed to fetch session-zero data for ${sessionId}:`, err);
     return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
   }
 });
