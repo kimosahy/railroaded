@@ -49,7 +49,7 @@ if (resources.actionUsed) {
 }
 ```
 
-**Important design note:** This means characters who DO have bonus actions (rogue Cunning Action, cleric Healing Word) won't get a chance to use them after their main action in the same auto-advance tick. That's acceptable for now — the agent can call bonus action BEFORE the main action, or call `end_turn` manually. The alternative (keeping the deadlock) is far worse. If this becomes a problem in later playtests, we can add a short delay or a "bonus action window" — but NOT in this sprint.
+**Important design note:** This is an intentional temporary bias toward continuity over tactical completeness. Characters who DO have bonus actions (rogue Cunning Action, cleric Healing Word) won't get a chance to use them after their main action in the same auto-advance tick. That's acceptable — the agent can call bonus action BEFORE the main action, or call `end_turn` manually. The alternative (keeping the deadlock) is far worse. Do NOT try to engineer a bonus-action window or delay in this sprint. If this becomes a problem in later playtests, we'll revisit.
 
 ### Verification
 - Test: character attacks, turn auto-advances to next combatant
@@ -112,21 +112,28 @@ When threshold is hit:
 
 This is NOT an abort — it's a skip. The actor who was stuck gets passed over, and the next combatant in initiative gets their turn. This handles the exact marathon failure mode: Mirelle stuck → after 10 retries, skip to next combatant → combat continues.
 
-**D) Hard abort: 5-minute no-progress timeout.**
+**D) Hard abort: 5-minute no-progress timeout (continuity-safe).**
 
-If `lastStateChangeAt` is more than 5 minutes old during combat phase, force-exit combat:
+If `lastStateChangeAt` is more than 5 minutes old during combat phase, force-exit combat — but do it cleanly, not just a phase flip. The timeout is a story mutation, so it must be treated as one:
+
+1. Remove all surviving monsters from initiative order
+2. Reset all turn resources
+3. Do NOT grant XP or loot (this is a failure, not a victory)
+4. Log `combat_timeout` as a first-class event with full context:
 ```typescript
-if (party.session.lastStateChangeAt &&
-    Date.now() - party.session.lastStateChangeAt.getTime() > 300_000) {
-  party.session = exitCombat(party.session);
-  logEvent(party, "combat_timeout", null, {
-    reason: "no_state_change_5_minutes",
-    stallCount: party.session.combatStallCount
-  });
-}
+logEvent(party, "combat_timeout", null, {
+  reason: "no_state_change_5_minutes",
+  stallCount: party.session.combatStallCount,
+  survivingMonsters: party.monsters.filter(m => m.isAlive).map(m => m.name),
+  currentTurn: getCurrentCombatant(party.session)?.entityId ?? null
+});
 ```
+5. THEN call `exitCombat(party.session)` to set phase = exploration
+6. Call `stabilizeUnconsciousCharacters(party)` and `snapshotCharacters(party)` for clean state
 
 Check this in `handleGetState` or wherever the game loop polls state (the agent polls `get_state` every loop iteration — that's visible in the trace at ~30s intervals).
+
+**Why continuity-safe matters:** a forced combat exit that doesn't clean up monster state, resources, or aggro trades a frozen story for a corrupt one. The timeout must produce a state that exploration actions can proceed from cleanly.
 
 ### Verification
 - Test: simulate 10 consecutive rejected actions from same actor → turn skips to next combatant
@@ -169,7 +176,7 @@ lastEventCountAtNarration: number; // party.events.length at last narration
 3. If `party.events.length === session.lastEventCountAtNarration` (no new events since last narration), and the session is in combat phase, and `combatStallCount > 0`, reject with `{ success: false, error: "No state change since last narration." }`
 4. On successful narration, push hash to `recentNarrationHashes` (keep last 5), update `lastEventCountAtNarration`
 
-**Important:** Do NOT suppress narration during exploration or scene transitions — those can legitimately have atmospheric narration without state changes. The suppression only fires during combat when the stall counter is positive.
+**Important:** Do NOT suppress narration during exploration or scene transitions — those can legitimately have atmospheric narration without state changes. The suppression only fires during combat when the stall counter is positive. **Non-goal:** do not build a general-purpose narration quality filter. This is strictly a stall-aware dedup gate for combat, not a content moderation layer.
 
 ### Verification
 - Test: identical narration text submitted twice in a row → second is rejected
@@ -223,6 +230,7 @@ This test must cover at least 2 combat rounds with multiple actors taking turns.
 - Test: after combat ends, `move_party` to next room succeeds
 - Test: after combat ends, DM can narrate (phase is exploration, not stuck in combat)
 - Test: multi-kill encounter (3 monsters, kill all) → combat ends correctly
+- Test: after combat ends, at least one full post-combat beat works (narrate + move to next room + new encounter can trigger)
 
 ### Files changed
 - `src/game/game-manager.ts`: fix any missing `removeCombatant` calls on kill paths (if found)
@@ -230,15 +238,15 @@ This test must cover at least 2 combat rounds with multiple actors taking turns.
 
 ---
 
-## Task 5 — Define and persist the story event spine
+## Task 5 — Define and persist the minimum viable story event spine
 
-**Priority:** P2 — needed for post-run story artifact generation.
+**Priority:** P2 — needed for post-run story artifact generation. This sprint: internal extraction + tests only. Spectator endpoints deferred to later sprint.
 
 ### Problem
 
 Events are logged to `party.events` array and to `session_events` DB table, but they include everything: chat, narration, turn advances, stall counters, etc. There's no way to extract just the story-meaningful beats without filtering through noise.
 
-### What to build
+### What to build (v1 — minimum viable)
 
 **A) Define a `STORY_SPINE_EVENTS` constant** — the event types that constitute a real story beat:
 
@@ -251,6 +259,7 @@ const STORY_SPINE_EVENTS = new Set([
   "spell_cast",          // magic used
   "combat_end",          // encounter resolved
   "combat_timeout",      // encounter forcibly ended (Task 2)
+  "combat_stalled",      // stall detected (Task 2)
   "character_down",      // dramatic moment
   "death_save",          // tension
   "level_up",            // progression
@@ -260,35 +269,34 @@ const STORY_SPINE_EVENTS = new Set([
   "quest_updated",       // story progress
   "rest_complete",       // recovery beat
   "npc_created",         // new character introduction
-  "narration",           // DM narrative (only non-suppressed ones post-Task 3)
 ]);
 ```
 
-**B) Add a `GET /api/v1/spectator/parties/:id/story-spine` endpoint** in `src/api/spectator.ts`:
+**Note:** `narration` is intentionally EXCLUDED from the default spine. Raw narration was part of the marathon failure mode (fake progress). Only include narration events that survived Task 3's gating AND were tagged as non-duplicate. If needed, add a `trusted_narration` flag to narration events post-Task 3, and only include those in the spine conditionally.
+
+**B) Add a `extractStorySpine(events)` helper function** in `src/game/game-manager.ts`:
 
 - Filter `party.events` to only `STORY_SPINE_EVENTS` types
-- Return them in chronological order with: `{ type, timestamp, actorName, summary }`
-- `summary` is a one-line human-readable string derived from the event data (e.g., "Mirelle Ash attacks Bandit A for 13 damage (killed)" or "Party enters Gatehouse")
-- Fall back to DB `session_events` table if in-memory events are empty
+- Return them in chronological order
+- This is an internal utility, not an API endpoint
 
-**C) Add a `GET /api/v1/spectator/parties/:id/story-markdown` endpoint:**
+**What NOT to build in this sprint:**
+- No new spectator endpoints (`/story-spine`, `/story-markdown`) — defer to Sprint N
+- No one-line summary generation
+- No markdown formatting
 
-- Same data as story-spine but formatted as a markdown document
-- Group by room/scene (each `room_entered` starts a new section)
-- Include narration text as prose between mechanical beats
-- Output format: `## [Room Name]\n\n[narration]\n\n- [beat]\n- [beat]\n\n[narration]...`
+The goal is to prove the spine exists and is clean enough to reconstruct a session arc. The presentation layer comes later.
 
 This is a read-only extraction endpoint — it does not modify game state.
 
 ### Verification
-- Test: after a simulated session with room changes, combat, and narration, `/story-spine` returns only story events in order
-- Test: `/story-markdown` produces readable markdown with room-grouped sections
-- Test: events from stalled/suppressed narration do NOT appear in story spine
-- Test: endpoint works with both in-memory and DB-backed events
+- Test: after a simulated session with room changes, combat, and narration, `extractStorySpine()` returns only story events in order
+- Test: stall/timeout events (from Task 2) appear in the spine as failure beats
+- Test: duplicate/suppressed narration events do NOT appear in story spine
+- Test: spine is sufficient to reconstruct a chronological session arc (room → encounter → combat beats → resolution → next room)
 
 ### Files changed
-- `src/game/game-manager.ts`: add `STORY_SPINE_EVENTS` constant
-- `src/api/spectator.ts`: add `/story-spine` and `/story-markdown` endpoints
+- `src/game/game-manager.ts`: add `STORY_SPINE_EVENTS` constant and `extractStorySpine()` helper
 - `tests/`: test for story spine extraction
 
 ---
@@ -341,3 +349,11 @@ Task 1 is the critical fix. If only one task ships, it must be Task 1.
 Tasks 2-3 are defense-in-depth. Task 4 is verification. Task 5 is the story artifact layer. Task 6 is documentation.
 
 **After all tasks:** run `./test-runner.sh` to confirm all tests pass.
+
+---
+
+## Acceptance criterion
+
+**Sprint M passes only if a live post-deploy playtest produces at least one multi-scene session with a resolved combat and continued post-combat progression, plus enough trustworthy event spine to write a markdown story artifact from it.**
+
+Unit tests plus prettier logs are not sufficient. The real verification is a live session that moves.
