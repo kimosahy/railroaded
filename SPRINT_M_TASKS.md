@@ -84,14 +84,19 @@ combatStallCount: number;      // consecutive loops with no state-changing actio
 lastStateChangeAt: Date | null; // timestamp of last accepted state-changing action
 ```
 
-Initialize both in `enterCombat()` (in session.ts) and reset in `exitCombat()`.
+Initialize both in `enterCombat()` (session.ts line 75) and reset in `exitCombat()` (line 152). Also add default values (`combatStallCount: 0`, `lastStateChangeAt: null`) to `createSession()` (line 55) so existing sessions don't break on the optional-chain access.
 
-**B) Increment stall counter when combat actions are rejected.**
+**B) Increment stall counter when combat actions are rejected. Reset on success.**
 
-In `checkAutoAdvanceTurn` or a new helper, after any combat action returns a 400/error, increment `combatStallCount`. Reset to 0 whenever a combat action succeeds (attack hits/misses, spell resolves, end_turn accepted, etc.).
-
-The right place to reset is after every successful action in `handleAttack` (line ~1268 on hit, ~1285 on miss), `handleMonsterAttack` (after advanceTurnSkipDead calls), `handleCastSpell`, and `handleEndTurn`. Add a one-line helper:
+Add two helpers in `game-manager.ts`:
 ```typescript
+export function incrementStallCounter(userId: string): void {
+  const party = findPlayerParty(userId) ?? findDMParty(userId);
+  if (party?.session && party.session.phase === "combat") {
+    party.session.combatStallCount = (party.session.combatStallCount ?? 0) + 1;
+  }
+}
+
 function resetStallCounter(party: GameParty): void {
   if (party.session) {
     party.session.combatStallCount = 0;
@@ -99,6 +104,28 @@ function resetStallCounter(party: GameParty): void {
   }
 }
 ```
+
+**WHERE TO INCREMENT (preferred — central dispatch):** In `src/api/mcp.ts` at line ~253, the `handleToolsCall` function. After `const result = await executeToolCall(...)`, if `!result.success`, call `gm.incrementStallCounter(userId)`. This covers all 8 "already used your action" rejection paths in one place:
+- handleAttack (line 1170)
+- handleCast (line 1716)
+- handleDodge (line 1957)
+- handleDash (line 1973)
+- handleDisengage (line 1989)
+- handleHelp (line 2005)
+- handleHide (line 2021)
+- handleBonusAction (line 2234)
+
+Import `incrementStallCounter` from game-manager in mcp.ts. The function is a no-op when not in combat, so calling it on every error is safe.
+
+**Note:** This only covers the MCP path. REST calls (`src/api/rest.ts`) also call the same game-manager handlers but the stall counter won't trigger there. This is fine — agents connect via MCP, not REST. If REST stall tracking is needed later, move the increment into the game-manager handler error paths instead.
+
+**WHERE TO RESET** — call `resetStallCounter(party)` after every successful combat action:
+- `handleAttack` — after hit (line ~1268) and miss (line ~1285), before `checkAutoAdvanceTurn`
+- `handleMonsterAttack` — after each `advanceTurnSkipDead` call (lines ~1389, 1444, 1544, 1604)
+- `handleCast` (line 1686) — after successful spell resolution
+- `handleDodge` (line 1948), `handleDash` (line 1964), `handleDisengage` (line 1980) — after successful action
+- `handleEndTurn` (line 2352) — after successful turn end
+- `handleHelp` and `handleHide` — after successful action
 
 **C) Stall threshold and recovery.**
 
@@ -131,7 +158,7 @@ logEvent(party, "combat_timeout", null, {
 5. THEN call `exitCombat(party.session)` to set phase = exploration
 6. Call `stabilizeUnconsciousCharacters(party)` and `snapshotCharacters(party)` for clean state
 
-Check this in `handleGetState` or wherever the game loop polls state (the agent polls `get_state` every loop iteration — that's visible in the trace at ~30s intervals).
+Check this in `handleGetAvailableActions` (line 1098) — agents call this every loop iteration, so it's the natural polling point. When the timeout fires here, the function should trigger the cleanup THEN return the newly-available exploration actions.
 
 **Why continuity-safe matters:** a forced combat exit that doesn't clean up monster state, resources, or aggro trades a frozen story for a corrupt one. The timeout must produce a state that exploration actions can proceed from cleanly.
 
@@ -185,7 +212,7 @@ lastEventCountAtNarration: number; // party.events.length at last narration
 - Test: narration during exploration → always accepted regardless of event count
 
 ### Files changed
-- `src/game/session.ts`: add `recentNarrationHashes`, `lastEventCountAtNarration` to `SessionState`
+- `src/game/session.ts`: add `recentNarrationHashes`, `lastEventCountAtNarration` to `SessionState`. Initialize defaults in `createSession()`: `recentNarrationHashes: []`, `lastEventCountAtNarration: 0`
 - `src/game/game-manager.ts`: add dedup + stall-aware gating in `handleNarrate` (line ~3093)
 
 ---
