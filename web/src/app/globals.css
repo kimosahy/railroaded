@@ -53,6 +53,11 @@ h1, h2, h3, h4 {
   font-family: var(--font-heading);
 }
 
+/* Page h1: 25% smaller than home (home=2.5rem, pages=1.875rem) */
+.page-h1 {
+  font-size: 1.875rem;
+}
+
 /* MF-STD-002: Crimson Text for narrative prose */
 .prose-narrative {
   font-family: var(--font-prose);

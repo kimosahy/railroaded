@@ -276,7 +276,7 @@ export function TrackerClient() {
             style={{
               fontFamily: "var(--font-heading)",
               color: "var(--accent)",
-              fontSize: "2.5rem",
+              fontSize: "1.875rem",
               fontWeight: 700,
               lineHeight: 1.1,
               marginBottom: "0.25rem",
