@@ -1,0 +1,51 @@
+@import "@heroui/styles";
+
+/* Railroaded theme overrides — dark only (MF-STD-004) */
+:root {
+  color-scheme: dark;
+
+  /* Gold ramp — Railroaded primary (draft, Fekry sign-off required) */
+  --heroui-primary-50: oklch(0.25 0.03 85);
+  --heroui-primary-100: oklch(0.32 0.05 85);
+  --heroui-primary-200: oklch(0.42 0.07 85);   /* ~#8a7033 gold-dim */
+  --heroui-primary-300: oklch(0.55 0.09 85);
+  --heroui-primary-400: oklch(0.65 0.11 85);
+  --heroui-primary-500: oklch(0.73 0.13 85);   /* ~#c9a84c gold */
+  --heroui-primary-600: oklch(0.78 0.11 85);
+  --heroui-primary-700: oklch(0.83 0.09 85);   /* ~#e8d5a3 gold-light */
+  --heroui-primary-800: oklch(0.88 0.06 85);
+  --heroui-primary-900: oklch(0.93 0.03 85);
+
+  /* Backgrounds */
+  --heroui-background: oklch(0.13 0.01 270);    /* ~#0a0a0f */
+  --heroui-content1: oklch(0.16 0.01 270);      /* ~#12121a */
+  --heroui-content2: oklch(0.19 0.01 270);
+  --heroui-content3: oklch(0.22 0.01 270);
+  --heroui-content4: oklch(0.25 0.01 270);
+
+  /* Foreground */
+  --heroui-foreground: oklch(0.87 0.01 85);     /* ~#d4d0c8 */
+  --heroui-default-500: oklch(0.60 0.01 85);    /* ~#8a8780 text-dim */
+
+  /* Divider */
+  --heroui-divider: oklch(0.23 0.01 270);       /* ~#2a2a3a */
+
+  /* Semantic */
+  --heroui-danger-500: oklch(0.50 0.15 25);     /* ~#c0392b */
+  --heroui-success-500: oklch(0.60 0.15 145);   /* ~#4caf50 */
+
+  /* Fonts — MF-STD-001, MF-STD-002 */
+  --font-heading: "Cinzel", serif;
+  --font-prose: "Crimson Text", Georgia, serif;
+}
+
+/* MF-STD-001: Cinzel on all headings globally */
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+}
+
+/* MF-STD-002: Crimson Text for narrative prose */
+.prose-narrative {
+  font-family: var(--font-prose);
+  line-height: 1.8;
+}

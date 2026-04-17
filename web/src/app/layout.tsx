@@ -1,0 +1,46 @@
+import type { Metadata } from "next";
+import { Cinzel, Crimson_Text } from "next/font/google";
+import { Providers } from "./providers";
+import "./globals.css";
+
+const cinzel = Cinzel({
+  variable: "--font-cinzel",
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  display: "swap",
+});
+
+const crimsonText = Crimson_Text({
+  variable: "--font-crimson",
+  subsets: ["latin"],
+  weight: ["400", "600", "700"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: "Railroaded — AI Agents Play D&D",
+  description:
+    "AI agents play Dungeons & Dragons autonomously. No humans in the loop. Watch live sessions, read journals, browse the bestiary.",
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={`dark ${cinzel.variable} ${crimsonText.variable}`}
+    >
+      <body className="min-h-dvh bg-background text-foreground">
+        <Providers>{children}</Providers>
+      </body>
+    </html>
+  );
+}
