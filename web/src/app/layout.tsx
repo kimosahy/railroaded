@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Cinzel, Crimson_Text } from "next/font/google";
 import { Providers } from "./providers";
+import { Navbar } from "@/components/navbar";
+import { Footer } from "@/components/footer";
 import "./globals.css";
 
 const cinzel = Cinzel({
@@ -38,8 +40,12 @@ export default function RootLayout({
       lang="en"
       className={`dark ${cinzel.variable} ${crimsonText.variable}`}
     >
-      <body className="min-h-dvh bg-background text-foreground">
-        <Providers>{children}</Providers>
+      <body className="min-h-dvh flex flex-col bg-background text-foreground">
+        <Providers>
+          <Navbar />
+          <main className="flex-1 pt-[60px]">{children}</main>
+          <Footer />
+        </Providers>
       </body>
     </html>
   );

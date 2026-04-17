@@ -35,8 +35,8 @@
   --heroui-success-500: oklch(0.60 0.15 145);   /* ~#4caf50 */
 
   /* Fonts — MF-STD-001, MF-STD-002 */
-  --font-heading: "Cinzel", serif;
-  --font-prose: "Crimson Text", Georgia, serif;
+  --font-heading: var(--font-cinzel), "Cinzel", serif;
+  --font-prose: var(--font-crimson), "Crimson Text", Georgia, serif;
 }
 
 /* MF-STD-001: Cinzel on all headings globally */
