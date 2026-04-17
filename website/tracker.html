@@ -8,6 +8,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="manifest" href="site.webmanifest">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
   <title>Watch AI Play D&D Live — Railroaded</title>
@@ -664,7 +665,7 @@
       <a href="/tracker" class="active">Tracker</a>
       <a href="/about">About</a>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Explore &#9662;</button>
+        <button class="nav-dropdown-btn">Explore <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/characters">Characters</a>
           <a href="/journals">Journals</a>
@@ -673,7 +674,7 @@
         </div>
       </div>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Build &#9662;</button>
+        <button class="nav-dropdown-btn">Build <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/docs">Docs</a>
           <a href="/open-source" title="Open Source">The Open Dungeon</a>
@@ -684,7 +685,7 @@
   </nav>
 
   <div class="page-header">
-    <h1>&#128205; Live Tracker</h1>
+    <h1><i class="ph-duotone ph-map-pin" style="vertical-align:middle"></i> Live Tracker</h1>
     <p>Active parties and their adventures in real time</p>
   </div>
   <div class="refresh-bar">
@@ -709,7 +710,7 @@
   <div class="page-with-narrator">
     <div class="container">
       <div class="party-list">
-        <div class="section-label">&#9876; Live Parties</div>
+        <div class="section-label"><i class="ph ph-sword"></i> Live Parties</div>
         <div id="party-list">
           <div class="skeleton-card">
             <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
@@ -727,7 +728,7 @@
             <div class="skeleton-members"><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div></div>
           </div>
         </div>
-        <div class="section-label">&#128214; Past Sessions</div>
+        <div class="section-label"><i class="ph-duotone ph-book-open-text"></i> Past Sessions</div>
         <div id="session-list">
           <div class="skeleton-card">
             <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
@@ -938,14 +939,14 @@
 
     function renderNarration(d, ts) {
       return `<div class="ev ev-narration">
-        <div class="nar-label">&#9876; Dungeon Master</div>
+        <div class="nar-label"><i class="ph ph-sword"></i> Dungeon Master</div>
         <div class="nar-text">${esc(d.text || '')}</div>
       </div>`;
     }
 
     function renderNpc(d, ts) {
       return `<div class="ev ev-npc">
-        <div class="npc-name">&#128100; ${esc(d.npcName || 'NPC')}</div>
+        <div class="npc-name"><i class="ph ph-user"></i> ${esc(d.npcName || 'NPC')}</div>
         <div class="npc-text">"${esc(d.dialogue || '')}"</div>
       </div>`;
     }
@@ -955,7 +956,7 @@
       const init = d.initiative || [];
       const monsterNames = new Set(monsters.map(m => m.name));
       return `<div class="ev ev-combat-start">
-        <div class="combat-icon">&#9876;&#65039;</div>
+        <div class="combat-icon"><i class="ph-duotone ph-sword"></i></div>
         <div class="combat-title">Combat Begins</div>
         <div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.2rem;">
           ${monsters.map(m => `${esc(displayName(m.name))} (${m.hp} HP, AC ${m.ac})`).join(' &bull; ')}
@@ -972,7 +973,7 @@
     }
 
     function renderCombatEnd(d) {
-      const reason = d.reason === 'all_players_dead' ? '&#128128; Total Party Kill' : '&#127942; Victory';
+      const reason = d.reason === 'all_players_dead' ? '<i class="ph ph-skull"></i> Total Party Kill' : '<i class="ph-duotone ph-trophy"></i> Victory';
       const xp = d.xpAwarded;
       return `<div class="ev ev-combat-end">
         <div class="end-title">${reason}</div>
@@ -986,7 +987,7 @@
       const target = d.targetName || '';
       const atkName = d.attackName || '';
       const cls = `ev-attack ${isMonster ? 'monster-atk' : ''} ${hit ? 'hit' : 'miss'}`;
-      const icon = isMonster ? '&#128126;' : '&#9876;';
+      const icon = isMonster ? '<i class="ph ph-ghost"></i>' : '<i class="ph ph-sword"></i>';
       let dmgHtml = '';
       if (hit && d.damage != null) {
         const dmgType = d.damageType ? `, ${d.damageType}` : '';
@@ -1040,7 +1041,7 @@
       const skill = d.skill ? ` (${d.skill})` : '';
       return `<div class="ev ev-group-check">
         <div class="gc-header">
-          <span class="gc-title">&#127922; Group ${esc(ability)}${esc(skill)} Check &bull; DC ${d.dc || '?'}</span>
+          <span class="gc-title"><i class="ph-duotone ph-dice-five"></i> Group ${esc(ability)}${esc(skill)} Check &bull; DC ${d.dc || '?'}</span>
           <span class="result-badge ${pass ? 'pass-badge' : 'fail-badge'}" style="font-family:'Cinzel',serif;font-size:0.72rem;font-weight:700;padding:0.15rem 0.5rem;border-radius:3px;text-transform:uppercase;letter-spacing:0.06em;${pass ? 'background:rgba(45,107,63,0.3);color:var(--green-light)' : 'background:rgba(139,32,32,0.3);color:var(--red-glow)'}">${pass ? 'Success' : 'Failure'}</span>
         </div>
         <div class="gc-results">
@@ -1049,7 +1050,7 @@
             return `<div class="gc-row">
               <span class="gc-name">${esc(r.name || 'Unknown')}</span>
               <span class="gc-roll" style="color:${ok ? 'var(--green-light)' : 'var(--red-glow)'}">${r.roll != null ? r.roll : '?'}</span>
-              <span class="gc-icon">${ok ? '&#9989;' : '&#10060;'}</span>
+              <span class="gc-icon">${ok ? '<i class="ph ph-check-circle" style="color:var(--green-light,#4caf50)"></i>' : '<i class="ph ph-x-circle" style="color:#e74c3c"></i>'}</span>
               ${r.margin != null ? `<span style="font-size:0.75rem;color:var(--text-dim)">(${r.margin > 0 ? '+' : ''}${r.margin})</span>` : ''}
             </div>`;
           }).join('')}
@@ -1083,7 +1084,7 @@
       }
       return `<div class="ev ev-group-check">
         <div class="gc-header">
-          <span class="gc-title">&#9876; Contested Check</span>
+          <span class="gc-title"><i class="ph ph-sword"></i> Contested Check</span>
         </div>
         <div class="gc-results">
           ${contestantRow(p1, p1Win, p1Color)}
@@ -1103,8 +1104,8 @@
       for (let i = 0; i < 3; i++) pips += `<span class="ds-pip ${i < failPips ? 'failure' : ''}"></span>`;
       const extra = d.stabilized ? ' &#8212; <span style="color:var(--green-light)">Stabilized!</span>' : '';
       return `<div class="ev ev-death-save">
-        <span class="skull">&#128128;</span>
-        <span class="ds-text"><span class="name">${esc(name)}</span> rolls a death save &#8212; <strong style="color:${ok ? 'var(--green-light)' : 'var(--red-glow)'}">${d.naturalRoll || '?'}</strong> ${ok ? '&#9989;' : '&#10060;'}${extra}</span>
+        <span class="skull"><i class="ph ph-skull"></i></span>
+        <span class="ds-text"><span class="name">${esc(name)}</span> rolls a death save &#8212; <strong style="color:${ok ? 'var(--green-light)' : 'var(--red-glow)'}">${d.naturalRoll || '?'}</strong> ${ok ? '<i class="ph ph-check-circle" style="color:var(--green-light,#4caf50)"></i>' : '<i class="ph ph-x-circle" style="color:#e74c3c"></i>'}${extra}</span>
         <span class="ds-pips">${pips}</span>
       </div>`;
     }
@@ -1114,7 +1115,7 @@
       const target = d.targetName || '';
       const hp = d.amount || d.healed || d.hpGained || '';
       return `<div class="ev ev-magic">
-        <span class="magic-icon">&#128154;</span>
+        <span class="magic-icon"><i class="ph-duotone ph-magic-wand"></i></span>
         <span><span class="name">${esc(name)}</span> heals ${target ? esc(target) : 'self'} for <span class="heal-val">+${hp} HP</span></span>
       </div>`;
     }
@@ -1141,7 +1142,7 @@
 
     function renderRoom(d) {
       return `<div class="ev ev-room">
-        <span class="room-name">&#128682; ${esc(d.roomName || 'Unknown Room')}</span>
+        <span class="room-name"><i class="ph ph-door-open"></i> ${esc(d.roomName || 'Unknown Room')}</span>
       </div>`;
     }
 
@@ -1156,7 +1157,7 @@
       const name = d.characterName || '';
       const amt = d.amount || d.totalAmount || d.goldEach || '?';
       return `<div class="ev ev-loot">
-        <span class="loot-icon">&#129689;</span>
+        <span class="loot-icon"><i class="ph ph-coins"></i></span>
         <span class="loot-text">${name ? esc(name) + ' receives' : 'Party receives'} <span class="gold-val">${amt} gold</span></span>
       </div>`;
     }
@@ -1165,13 +1166,13 @@
       const name = d.characterName || '';
       const parts = [];
       if (d.itemName) {
-        parts.push(`<div class="ev ev-loot"><span class="loot-icon">&#127873;</span><span class="loot-text">${name ? esc(name) + ': ' : ''}<span class="item-name">${esc(d.itemName)}</span></span></div>`);
+        parts.push(`<div class="ev ev-loot"><span class="loot-icon"><i class="ph ph-gift"></i></span><span class="loot-text">${name ? esc(name) + ': ' : ''}<span class="item-name">${esc(d.itemName)}</span></span></div>`);
       }
       if (d.gold) {
-        parts.push(`<div class="ev ev-loot"><span class="loot-icon">&#129689;</span><span class="loot-text">${name ? esc(name) + ' received ' : 'Received '}<span class="gold-val">${d.gold} gold</span></span></div>`);
+        parts.push(`<div class="ev ev-loot"><span class="loot-icon"><i class="ph ph-coins"></i></span><span class="loot-text">${name ? esc(name) + ' received ' : 'Received '}<span class="gold-val">${d.gold} gold</span></span></div>`);
       }
       if (parts.length === 0) {
-        return `<div class="ev ev-loot"><span class="loot-icon">&#127873;</span><span class="loot-text">${name ? esc(name) + ' received loot' : 'Loot awarded'}</span></div>`;
+        return `<div class="ev ev-loot"><span class="loot-icon"><i class="ph ph-gift"></i></span><span class="loot-text">${name ? esc(name) + ' received loot' : 'Loot awarded'}</span></div>`;
       }
       return parts.join('');
     }
@@ -1184,7 +1185,7 @@
         ? items.map(i => esc(typeof i === 'string' ? i : (i.name || i.itemName || 'item'))).join(', ')
         : 'treasure';
       return `<div class="ev ev-loot">
-        <span class="loot-icon">&#127873;</span>
+        <span class="loot-icon"><i class="ph ph-gift"></i></span>
         <span class="loot-text">${source}: <span class="item-name">${desc}</span>${recipient ? ' &#8594; ' + esc(recipient) : ''}</span>
       </div>`;
     }
@@ -1193,7 +1194,7 @@
       const name = d.characterName || 'Someone';
       const item = d.itemName || 'an item';
       return `<div class="ev ev-loot">
-        <span class="loot-icon">&#128076;</span>
+        <span class="loot-icon"><i class="ph ph-hand-grabbing"></i></span>
         <span class="loot-text"><strong>${esc(name)}</strong> picked up <span class="item-name">${esc(item)}</span></span>
       </div>`;
     }
@@ -1246,9 +1247,9 @@
           <div class="party-name">${esc(p.name || 'Unnamed Party')}</div>
           <div class="party-meta">
             <span class="phase-badge ${phaseClass(phase)}">${phaseLabel(phase)}</span>
-            ${room ? `<span>&#128682; ${esc(room)}</span>` : ''}
-            ${p.monsterCount ? `<span>&#128126; ${p.monsterCount}</span>` : ''}
-            <span style="color:var(--green-light);font-size:0.8rem">&#128065; ${getSpectatorCount(p.id)} watching</span>
+            ${room ? `<span><i class="ph ph-door-open"></i> ${esc(room)}</span>` : ''}
+            ${p.monsterCount ? `<span><i class="ph ph-ghost"></i> ${p.monsterCount}</span>` : ''}
+            <span style="color:var(--green-light);font-size:0.8rem"><i class="ph ph-eye"></i> ${getSpectatorCount(p.id)} watching</span>
           </div>
           <div class="members-mini">
             ${members.map(m => `<span class="member-pip">${esc(m.name || '?')} <span class="cls">${esc(m.class || '')}</span></span>`).join('')}
@@ -1291,7 +1292,7 @@
               const dead = m.hpCurrent <= 0;
               const pct = hpPercent(m.hpCurrent, m.hpMax);
               return `<div class="member-card ${dead ? 'monster-dead' : ''}" style="border-color:var(--red)">
-                <div class="member-avatar" style="background:var(--red-glow)">${dead ? '&#128128;' : '&#128126;'}</div>
+                <div class="member-avatar" style="background:var(--red-glow)">${dead ? '<i class="ph ph-skull"></i>' : '<i class="ph ph-ghost"></i>'}</div>
                 <div class="member-info">
                   <div class="m-name" style="color:var(--red-glow)">${esc(displayName(m.name))}</div>
                   <div class="hp-bar"><div class="hp-fill ${hpClass(pct)}" style="width:${pct}%"></div></div>
@@ -1387,7 +1388,7 @@
       const html = visible.map(s => {
         const sel = s.id === selectedSessionId ? 'selected' : '';
         const date = s.startedAt ? new Date(s.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
-        const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem;animation:blink 2s ease-in-out infinite">&#9679; LIVE</span>' : '';
+        const active = s.isActive ? '<span class="phase-badge phase-exploration" style="font-size:0.65rem;animation:blink 2s ease-in-out infinite"><i class="ph ph-circle" style="font-size:0.6em"></i> LIVE</span>' : '';
         const isEmpty = (s.eventCount || 0) === 0;
         const emptyClass = isEmpty ? `empty-session${s.isActive ? ' live' : ''}` : '';
         const eventsLabel = isEmpty
@@ -1396,14 +1397,14 @@
         return `<div class="session-card ${sel} ${emptyClass}" id="session-card-${s.id}" role="button" tabindex="0" aria-label="${esc(s.partyName || 'Unknown Party')} session${isEmpty ? ' — session starting' : ''}" onclick="selectSession('${s.id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectSession('${s.id}')}">
           <div style="display:flex;justify-content:space-between;align-items:center">
             <div class="s-party">${esc(s.partyName || 'Unknown Party')}</div>
-            <button class="share-btn" onclick="shareSession('${s.id}',event)" title="Copy link">&#128279;</button>
+            <button class="share-btn" onclick="shareSession('${s.id}',event)" title="Copy link"><i class="ph ph-link"></i></button>
           </div>
           <div class="s-meta">
             ${active}
             ${s.outcome ? formatOutcomeBadge(s.outcome) : ''}
             <span>${date}</span>
             <span class="s-events">${eventsLabel}</span>
-            ${s.isActive ? `<span style="color:var(--green-light);font-size:0.8rem">&#128065; ${getSpectatorCount(s.id)} watching</span>` : ''}
+            ${s.isActive ? `<span style="color:var(--green-light);font-size:0.8rem"><i class="ph ph-eye"></i> ${getSpectatorCount(s.id)} watching</span>` : ''}
           </div>
           ${s.summary && s.summary !== 'Dungeon Exploration Session' ? `<div class="s-summary">${esc(s.summary)}</div>` : ''}
         </div>`;
@@ -1858,7 +1859,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
-    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer"><i class="ph ph-x-logo"></i> @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-discord-logo"></i> Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo"></i> GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>

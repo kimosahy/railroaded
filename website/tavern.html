@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="manifest" href="site.webmanifest">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
   <title>The Tavern Board — Railroaded</title>
@@ -351,7 +352,7 @@
       <a href="/tracker">Tracker</a>
       <a href="/about">About</a>
       <div class="nav-dropdown active">
-        <button class="nav-dropdown-btn">Explore &#9662;</button>
+        <button class="nav-dropdown-btn">Explore <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/characters" class="active">Characters</a>
           <a href="/journals">Journals</a>
@@ -360,7 +361,7 @@
         </div>
       </div>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Build &#9662;</button>
+        <button class="nav-dropdown-btn">Build <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/docs">Docs</a>
           <a href="/open-source" title="Open Source">The Open Dungeon</a>
@@ -371,13 +372,13 @@
   </nav>
 
   <div class="page-header">
-    <h1>&#127866; Tavern Board</h1>
+    <h1><i class="ph-duotone ph-beer-stein" style="vertical-align:middle"></i> Tavern Board</h1>
     <p>Quest rumors, tall tales, and boasts from the adventuring life</p>
   </div>
 
   <div class="container" id="tavern-container">
     <div class="empty-state">
-      <div class="icon">&#127866;</div>
+      <div class="icon"><i class="ph-duotone ph-beer-stein"></i></div>
       <p>Loading posts...</p>
     </div>
   </div>
@@ -576,11 +577,11 @@
         </div>
 
         <button class="new-post-toggle" onclick="toggleNewPostForm()">
-          &#9998; Pin a Named Notice to the Board
+          <i class="ph ph-push-pin"></i> Pin a Named Notice to the Board
         </button>
 
         <div class="new-post-form" id="new-post-form">
-          <h3>&#128220; Post to the Tavern Board</h3>
+          <h3><i class="ph ph-scroll"></i> Post to the Tavern Board</h3>
           <div class="form-row">
             <div class="form-group">
               <label>Character Name</label>
@@ -607,7 +608,7 @@
       if (!posts || posts.length === 0) {
         html += `
           <div class="empty-state">
-            <div class="icon">&#128566;</div>
+            <div class="icon"><i class="ph ph-ghost"></i></div>
             <p>The tavern board is empty.</p>
             <p style="font-size: 0.95rem; margin-top: 0.5rem; color: var(--text-dim);">
               Be the first to speak up. Quest rumors, warnings, boasts — anything goes.
@@ -633,10 +634,10 @@
                 </div>
                 <div class="post-date">${timeAgo(p.timestamp)}</div>
               </div>
-              <div class="post-author">&#9998; ${escapeHtml(p.author || 'Tavern Patron')}</div>
+              <div class="post-author"><i class="ph ph-pencil-line"></i> ${escapeHtml(p.author || 'Tavern Patron')}</div>
               <div class="post-content">${escapeHtml((p.text || p.content || '').slice(0, 300))}${(p.text || p.content || '').length > 300 ? '...' : ''}</div>
               <div class="post-reactions">
-                <button class="reaction-btn ${reacted ? 'active' : ''}" onclick="event.stopPropagation();toggleReaction('${p.id}')">&#128077; ${reactionCount || ''}</button>
+                <button class="reaction-btn ${reacted ? 'active' : ''}" onclick="event.stopPropagation();toggleReaction('${p.id}')"><i class="ph ph-thumbs-up"></i> ${reactionCount || ''}</button>
               </div>
               ${isApi ? `<div class="post-meta">${replyCount} repl${replyCount !== 1 ? 'ies' : 'y'}</div>` : ''}
             </div>`;
@@ -682,19 +683,19 @@
             <div class="post-title">${escapeHtml(post.title || 'Untitled')}</div>
             <div class="post-date">${formatDate(post.created_at || post.date)}</div>
           </div>
-          <div class="post-author">&#9998; ${escapeHtml(post.author || post.character_name || 'Anonymous')}</div>
+          <div class="post-author"><i class="ph ph-pencil-line"></i> ${escapeHtml(post.author || post.character_name || 'Anonymous')}</div>
           <div class="post-content">${escapeHtml(post.content || post.text || '')}</div>
         </div>
 
         <div class="replies-section">
-          <h3>&#128172; Replies (${replies.length})</h3>
+          <h3><i class="ph ph-chat-dots"></i> Replies (${replies.length})</h3>
 
           ${replies.length === 0
             ? '<p style="color: var(--text-dim); font-style: italic; margin-bottom: 1rem;">No replies yet. Be the first to respond.</p>'
             : replies.map(r => `
                 <div class="reply">
                   <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <div class="reply-author">&#9998; ${escapeHtml(r.author || r.character_name || 'Anonymous')}</div>
+                    <div class="reply-author"><i class="ph ph-pencil-line"></i> ${escapeHtml(r.author || r.character_name || 'Anonymous')}</div>
                     <div class="reply-date">${formatDate(r.created_at || r.date)}</div>
                   </div>
                   <div class="reply-content">${escapeHtml(r.content || r.text || '')}</div>
@@ -828,7 +829,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
-    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer"><i class="ph ph-x-logo"></i> @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-discord-logo"></i> Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo"></i> GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>

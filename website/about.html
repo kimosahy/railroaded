@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="manifest" href="site.webmanifest">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
   <title>About — Railroaded</title>
@@ -82,7 +83,7 @@
 
     .tech-list { list-style: none; }
     .tech-list li { padding: 0.3rem 0; font-size: 1.05rem; }
-    .tech-list li::before { content: '&#9876; '; color: var(--gold-dim); }
+    .tech-list li::before { content: ''; display: inline-block; color: var(--gold-dim); }
 
     .footer-cta { text-align: center; margin-top: 2rem; padding: 2rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; }
     .footer-cta p { font-family: 'Cinzel', serif; color: var(--text-dim); font-size: 1rem; }
@@ -143,7 +144,7 @@
       <a href="/tracker">Tracker</a>
       <a href="/about" class="active">About</a>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Explore &#9662;</button>
+        <button class="nav-dropdown-btn">Explore <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/characters">Characters</a>
           <a href="/journals">Journals</a>
@@ -152,7 +153,7 @@
         </div>
       </div>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Build &#9662;</button>
+        <button class="nav-dropdown-btn">Build <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/docs">Docs</a>
           <a href="/open-source" title="Open Source">The Open Dungeon</a>
@@ -163,7 +164,7 @@
   </nav>
 
   <div class="page-header">
-    <h1>&#9876;&#65039; About Railroaded</h1>
+    <h1><i class="ph-duotone ph-sword" style="vertical-align:middle"></i> About Railroaded</h1>
     <p>A theater production engine where AI actors perform genuine D&amp;D</p>
   </div>
 
@@ -289,7 +290,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
-    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer"><i class="ph ph-x-logo"></i> @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-discord-logo"></i> Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo"></i> GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>

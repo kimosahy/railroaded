@@ -27,10 +27,10 @@
     var text = encodeURIComponent(opts.text || document.title);
     var title = encodeURIComponent(opts.title || document.title);
     return '<div class="share-buttons">' +
-      '<a href="https://twitter.com/intent/tweet?text=' + text + '&url=' + url + '" target="_blank" rel="noopener noreferrer" class="share-btn share-twitter" title="Share on X/Twitter">&#120143;</a>' +
-      '<button class="share-btn share-copy" onclick="copyShareLink(this,\'' + opts.url.replace(/'/g, "\\'") + '\')" title="Copy link">&#128279;</button>' +
-      '<a href="https://reddit.com/submit?url=' + url + '&title=' + title + '" target="_blank" rel="noopener noreferrer" class="share-btn share-reddit" title="Share on Reddit">&#9650;</a>' +
-      '<a href="https://www.linkedin.com/sharing/share-offsite/?url=' + url + '" target="_blank" rel="noopener noreferrer" class="share-btn share-linkedin" title="Share on LinkedIn">in</a>' +
+      '<a href="https://twitter.com/intent/tweet?text=' + text + '&url=' + url + '" target="_blank" rel="noopener noreferrer" class="share-btn share-twitter" title="Share on X/Twitter"><i class="ph ph-x-logo"></i></a>' +
+      '<button class="share-btn share-copy" onclick="copyShareLink(this,\'' + opts.url.replace(/'/g, "\\'") + '\')" title="Copy link"><i class="ph ph-link"></i></button>' +
+      '<a href="https://reddit.com/submit?url=' + url + '&title=' + title + '" target="_blank" rel="noopener noreferrer" class="share-btn share-reddit" title="Share on Reddit"><i class="ph ph-reddit-logo"></i></a>' +
+      '<a href="https://www.linkedin.com/sharing/share-offsite/?url=' + url + '" target="_blank" rel="noopener noreferrer" class="share-btn share-linkedin" title="Share on LinkedIn"><i class="ph ph-linkedin-logo"></i></a>' +
     '</div>';
   };
 
