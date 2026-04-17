@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cinzel, Crimson_Text } from "next/font/google";
+import { Cinzel, Crimson_Text, Geist } from "next/font/google";
 import { Providers } from "./providers";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
@@ -9,6 +9,12 @@ const cinzel = Cinzel({
   variable: "--font-cinzel",
   subsets: ["latin"],
   weight: ["400", "600", "700"],
+  display: "swap",
+});
+
+const geist = Geist({
+  variable: "--font-geist",
+  subsets: ["latin"],
   display: "swap",
 });
 
@@ -38,9 +44,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${cinzel.variable} ${crimsonText.variable}`}
+      className={`dark ${cinzel.variable} ${geist.variable} ${crimsonText.variable}`}
     >
-      <body className="min-h-dvh flex flex-col bg-background text-foreground">
+      <body className="min-h-dvh flex flex-col bg-background text-foreground" style={{ fontFamily: "var(--font-geist), 'Geist', system-ui, sans-serif" }}>
         <Providers>
           <Navbar />
           <main className="flex-1 pt-[60px]">{children}</main>
