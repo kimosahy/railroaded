@@ -429,6 +429,7 @@ function resetTurnResources(party: GameParty, entityId: string): void {
 function advanceTurnSkipDead(party: GameParty): void {
   if (!party.session || party.session.phase !== "combat") return;
 
+  resetStallCounter(party); // Sprint M Task 2: any turn advance = real progress
   party.session = nextTurn(party.session);
 
   // Safety limit: never loop more than the initiative order length
@@ -478,12 +479,101 @@ function checkAutoAdvanceTurn(party: GameParty, characterId: string): void {
   if (!current || current.entityId !== characterId) return;
 
   const resources = getTurnResources(party, characterId);
-  // Auto-advance if action AND bonus action are both used (movement is free, don't gate on it)
-  if (resources.actionUsed && resources.bonusUsed) {
-    logEvent(party, "turn_auto_advanced", characterId, { reason: "all_resources_used" });
+  // Auto-advance when action is used. Bonus action is optional — most low-level characters
+  // have no bonus action, and gating on it causes turn deadlocks (Sprint M, Task 1).
+  // Characters with bonus actions should use them BEFORE their main action.
+  if (resources.actionUsed) {
+    logEvent(party, "turn_auto_advanced", characterId, { reason: "action_used" });
     // advanceTurnSkipDead calls nextTurn internally, resets resources, and notifies
     advanceTurnSkipDead(party);
   }
+}
+
+// --- Combat Stall Detection (Sprint M, Task 2) ---
+
+const STALL_THRESHOLD = 10; // consecutive rejected actions before skip
+const STALL_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+function resetStallCounter(party: GameParty): void {
+  if (party.session) {
+    party.session.combatStallCount = 0;
+    party.session.lastStateChangeAt = new Date();
+  }
+}
+
+export function isCurrentCombatant(userId: string): boolean {
+  const char = getCharacterForUser(userId);
+  const party = char ? getPartyForCharacter(char.id) : findDMParty(userId);
+  if (!party?.session || party.session.phase !== "combat") return false;
+  const current = getCurrentCombatant(party.session);
+  if (!current) return false;
+  // Player: check if current combatant matches their character
+  if (char) return current.entityId === char.id;
+  // DM: check if current combatant is a monster (DM controls monsters)
+  return current.type === "monster";
+}
+
+export function incrementStallCounter(userId: string): void {
+  const char = getCharacterForUser(userId);
+  const party = char ? getPartyForCharacter(char.id) : findDMParty(userId);
+  if (!party?.session || party.session.phase !== "combat") return;
+
+  party.session.combatStallCount = (party.session.combatStallCount ?? 0) + 1;
+
+  // Threshold reached: skip the stuck actor's turn
+  if (party.session.combatStallCount >= STALL_THRESHOLD) {
+    const current = getCurrentCombatant(party.session);
+    logEvent(party, "combat_stalled", current?.entityId ?? null, {
+      stallCount: party.session.combatStallCount,
+      lastStateChangeAt: party.session.lastStateChangeAt?.toISOString() ?? null,
+    });
+    advanceTurnSkipDead(party);
+    party.session.combatStallCount = 0;
+    const nextCombatant = getCurrentCombatant(party.session);
+    logEvent(party, "combat_stall_recovered", nextCombatant?.entityId ?? null, {
+      skippedEntity: current?.entityId ?? null,
+    });
+  }
+}
+
+function checkCombatTimeout(party: GameParty): boolean {
+  if (!party.session || party.session.phase !== "combat") return false;
+  const lastChange = party.session.lastStateChangeAt;
+  if (!lastChange) return false;
+
+  if (Date.now() - lastChange.getTime() > STALL_TIMEOUT_MS) {
+    // Force-exit combat cleanly
+    const survivingMonsters = party.monsters
+      .filter((m) => m.isAlive)
+      .map((m) => m.name);
+
+    // Remove all surviving monsters from initiative
+    for (const monster of party.monsters.filter((m) => m.isAlive)) {
+      if (party.session) {
+        party.session = removeCombatant(party.session, monster.id);
+      }
+    }
+
+    // Reset all turn resources
+    if (party.session) {
+      party.session.turnResources = {};
+    }
+
+    logEvent(party, "combat_timeout", null, {
+      reason: "no_state_change_5_minutes",
+      stallCount: party.session?.combatStallCount ?? 0,
+      survivingMonsters,
+      currentTurn: getCurrentCombatant(party.session!)?.entityId ?? null,
+    });
+
+    if (party.session) {
+      party.session = exitCombat(party.session);
+    }
+    stabilizeUnconsciousCharacters(party);
+    snapshotCharacters(party);
+    return true;
+  }
+  return false;
 }
 
 // --- Unconscious / Incapacitated Guard ---
@@ -1121,6 +1211,22 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
         isYourTurn: false,
         availableActions: actions,
         actionRoutes: buildActionRoutes(actions, playerActionRoutes),
+      },
+    };
+  }
+
+  // Sprint M Task 2: check combat timeout before returning actions
+  if (party.session.phase === "combat" && checkCombatTimeout(party)) {
+    // Combat was force-exited due to 5-minute stall. Return exploration actions.
+    const postTimeoutActions = getAllowedActions("exploration", false, char.conditions, char.hp);
+    return {
+      success: true,
+      data: {
+        phase: "exploration",
+        isYourTurn: false,
+        availableActions: postTimeoutActions,
+        actionRoutes: buildActionRoutes(postTimeoutActions, playerActionRoutes),
+        combatTimedOut: true,
       },
     };
   }
@@ -3098,6 +3204,30 @@ export function handleNarrate(userId: string, params: {
 }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "You are not a DM for any active party." };
+
+  // Sprint M Task 3: duplicate narration suppression during combat stalls
+  if (party.session) {
+    const hash = params.text.slice(0, 100).toLowerCase().trim();
+    const recentHashes = party.session.recentNarrationHashes ?? [];
+
+    // Reject exact duplicate narration
+    if (recentHashes.includes(hash)) {
+      return { success: false, error: "Duplicate narration suppressed." };
+    }
+
+    // During combat stall, reject narration when no events have occurred since last narration
+    if (
+      party.session.phase === "combat" &&
+      (party.session.combatStallCount ?? 0) > 0 &&
+      party.events.length === (party.session.lastEventCountAtNarration ?? 0)
+    ) {
+      return { success: false, error: "No state change since last narration." };
+    }
+
+    // Track this narration
+    party.session.recentNarrationHashes = [...recentHashes.slice(-4), hash];
+    party.session.lastEventCountAtNarration = party.events.length;
+  }
 
   const narType = params.type ?? "scene";
   const eventData: Record<string, unknown> = { text: params.text, narrateType: narType };
@@ -6676,6 +6806,35 @@ export async function loadNpcs(): Promise<number> {
 }
 
 // --- State access for testing ---
+
+// --- Sprint M Task 5: Story Event Spine ---
+
+const STORY_SPINE_EVENTS = new Set([
+  "room_enter",        // actual engine event name (not "room_entered")
+  "combat_start",
+  "attack",
+  "monster_attack",
+  "spell_cast",
+  "combat_end",
+  "combat_timeout",
+  "combat_stalled",
+  "death_save",
+  "level_up",
+  "monster_killed",
+  "loot",              // actual engine event name (not "loot_found")
+  "loot_drop",
+  "quest_added",
+  "quest_updated",
+  "npc_created",
+  "heal",              // healing is a story beat
+  "npc_dialogue",      // NPC interactions matter for story
+]);
+
+export function extractStorySpine(
+  events: Array<{ type: string; actorId?: string | null; data?: Record<string, unknown>; timestamp?: Date }>
+): Array<{ type: string; actorId?: string | null; data?: Record<string, unknown>; timestamp?: Date }> {
+  return events.filter((e) => STORY_SPINE_EVENTS.has(e.type));
+}
 
 export function getState() {
   return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap, clocks, infoItems, npcs: npcsMap };

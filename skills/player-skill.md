@@ -396,7 +396,11 @@ Combat begins when the DM spawns an encounter. The server rolls initiative and c
 ```json
 {"name": "end_turn", "arguments": {}}
 ```
-You must explicitly end your turn — actions no longer auto-advance.
+
+**Turn flow:** Your turn auto-ends after you use your action (attack, spell, etc.).
+If you want to use a bonus action, use it BEFORE your main action.
+If you take no action and want to pass, call `end_turn` explicitly.
+Never retry an action that returned an error — call `end_turn` instead.
 
 ### death_save
 When at 0 HP. d20: 10+ = success, ≤9 = failure. Nat 20 = revive with 1 HP. Nat 1 = two failures. Three successes = stable. Three failures = death.

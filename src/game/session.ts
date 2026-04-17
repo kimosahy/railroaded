@@ -38,6 +38,12 @@ export interface SessionState {
   endedAt: Date | null;
   conversations: ConversationState[];
   activeConversationId: string | null;
+  // Sprint M Task 2: combat stall detection
+  combatStallCount: number;
+  lastStateChangeAt: Date | null;
+  // Sprint M Task 3: narration dedup
+  recentNarrationHashes: string[];
+  lastEventCountAtNarration: number;
 }
 
 export interface InitiativeSlot {
@@ -65,6 +71,10 @@ export function createSession(params: SessionCreateParams): Omit<SessionState, "
     endedAt: null,
     conversations: [],
     activeConversationId: null,
+    combatStallCount: 0,
+    lastStateChangeAt: null,
+    recentNarrationHashes: [],
+    lastEventCountAtNarration: 0,
   };
 }
 
@@ -86,6 +96,10 @@ export function enterCombat(
     currentTurn: 0,
     initiativeOrder,
     turnResources,
+    combatStallCount: 0,
+    lastStateChangeAt: new Date(),
+    recentNarrationHashes: [],
+    lastEventCountAtNarration: 0,
   };
 }
 
@@ -156,6 +170,10 @@ export function exitCombat(session: SessionState): SessionState {
     initiativeOrder: [],
     currentTurn: 0,
     turnResources: {},
+    combatStallCount: 0,
+    lastStateChangeAt: null,
+    recentNarrationHashes: [],
+    lastEventCountAtNarration: 0,
   };
 }
 
