@@ -252,8 +252,16 @@ async function handleToolsCall(
   const result = await executeToolCall(toolName, userId, args);
 
   if (!result.success) {
-    // Sprint M Task 2: increment stall counter on failed combat actions
-    gm.incrementStallCounter(userId);
+    // Sprint M Task 2: increment stall counter only for current-turn combat action failures.
+    // Only count combat actions (attack, cast, dodge, dash, disengage, help, hide, bonus_action,
+    // end_turn, monster_attack) — not narration, chat, or other non-turn tools.
+    const COMBAT_ACTION_TOOLS = new Set([
+      "attack", "cast_spell", "dodge", "dash", "disengage", "help", "hide",
+      "bonus_action", "end_turn", "monster_attack", "use_item", "move",
+    ]);
+    if (COMBAT_ACTION_TOOLS.has(toolName)) {
+      gm.incrementStallCounter(userId);
+    }
     return success(id, {
       content: [{ type: "text", text: JSON.stringify({ error: result.error }) }],
       isError: true,

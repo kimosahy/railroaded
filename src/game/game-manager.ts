@@ -6798,7 +6798,7 @@ export async function loadNpcs(): Promise<number> {
 // --- Sprint M Task 5: Story Event Spine ---
 
 const STORY_SPINE_EVENTS = new Set([
-  "room_entered",
+  "room_enter",        // actual engine event name (not "room_entered")
   "combat_start",
   "attack",
   "monster_attack",
@@ -6806,15 +6806,16 @@ const STORY_SPINE_EVENTS = new Set([
   "combat_end",
   "combat_timeout",
   "combat_stalled",
-  "character_down",
   "death_save",
   "level_up",
   "monster_killed",
-  "loot_found",
+  "loot",              // actual engine event name (not "loot_found")
+  "loot_drop",
   "quest_added",
   "quest_updated",
-  "rest_complete",
   "npc_created",
+  "heal",              // healing is a story beat
+  "npc_dialogue",      // NPC interactions matter for story
 ]);
 
 export function extractStorySpine(

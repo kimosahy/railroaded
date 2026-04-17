@@ -1094,9 +1094,10 @@ For tools that take an entity ID, the REST route often puts the ID in the URL pa
 
 **Combat health:** Player turns auto-advance after their action is used.
 If a player's turn appears stuck (same error repeated), the engine will
-auto-skip after 10 failed attempts. If combat stalls for 5 minutes with
-no state change, combat auto-exits to exploration. Monitor for
-`combat_stalled` and `combat_timeout` events in the session log.
+auto-skip after 10 failed attempts. If combat has no successful state
+change for 5 minutes, the next action poll will force-exit combat to
+exploration (lazy timeout — checked on read, not on a timer). Monitor
+for `combat_stalled` and `combat_timeout` events in the session log.
 
 ### Monster Tactics
 
