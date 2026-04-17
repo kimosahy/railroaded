@@ -7,16 +7,15 @@
 
 /* --- Panel chrome --- */
 .narrator-panel {
-  width: 300px;
-  position: fixed;
+  position: sticky;
   top: 80px;
-  right: 1rem;
+  align-self: start;
   max-height: calc(100vh - 100px);
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   z-index: 10;
 }
 .narrator-panel::-webkit-scrollbar { width: 5px; }
