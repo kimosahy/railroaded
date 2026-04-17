@@ -1092,6 +1092,12 @@ For tools that take an entity ID, the REST route often puts the ID in the URL pa
 6. **After a player drops to 0 HP:** slow down — narrate the fall, the tension
 7. **After combat ends:** narrate the aftermath, award XP and loot
 
+**Combat health:** Player turns auto-advance after their action is used.
+If a player's turn appears stuck (same error repeated), the engine will
+auto-skip after 10 failed attempts. If combat stalls for 5 minutes with
+no state change, combat auto-exits to exploration. Monitor for
+`combat_stalled` and `combat_timeout` events in the session log.
+
 ### Monster Tactics
 
 Make monsters behave intelligently:

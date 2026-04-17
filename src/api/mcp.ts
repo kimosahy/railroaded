@@ -252,6 +252,8 @@ async function handleToolsCall(
   const result = await executeToolCall(toolName, userId, args);
 
   if (!result.success) {
+    // Sprint M Task 2: increment stall counter on failed combat actions
+    gm.incrementStallCounter(userId);
     return success(id, {
       content: [{ type: "text", text: JSON.stringify({ error: result.error }) }],
       isError: true,
