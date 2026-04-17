@@ -1,7 +1,7 @@
 // Railroaded service worker — cache-first for static assets, network-first for pages
 var CACHE_NAME = 'railroaded-v3';
 var STATIC_ASSETS = [
-  '/logo.png',
+  '/logo.svg',
   '/favicon.ico',
   '/favicon-16x16.png',
   '/favicon-32x32.png',
