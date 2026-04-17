@@ -84,23 +84,43 @@
 
     /* --- PAGE HEADER --- */
     .page-header {
-      padding: 5rem 2rem 1.5rem;
-      text-align: center;
+      max-width: 1400px; margin: 0 auto;
+      padding: 5rem 2rem 0.5rem;
+      display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
     }
-    .page-header h1 {
+    .page-header-left { text-align: left; }
+    .page-header-left h1 {
       font-family: 'Cinzel', serif; font-weight: 700; font-size: 2.5rem;
       color: var(--gold); margin-bottom: 0.3rem;
     }
-    .page-header p { color: var(--text-dim); font-size: 1.1rem; }
-
-    .refresh-bar {
-      text-align: center; padding: 0.5rem;
-      color: var(--text-dim); font-size: 0.85rem;
+    .page-header-left p { color: var(--text-dim); font-size: 1.1rem; margin: 0; }
+    .page-header-right {
+      display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;
     }
-    .refresh-bar .dot {
-      display: inline-block; width: 8px; height: 8px;
+    .page-header-right label {
+      font-family: 'Cinzel', serif; font-size: 0.75rem; color: var(--text-dim);
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .page-header-right select {
+      font-family: 'Cinzel', serif; font-size: 0.8rem; padding: 0.4rem 0.7rem;
+      border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text); cursor: pointer; outline: none;
+    }
+    .page-header-right select:focus { border-color: var(--gold); }
+    #clear-filters-btn {
+      font-family: 'Cinzel', serif; font-size: 0.75rem; padding: 0.4rem 0.7rem;
+      border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card);
+      color: var(--text-dim); cursor: pointer; white-space: nowrap;
+    }
+    #clear-filters-btn:hover { border-color: var(--gold); color: var(--gold); }
+
+    .refresh-indicator {
+      color: var(--text-dim); font-size: 0.75rem; white-space: nowrap;
+    }
+    .refresh-indicator .dot {
+      display: inline-block; width: 6px; height: 6px;
       background: var(--green-light); border-radius: 50%;
-      margin-right: 0.4rem; vertical-align: middle;
+      margin-right: 0.3rem; vertical-align: middle;
       animation: blink 2s ease-in-out infinite;
     }
     @keyframes blink { 0%,100%{ opacity:0.3; } 50%{ opacity:1; } }
@@ -525,6 +545,7 @@
       color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.1em;
       margin: 1.2rem 0 0.5rem; padding-bottom: 0.3rem;
       border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
     }
     .session-card {
       background: var(--bg-card); border: 1px solid var(--border);
@@ -685,32 +706,29 @@
   </nav>
 
   <div class="page-header">
-    <h1><i class="ph-duotone ph-map-pin" style="vertical-align:middle"></i> Live Tracker</h1>
-    <p>Active parties and their adventures in real time</p>
-  </div>
-  <div class="refresh-bar">
-    <span class="dot"></span> Auto-refreshes every 10 seconds
-  </div>
-  <div style="max-width:1400px;margin:0 auto;padding:0.5rem 2rem 0;">
-    <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-      <label style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;">Status:</label>
-      <select id="status-filter" onchange="applyTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+    <div class="page-header-left">
+      <h1>Live Tracker</h1>
+      <p>Active parties and their adventures in real time</p>
+    </div>
+    <div class="page-header-right">
+      <label>Status:</label>
+      <select id="status-filter" onchange="applyTrackerFilters()">
         <option value="all">All</option>
         <option value="live">Live</option>
         <option value="completed">Completed</option>
       </select>
-      <label style="font-family:'Cinzel',serif;font-size:0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-left:0.4rem;">Party:</label>
-      <select id="party-filter" onchange="applyTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.8rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);cursor:pointer;outline:none;" onfocus="this.style.borderColor='var(--gold)'" onblur="this.style.borderColor='var(--border)'">
+      <label>Party:</label>
+      <select id="party-filter" onchange="applyTrackerFilters()">
         <option value="all">All Parties</option>
       </select>
-      <button onclick="clearTrackerFilters()" style="font-family:'Cinzel',serif;font-size:0.75rem;padding:0.4rem 0.7rem;border-radius:4px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-dim);cursor:pointer;white-space:nowrap;margin-left:0.4rem;" onmouseover="this.style.borderColor='var(--gold)';this.style.color='var(--gold)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-dim)'">Clear Filters</button>
+      <button id="clear-filters-btn" onclick="clearTrackerFilters()" style="display:none">Clear Filters</button>
     </div>
   </div>
 
   <div class="page-with-narrator">
     <div class="container">
       <div class="party-list">
-        <div class="section-label"><i class="ph ph-sword"></i> Live Parties</div>
+        <div class="section-label">Live Parties <span class="refresh-indicator"><span class="dot"></span> Auto-refreshes every 10s</span></div>
         <div id="party-list">
           <div class="skeleton-card">
             <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
@@ -728,7 +746,7 @@
             <div class="skeleton-members"><div class="skeleton skeleton-pip"></div><div class="skeleton skeleton-pip"></div></div>
           </div>
         </div>
-        <div class="section-label"><i class="ph-duotone ph-book-open-text"></i> Past Sessions</div>
+        <div class="section-label">Past Sessions</div>
         <div id="session-list">
           <div class="skeleton-card">
             <div class="skeleton skeleton-line medium" style="height:16px;margin-bottom:0.4rem"></div>
@@ -1338,6 +1356,11 @@
     function applyTrackerFilters() {
       const status = document.getElementById('status-filter').value;
       const partyVal = document.getElementById('party-filter').value;
+      // Show/hide clear button based on whether filters are non-default
+      const clearBtn = document.getElementById('clear-filters-btn');
+      if (clearBtn) {
+        clearBtn.style.display = (status === 'all' && partyVal === 'all') ? 'none' : '';
+      }
       // Filter parties
       let filteredParties = partiesCache;
       if (status === 'completed') filteredParties = [];
@@ -1354,6 +1377,8 @@
     function clearTrackerFilters() {
       document.getElementById('status-filter').value = 'all';
       document.getElementById('party-filter').value = 'all';
+      const clearBtn = document.getElementById('clear-filters-btn');
+      if (clearBtn) clearBtn.style.display = 'none';
       renderParties(partiesCache);
       renderSessions(sessionsCache, false);
     }
