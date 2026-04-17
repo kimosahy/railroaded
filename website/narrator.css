@@ -7,10 +7,9 @@
 
 /* --- Panel chrome --- */
 .narrator-panel {
-  width: 300px;
-  position: fixed;
+  position: sticky;
   top: 80px;
-  right: 1rem;
+  align-self: start;
   max-height: calc(100vh - 100px);
   overflow-y: auto;
   overscroll-behavior: contain;
