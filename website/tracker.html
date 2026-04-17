@@ -82,9 +82,9 @@
     }
     nav .links a:hover, nav .links a.active { color: var(--gold); }
 
-    /* --- PAGE HEADER: col2 only, row 1 --- */
+    /* --- PAGE HEADER: spans col2+col3, row 1 --- */
     .page-header {
-      grid-column: 2;
+      grid-column: 2 / 4;
       grid-row: 1;
       display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;
       padding: 1.5rem 0 0.5rem;
@@ -136,7 +136,7 @@
     .party-list {
       grid-column: 1; grid-row: 1 / -1; /* spans all rows — flush with nav */
       max-height: calc(100vh - 60px); overflow-y: auto; overscroll-behavior: contain;
-      position: sticky; top: 60px; padding-top: 1.5rem;
+      position: sticky; top: 60px; padding-top: 60px; /* nav height offset */
     }
     .party-list::-webkit-scrollbar { width: 5px; }
     .party-list::-webkit-scrollbar-track { background: transparent; }
