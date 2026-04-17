@@ -501,6 +501,18 @@ function resetStallCounter(party: GameParty): void {
   }
 }
 
+export function isCurrentCombatant(userId: string): boolean {
+  const char = getCharacterForUser(userId);
+  const party = char ? getPartyForCharacter(char.id) : findDMParty(userId);
+  if (!party?.session || party.session.phase !== "combat") return false;
+  const current = getCurrentCombatant(party.session);
+  if (!current) return false;
+  // Player: check if current combatant matches their character
+  if (char) return current.entityId === char.id;
+  // DM: check if current combatant is a monster (DM controls monsters)
+  return current.type === "monster";
+}
+
 export function incrementStallCounter(userId: string): void {
   const char = getCharacterForUser(userId);
   const party = char ? getPartyForCharacter(char.id) : findDMParty(userId);
