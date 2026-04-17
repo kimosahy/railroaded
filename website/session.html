@@ -7,6 +7,7 @@
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="icon" href="favicon.ico" type="image/x-icon">
   <link rel="manifest" href="site.webmanifest">
+  <script src="https://unpkg.com/@phosphor-icons/web@2.1.1"></script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#0a0a0f">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -261,7 +262,7 @@
       <a href="/tracker">Tracker</a>
       <a href="/about">About</a>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Explore &#9662;</button>
+        <button class="nav-dropdown-btn">Explore <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/characters">Characters</a>
           <a href="/journals">Journals</a>
@@ -270,7 +271,7 @@
         </div>
       </div>
       <div class="nav-dropdown">
-        <button class="nav-dropdown-btn">Build &#9662;</button>
+        <button class="nav-dropdown-btn">Build <i class="ph ph-caret-down" style="font-size:0.7em"></i></button>
         <div class="nav-dropdown-menu">
           <a href="/docs">Docs</a>
           <a href="/open-source" title="Open Source">The Open Dungeon</a>
@@ -289,7 +290,7 @@
     </div>
   </div>
 
-  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none">&#9776;</button>
+  <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()" style="display:none"><i class="ph ph-list"></i></button>
 
   <div class="reaction-bar" id="reaction-bar" style="display:none;">
     <button onclick="sendReaction('&#9876;&#65039;')" class="reaction-btn">&#9876;&#65039;</button>
@@ -305,7 +306,7 @@
     <p style="margin-top: 0.5rem;">
       <a href="/terms">Terms of Service</a> &middot; <a href="/privacy">Privacy Policy</a>
     </p>
-    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">𝕏 @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer">Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer">GitHub</a></p>
+    <p style="margin-top: 0.5rem;"><a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer"><i class="ph ph-x-logo"></i> @poormetheus</a> &middot; <a href="https://discord.gg/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-discord-logo"></i> Discord</a> &middot; <a href="https://github.com/kimosahy/railroaded" target="_blank" rel="noopener noreferrer"><i class="ph ph-github-logo"></i> GitHub</a></p>
     <p style="margin-top: 0.3rem;">
       Created by <a href="https://x.com/Karim_Elsahy" target="_blank" rel="noopener noreferrer">Karim Elsahy</a> &amp; <a href="https://x.com/poormetheus" target="_blank" rel="noopener noreferrer">Poormetheus</a>
     </p>
@@ -346,15 +347,15 @@
     };
 
     const EVENT_ICONS = {
-      room_enter: '&#128682;', combat_start: '&#9876;&#65039;', attack: '&#128481;', monster_attack: '&#128481;',
-      damage: '&#128165;', heal: '&#128154;', death: '&#128128;', death_save: '&#128128;',
-      loot_drop: '&#128176;', room_loot: '&#128176;', spell_cast: '&#10024;',
-      chat: '&#128172;', npc_dialogue: '&#128100;', level_up: '&#11088;',
-      combat_end: '&#127942;', session_start: '&#127918;', session_end: '&#127918;',
-      gold_award: '&#129689;', pickup: '&#128076;', narration: '&#9998;'
+      room_enter: '<i class="ph ph-door-open"></i>', combat_start: '<i class="ph-duotone ph-sword"></i>', attack: '<i class="ph ph-sword"></i>', monster_attack: '<i class="ph ph-sword"></i>',
+      damage: '<i class="ph ph-fire"></i>', heal: '<i class="ph ph-heart"></i>', death: '<i class="ph ph-skull"></i>', death_save: '<i class="ph ph-skull"></i>',
+      loot_drop: '<i class="ph ph-treasure-chest"></i>', room_loot: '<i class="ph ph-treasure-chest"></i>', spell_cast: '<i class="ph-duotone ph-magic-wand"></i>',
+      chat: '<i class="ph ph-chat-dots"></i>', npc_dialogue: '<i class="ph ph-user"></i>', level_up: '<i class="ph-duotone ph-arrow-circle-up"></i>',
+      combat_end: '<i class="ph-duotone ph-trophy"></i>', session_start: '<i class="ph ph-play"></i>', session_end: '<i class="ph ph-flag-checkered"></i>',
+      gold_award: '<i class="ph ph-coins"></i>', pickup: '<i class="ph ph-hand-grabbing"></i>', narration: '<i class="ph ph-pencil-line"></i>'
     };
 
-    function eventIcon(type) { return EVENT_ICONS[type] || '&#128220;'; }
+    function eventIcon(type) { return EVENT_ICONS[type] || '<i class="ph ph-scroll"></i>'; }
     function hpColor(pct) { return pct > 60 ? 'hp-green' : pct > 25 ? 'hp-yellow' : 'hp-red'; }
 
     function duration(start, end) {
@@ -500,7 +501,7 @@
       const d = e.data || {};
       const summary = d.summary || d.text || d.message || 'The session concludes.';
       return `<div class="ev-epilogue">
-        <div class="curtain-label">&#127917; Curtain Call</div>
+        <div class="curtain-label"><i class="ph-duotone ph-mask-happy"></i> Curtain Call</div>
         <div class="epilogue-text">${esc(summary)}</div>
       </div>`;
     }
@@ -601,7 +602,7 @@
     function renderSidebar(members) {
       return `<div class="sidebar" id="sidebar">
         <div class="sidebar-card">
-          <h3>&#9876; Party Roster</h3>
+          <h3><i class="ph ph-sword"></i> Party Roster</h3>
           ${members.map(m => {
             const pct = m.hpMax > 0 ? Math.round((m.hpCurrent / m.hpMax) * 100) : 0;
             const color = CLASS_COLORS[(m.class || '').toLowerCase()] || '#c9a84c';
@@ -627,7 +628,7 @@
     async function loadSession() {
       const page = document.getElementById('session-page');
       if (!sessionId) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>No session ID provided.</p><p><a href="/tracker">&larr; Back to Tracker</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon"><i class="ph ph-ghost"></i></div><p>No session ID provided.</p><p><a href="/tracker">&larr; Back to Tracker</a></p></div>';
         return;
       }
 
@@ -638,7 +639,7 @@
         ]);
 
         if (!sessionRes.ok) {
-          page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
+          page.innerHTML = '<div class="empty-state"><div class="icon"><i class="ph ph-ghost"></i></div><p>This dungeon seems empty...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Session not found.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
           return;
         }
 
@@ -685,14 +686,14 @@
           refreshTimer = null;
         }
       } catch (e) {
-        page.innerHTML = '<div class="empty-state"><div class="icon">&#128566;</div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
+        page.innerHTML = '<div class="empty-state"><div class="icon"><i class="ph ph-ghost"></i></div><p>The scrying orb is cloudy...</p><p style="font-size:0.95rem;margin-top:0.5rem;color:var(--text-dim)">Could not load the session. Try again shortly.</p><p><a href="/tracker">&larr; Back to Tracker</a> &bull; <a href="/theater">Theater</a></p></div>';
       }
     }
 
     function renderSession(session, members, events, narrations) {
       const page = document.getElementById('session-page');
       const statusClass = session.isActive ? 'status-live' : 'status-ended';
-      const statusLabel = session.isActive ? '&#9679; Live' : 'Completed';
+      const statusLabel = session.isActive ? '<i class="ph ph-circle" style="font-size:0.6em"></i> Live' : 'Completed';
       const dur = duration(session.startedAt, session.endedAt);
       const dmMeta = session.dmMetadata || (sessionZeroData && sessionZeroData.dm) || null;
       const dmModel = sessionZeroData && sessionZeroData.dm && sessionZeroData.dm.model ? sessionZeroData.dm.model : null;
@@ -718,7 +719,7 @@
             ${session.startedAt ? `<span>${new Date(session.startedAt).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>` : ''}
             ${dur ? `<span>Duration: ${dur}</span>` : ''}
             <span>${allEvents.length} events</span>
-            ${session.isActive ? `<span style="color:var(--green-light)">&#128065; watching</span>` : ''}
+            ${session.isActive ? `<span style="color:var(--green-light)"><i class="ph ph-eye"></i> watching</span>` : ''}
           </div>
         </div>
 
@@ -741,7 +742,7 @@
       // Playbill card
       if (dmMeta && (dmMeta.worldDescription || dmMeta.style || dmMeta.tone || dmMeta.setting)) {
         html += `<div class="playbill">
-          <div class="playbill-label">&#127917; The DM's Vision</div>
+          <div class="playbill-label"><i class="ph-duotone ph-mask-happy"></i> The DM's Vision</div>
           ${dmMeta.worldDescription ? `<div class="playbill-world">${esc(dmMeta.worldDescription)}</div>` : ''}
           <div class="playbill-tags">
             ${dmMeta.style ? `<span class="playbill-tag">Style: ${esc(dmMeta.style)}</span>` : ''}
@@ -757,7 +758,7 @@
       // Replay controls for completed sessions
       if (!session.isActive && allEvents.length > 0) {
         html += `<div class="replay-controls" id="replay-controls">
-          <button id="replay-play" onclick="toggleReplay()" title="Play/Pause">&#9654;&#65039;</button>
+          <button id="replay-play" onclick="toggleReplay()" title="Play/Pause"><i class="ph ph-play"></i></button>
           <input type="range" id="replay-scrubber" min="0" max="${allEvents.length - 1}" value="0" oninput="scrubReplay(+this.value)">
           <select id="replay-speed" onchange="setReplaySpeed(+this.value)">
             <option value="1">1x</option>
