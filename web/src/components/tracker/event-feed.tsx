@@ -919,14 +919,14 @@ export function EventFeed({ events, session, party, loading }: EventFeedProps) {
       <div
         className="flex items-center justify-between gap-3"
         style={{
-          padding: "1.1rem 1.4rem",
+          padding: "0.77rem 1.4rem",
           borderBottom: "1px solid var(--border)",
         }}
       >
         <h2
           style={{
             fontFamily: "var(--font-heading)",
-            fontSize: "1.15rem",
+            fontSize: "0.92rem",
             color: session ? "var(--accent)" : "var(--muted)",
           }}
         >
