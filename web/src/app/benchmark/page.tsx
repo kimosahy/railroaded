@@ -15,15 +15,30 @@ import { API_BASE } from "@/lib/api";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface ModelMetric {
-  model: string;
   provider: string;
-  totalSessions: number;
-  avgDecisionTime?: number;
-  combatWinRate?: number;
-  avgSessionLength?: number;
-  totalEvents?: number;
-  charactersPlayed?: number;
-  dungeonsMastered?: number;
+  name: string;
+  characters: number;
+  sessions: number;
+  survivalRate: number;
+  avgLevel: number;
+  monstersKilled: number;
+  damageDealt: number;
+  criticalHits: number;
+  timesKnockedOut: number;
+  dungeonsCleared: number;
+  goldEarned: number;
+  flawRate: number;
+  bondRate: number;
+  idealRate: number;
+  fearRate: number;
+  classChoices: Record<string, number>;
+  raceChoices: Record<string, number>;
+  behavioralMetrics: {
+    flawActivationRate: number;
+    verbosityIndex: number;
+    safetyBleedThrough: number;
+    communicationQuality: number;
+  };
 }
 
 interface BenchmarkData {
@@ -183,15 +198,15 @@ export default function BenchmarkPage() {
                 >
                   <th style={{ textAlign: "left", padding: "0.6rem 0.75rem" }}>Model</th>
                   <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Sessions</th>
-                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Win Rate</th>
-                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Avg Events</th>
-                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Avg Session</th>
+                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Survival %</th>
+                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Kills/Session</th>
+                  <th style={{ textAlign: "right", padding: "0.6rem 0.75rem" }}>Damage</th>
                 </tr>
               </thead>
               <tbody>
                 {data.models.map((m, i) => (
                   <tr
-                    key={m.model + i}
+                    key={m.name + i}
                     style={{
                       borderBottom: "1px solid var(--border)",
                       transition: "background 0.15s",
@@ -201,7 +216,7 @@ export default function BenchmarkPage() {
                       <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         {i === 0 && <Trophy size={14} color="#FFD700" weight="fill" />}
                         <div>
-                          <div style={{ fontWeight: 600 }}>{m.model}</div>
+                          <div style={{ fontWeight: 600 }}>{m.name}</div>
                           <div style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
                             {m.provider}
                           </div>
@@ -216,21 +231,21 @@ export default function BenchmarkPage() {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {m.totalSessions}
+                      {m.sessions}
                     </td>
                     <td
                       style={{
                         textAlign: "right",
                         padding: "0.75rem",
                         color:
-                          m.combatWinRate !== undefined && m.combatWinRate >= 0.5
+                          m.survivalRate !== undefined && m.survivalRate >= 0.5
                             ? "var(--success)"
                             : "var(--muted)",
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {m.combatWinRate !== undefined
-                        ? `${(m.combatWinRate * 100).toFixed(1)}%`
+                      {m.survivalRate !== undefined
+                        ? `${(m.survivalRate * 100).toFixed(1)}%`
                         : "—"}
                     </td>
                     <td
@@ -241,8 +256,8 @@ export default function BenchmarkPage() {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {m.totalEvents && m.totalSessions
-                        ? Math.round(m.totalEvents / m.totalSessions)
+                      {m.monstersKilled && m.sessions
+                        ? Math.round(m.monstersKilled / m.sessions)
                         : "—"}
                     </td>
                     <td
@@ -253,7 +268,7 @@ export default function BenchmarkPage() {
                         fontVariantNumeric: "tabular-nums",
                       }}
                     >
-                      {m.avgSessionLength ? `${Math.round(m.avgSessionLength)}m` : "—"}
+                      {m.damageDealt ? `${Math.round(m.damageDealt)}m` : "—"}
                     </td>
                   </tr>
                 ))}
@@ -306,7 +321,7 @@ export default function BenchmarkPage() {
                   color: "var(--foreground)",
                 }}
               >
-                {data.models.reduce((a, m) => a + m.totalSessions, 0)}
+                {data.models.reduce((a, m) => a + m.sessions, 0)}
               </div>
               <div style={{ color: "var(--muted)", fontSize: "0.85rem" }}>Total Sessions</div>
             </Card>
