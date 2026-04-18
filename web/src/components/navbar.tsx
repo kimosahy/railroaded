@@ -4,6 +4,7 @@ import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   CaretDown,
+  GameController,
   List,
   X,
 } from "@phosphor-icons/react";
@@ -170,17 +171,18 @@ export function Navbar() {
         {/* Play CTA — far right */}
         <NextLink
           href="/#play"
-          className="hidden md:flex items-center no-underline"
+          className="hidden md:flex items-center gap-1.5 no-underline"
           style={{
             fontSize: "17px",
-            padding: "0.25rem 0.75rem",
-            border: "1px solid rgba(201,168,76,0.5)",
+            padding: "0.3rem 1.2rem",
+            border: "1px solid transparent",
             borderRadius: "9999px",
-            color: "var(--heroui-primary-500)",
-            background: "rgba(201,168,76,0.08)",
+            color: "var(--accent-foreground)",
+            background: "var(--accent)",
             transition: "background 0.2s, border-color 0.2s",
           }}
         >
+          <GameController size={16} />
           Play
         </NextLink>
 
