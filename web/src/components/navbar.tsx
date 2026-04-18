@@ -12,13 +12,10 @@ import { Dropdown } from "@heroui/react";
 import Image from "next/image";
 import NextLink from "next/link";
 
-const mainLinks = [
+const centerLinks = [
   { label: "Home", href: "/" },
   { label: "Theater", href: "/theater" },
-  { label: "Benchmark", href: "/benchmark" },
   { label: "Leaderboard", href: "/leaderboard" },
-  { label: "Tracker", href: "/tracker" },
-  { label: "About", href: "/about" },
 ];
 
 const exploreLinks = [
@@ -26,11 +23,8 @@ const exploreLinks = [
   { label: "Journals", href: "/journals" },
   { label: "Bestiary", href: "/bestiary" },
   { label: "Worlds", href: "/worlds" },
-];
-
-const buildLinks = [
-  { label: "Docs", href: "/docs" },
-  { label: "The Open Dungeon", href: "/open-source" },
+  { label: "Benchmark", href: "/benchmark" },
+  { label: "Tracker", href: "/tracker" },
 ];
 
 function NavDropdown({
@@ -135,7 +129,7 @@ export function Navbar() {
 
         {/* Desktop links — centered absolutely */}
         <div className="hidden md:flex items-center gap-6" style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
-          {mainLinks.map((link) => {
+          {centerLinks.map((link) => {
             const active = pathname === link.href;
             return (
               <NextLink
@@ -162,12 +156,6 @@ export function Navbar() {
             label="Explore"
             items={exploreLinks}
             isActive={exploreLinks.some((l) => pathname.startsWith(l.href))}
-            desktopSize
-          />
-          <NavDropdown
-            label="Build"
-            items={buildLinks}
-            isActive={buildLinks.some((l) => pathname.startsWith(l.href))}
             desktopSize
           />
         </div>
@@ -204,7 +192,7 @@ export function Navbar() {
       {/* Mobile menu */}
       {mobileOpen && (
         <div className="md:hidden border-t border-divider bg-background/95 backdrop-blur-md px-4 py-4 space-y-1">
-          {mainLinks.map((link) => (
+          {centerLinks.map((link) => (
             <NextLink
               key={link.href}
               href={link.href}
@@ -214,16 +202,37 @@ export function Navbar() {
               {link.label}
             </NextLink>
           ))}
-          <NavDropdown
-            label="Explore"
-            items={exploreLinks}
-            onNavigate={() => setMobileOpen(false)}
-          />
-          <NavDropdown
-            label="Build"
-            items={buildLinks}
-            onNavigate={() => setMobileOpen(false)}
-          />
+          {/* Explore items expanded in mobile */}
+          <div className="pl-2 border-l border-foreground/10">
+            <span className="block py-2 text-xs text-foreground/40 uppercase tracking-wider">Explore</span>
+            {exploreLinks.map((link) => (
+              <NextLink
+                key={link.href}
+                href={link.href}
+                className="block py-2 text-sm text-foreground/70 hover:text-foreground no-underline"
+                onClick={() => setMobileOpen(false)}
+              >
+                {link.label}
+              </NextLink>
+            ))}
+          </div>
+          {/* Play CTA in mobile */}
+          <a
+            href="/#play"
+            className="flex items-center gap-1.5 no-underline mt-3"
+            style={{
+              fontSize: "14px",
+              padding: "0.4rem 1.2rem",
+              borderRadius: "9999px",
+              color: "var(--accent-foreground)",
+              background: "var(--accent)",
+              width: "fit-content",
+            }}
+            onClick={() => setMobileOpen(false)}
+          >
+            <GameController size={16} />
+            Play
+          </a>
         </div>
       )}
     </nav>
