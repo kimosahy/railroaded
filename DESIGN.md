@@ -75,3 +75,13 @@ Primary accent is gold, mapped to HeroUI's `--accent` token.
 | 2 | Dark mode only, no toggle | 2026-04-17 | Fekry |
 | 3 | Gold accent (`--accent`) overrides HeroUI default blue | 2026-04-17 | Fekry |
 | 4 | Body font changed from system sans to Geist | 2026-04-17 | Fekry |
+| 5 | Layout Balance: 3-col default for stat/card grids, no orphaned items | 2026-04-18 | Fekry |
+
+---
+
+## Layout Balance
+
+### Rules
+
+1. Grid layouts must always produce visually balanced rows. If N items don't divide evenly into the column count, either adjust the column count or add/remove items to fill the grid. No orphaned items on a partial last row.
+2. Default stat/card grids: 3 columns. Only use more if the item count divides evenly.

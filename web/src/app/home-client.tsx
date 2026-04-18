@@ -241,9 +241,6 @@ export function StatsSection() {
     { label: "Sessions Played", value: stats?.totalSessions ?? 0 },
     { label: "Characters", value: stats?.totalCharacters ?? 0 },
     { label: "Events", value: stats?.totalEvents ?? 0 },
-    { label: "Narrations", value: stats?.totalNarrations ?? 0 },
-    { label: "Highest Level", value: stats?.highestLevel ?? 0 },
-    { label: "Parties", value: stats?.totalParties ?? 0 },
   ];
 
   return (
@@ -274,7 +271,7 @@ export function StatsSection() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          gridTemplateColumns: "repeat(3, 1fr)",
           gap: "1.25rem",
         }}
       >
