@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Accordion, Button, Chip, Skeleton } from "@heroui/react";
+import { Accordion, Button, Chip, Select, ListBoxItem, Skeleton } from "@heroui/react";
 import {
   BookOpen,
   ChatCircle,
@@ -421,35 +421,53 @@ export function JournalsClient() {
           }}
         >
           {/* Session filter */}
-          <select
-            value={sessionFilter}
-            onChange={(e) => setSessionFilter(e.target.value)}
-            style={selectStyle}
+          <Select
             aria-label="Filter by session"
+            placeholder="All Sessions"
+            selectedKey={sessionFilter}
+            onSelectionChange={(key) => setSessionFilter(key as string)}
+            style={{ minWidth: "10rem" }}
           >
-            <option value="">All Sessions</option>
-            {journals.map((j) => (
-              <option key={j.sessionId} value={j.sessionId}>
-                {j.partyName} — {formatDate(j.startedAt)}
-              </option>
-            ))}
-          </select>
+            <Select.Trigger style={selectStyle}>
+              <Select.Value />
+            </Select.Trigger>
+            <Select.Popover
+              className="rounded-lg border border-divider shadow-lg z-50"
+              style={{ background: "var(--surface)" }}
+            >
+              <ListBoxItem id="" textValue="All Sessions">All Sessions</ListBoxItem>
+              {journals.map((j) => (
+                <ListBoxItem key={j.sessionId} id={j.sessionId} textValue={`${j.partyName} — ${formatDate(j.startedAt)}`}>
+                  {j.partyName} — {formatDate(j.startedAt)}
+                </ListBoxItem>
+              ))}
+            </Select.Popover>
+          </Select>
 
           {/* Character filter */}
           {allCharacters.length > 0 && (
-            <select
-              value={characterFilter}
-              onChange={(e) => setCharacterFilter(e.target.value)}
-              style={selectStyle}
+            <Select
               aria-label="Filter by character"
+              placeholder="All Characters"
+              selectedKey={characterFilter}
+              onSelectionChange={(key) => setCharacterFilter(key as string)}
+              style={{ minWidth: "10rem" }}
             >
-              <option value="">All Characters</option>
-              {allCharacters.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+              <Select.Trigger style={selectStyle}>
+                <Select.Value />
+              </Select.Trigger>
+              <Select.Popover
+                className="rounded-lg border border-divider shadow-lg z-50"
+                style={{ background: "var(--surface)" }}
+              >
+                <ListBoxItem id="" textValue="All Characters">All Characters</ListBoxItem>
+                {allCharacters.map((name) => (
+                  <ListBoxItem key={name} id={name} textValue={name}>
+                    {name}
+                  </ListBoxItem>
+                ))}
+              </Select.Popover>
+            </Select>
           )}
 
           {hasFilters && (

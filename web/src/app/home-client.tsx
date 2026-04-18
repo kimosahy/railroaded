@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Card, Skeleton } from "@heroui/react";
+import { Button, Card, Input, Skeleton } from "@heroui/react";
 import {
   BookOpenText,
   Eye,
@@ -532,7 +532,7 @@ export function WaitlistSection() {
               justifyContent: "center",
             }}
           >
-            <input
+            <Input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -540,17 +540,7 @@ export function WaitlistSection() {
               style={{
                 flex: 1,
                 minWidth: "220px",
-                padding: "0.85rem 1rem",
-                borderRadius: "8px",
-                border: "1px solid var(--border)",
-                background: "var(--surface)",
-                color: "var(--foreground)",
-                fontSize: "1rem",
-                fontFamily: "var(--font-prose)",
-                outline: "none",
               }}
-              onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
-              onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
             />
             <Button type="submit" variant="primary">
               Get Early Access

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   CaretDown,
   List,
   X,
 } from "@phosphor-icons/react";
+import { Dropdown } from "@heroui/react";
 import Image from "next/image";
 import NextLink from "next/link";
 
@@ -45,6 +46,7 @@ function NavDropdown({
   desktopSize?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const router = useRouter();
 
   return (
     <div
@@ -52,45 +54,52 @@ function NavDropdown({
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={() => setOpen(false)}
     >
-      <button
-        className="flex items-center gap-1 text-foreground/70 hover:text-foreground transition-colors"
-        style={{
-          ...(desktopSize ? { fontSize: "17px" } : { fontSize: "14px" }),
-          ...(isActive
-            ? {
-                background: "rgba(201,168,76,0.15)",
-                borderRadius: "6px",
-                padding: "0.25rem 0.6rem",
-                color: "var(--heroui-primary-500)",
-              }
-            : {}),
-        }}
-        onClick={() => setOpen(!open)}
-        type="button"
-      >
-        {label}
-        <CaretDown
-          size={12}
-          className={`transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
-      {open && (
-        <div className="absolute top-full left-0 mt-1 min-w-[160px] rounded-lg border border-divider bg-content1 p-1 shadow-lg z-50">
-          {items.map((item) => (
-            <NextLink
-              key={item.href}
-              href={item.href}
-              className="block w-full rounded-md px-3 py-2 text-sm text-foreground/70 hover:text-foreground hover:bg-content2 transition-colors no-underline"
-              onClick={() => {
-                setOpen(false);
-                onNavigate?.();
-              }}
-            >
-              {item.label}
-            </NextLink>
-          ))}
-        </div>
-      )}
+      <Dropdown isOpen={open} onOpenChange={setOpen}>
+        <Dropdown.Trigger
+          className="flex items-center gap-1 text-foreground/70 hover:text-foreground transition-colors bg-transparent border-none cursor-pointer"
+          style={{
+            ...(desktopSize ? { fontSize: "17px" } : { fontSize: "14px" }),
+            padding: "0.25rem 0.6rem",
+            ...(isActive
+              ? {
+                  background: "rgba(201,168,76,0.15)",
+                  borderRadius: "9999px",
+                  color: "var(--heroui-primary-500)",
+                }
+              : {}),
+          }}
+        >
+          {label}
+          <CaretDown
+            size={12}
+            className={`transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </Dropdown.Trigger>
+        <Dropdown.Popover
+          placement="bottom start"
+          className="min-w-[160px] rounded-lg border border-divider p-1 shadow-lg z-50"
+          style={{ background: "var(--overlay, var(--surface))" }}
+        >
+          <Dropdown.Menu
+            onAction={(key) => {
+              router.push(key as string);
+              setOpen(false);
+              onNavigate?.();
+            }}
+          >
+            {items.map((item) => (
+              <Dropdown.Item
+                key={item.href}
+                id={item.href}
+                className="rounded-md px-3 py-2 text-sm text-foreground/70 hover:text-foreground cursor-pointer transition-colors"
+                style={{ background: "transparent" }}
+              >
+                {item.label}
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
     </div>
   );
 }
@@ -119,8 +128,8 @@ export function Navbar() {
           </span>
         </NextLink>
 
-        {/* Desktop links */}
-        <div className="hidden md:flex items-center gap-6">
+        {/* Desktop links — centered absolutely */}
+        <div className="hidden md:flex items-center gap-6" style={{ position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
           {mainLinks.map((link) => {
             const active = pathname === link.href;
             return (
@@ -130,11 +139,11 @@ export function Navbar() {
                 className="text-foreground/70 hover:text-foreground transition-colors no-underline"
                 style={{
                   fontSize: "17px",
+                  padding: "0.25rem 0.6rem",
                   ...(active
                     ? {
                         background: "rgba(201,168,76,0.15)",
-                        borderRadius: "6px",
-                        padding: "0.25rem 0.6rem",
+                        borderRadius: "9999px",
                         color: "var(--heroui-primary-500)",
                       }
                     : {}),
@@ -157,6 +166,23 @@ export function Navbar() {
             desktopSize
           />
         </div>
+
+        {/* Play CTA — far right */}
+        <NextLink
+          href="/#play"
+          className="hidden md:flex items-center no-underline"
+          style={{
+            fontSize: "17px",
+            padding: "0.25rem 0.75rem",
+            border: "1px solid rgba(201,168,76,0.5)",
+            borderRadius: "9999px",
+            color: "var(--heroui-primary-500)",
+            background: "rgba(201,168,76,0.08)",
+            transition: "background 0.2s, border-color 0.2s",
+          }}
+        >
+          Play
+        </NextLink>
 
         {/* Hamburger */}
         <button
