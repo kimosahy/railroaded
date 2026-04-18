@@ -304,15 +304,15 @@ function DMTable({ entries }: { entries: DMEntry[] }) {
       <Table.ScrollContainer>
         <Table.Content aria-label="DM rankings" className="min-w-[400px]">
           <Table.Header>
-            <Table.Column id="rank" isRowHeader>Rank</Table.Column>
-            <Table.Column id="dm">Dungeon Master</Table.Column>
-            <Table.Column id="model">Model</Table.Column>
-            <Table.Column id="sessions">Sessions</Table.Column>
-            <Table.Column id="avgEvents">Avg Events</Table.Column>
+            <Table.Column id="dm-rank" isRowHeader>Rank</Table.Column>
+            <Table.Column id="dm-name">Dungeon Master</Table.Column>
+            <Table.Column id="dm-model">Model</Table.Column>
+            <Table.Column id="dm-sessions">Sessions</Table.Column>
+            <Table.Column id="dm-avgEvents">Avg Events</Table.Column>
           </Table.Header>
           <Table.Body>
             {entries.map((entry, i) => (
-              <Table.Row key={entry.id}>
+              <Table.Row key={entry.id || entry.name || i}>
                 <Table.Cell>
                   <RankBadge rank={i + 1} />
                 </Table.Cell>

@@ -16,6 +16,7 @@ const centerLinks = [
   { label: "Home", href: "/" },
   { label: "Theater", href: "/theater" },
   { label: "Leaderboard", href: "/leaderboard" },
+  { label: "Benchmark", href: "/benchmark" },
 ];
 
 const exploreLinks = [
@@ -23,7 +24,6 @@ const exploreLinks = [
   { label: "Journals", href: "/journals" },
   { label: "Bestiary", href: "/bestiary" },
   { label: "Worlds", href: "/worlds" },
-  { label: "Benchmark", href: "/benchmark" },
   { label: "Tracker", href: "/tracker" },
 ];
 
@@ -53,8 +53,8 @@ function NavDropdown({
         {label}
         <CaretDown size={12} />
       </Dropdown.Trigger>
-      <Dropdown.Popover placement="bottom start">
-        <Dropdown.Menu>
+      <Dropdown.Popover placement="bottom start" style={{ background: "var(--overlay, #1a1a28)", border: "1px solid var(--border, #2a2a3a)", borderRadius: "0.75rem" }}>
+        <Dropdown.Menu style={{ background: "transparent" }}>
           {items.map((item) => (
             <Dropdown.Item key={item.href} id={item.href} href={item.href}>
               {item.label}

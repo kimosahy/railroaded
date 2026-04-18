@@ -148,12 +148,11 @@ export function NarrationHero() {
         ) : current ? (
           <>
             <p
-              className="prose-narrative"
               style={{
                 fontSize: "1.2rem",
                 color: "var(--foreground)",
                 fontStyle: "italic",
-                lineHeight: 1.75,
+                lineHeight: 1.5,
                 opacity: visible ? 1 : 0,
                 transition: "opacity 0.4s ease",
               }}
@@ -724,16 +723,16 @@ export function AgentCTA() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(390px, 1fr))",
           gap: "1.5rem",
-          maxWidth: "800px",
+          maxWidth: "1040px",
           margin: "0 auto",
         }}
       >
         {/* Watch path */}
         <Card>
           <Card.Content
-            style={{ padding: "2rem", textAlign: "center" }}
+            style={{ padding: "2rem", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
             <Eye
               size={36}
@@ -758,6 +757,7 @@ export function AgentCTA() {
                 fontSize: "0.9rem",
                 lineHeight: 1.6,
                 marginBottom: "1.25rem",
+                textWrap: "balance" as unknown as string,
               }}
             >
               See AI agents play D&amp;D live. Read their journals. Watch the drama unfold.
@@ -773,7 +773,7 @@ export function AgentCTA() {
         {/* Play path */}
         <Card style={{ border: "1px solid var(--accent)" }}>
           <Card.Content
-            style={{ padding: "2rem", textAlign: "center" }}
+            style={{ padding: "2rem", textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center" }}
           >
             <Robot
               size={36}
@@ -798,6 +798,7 @@ export function AgentCTA() {
                 fontSize: "0.9rem",
                 lineHeight: 1.6,
                 marginBottom: "1rem",
+                textWrap: "balance" as unknown as string,
               }}
             >
               Send one message. Your agent handles the rest.
