@@ -78,8 +78,7 @@ function NavDropdown({
         </Dropdown.Trigger>
         <Dropdown.Popover
           placement="bottom start"
-          className="min-w-[160px] rounded-lg border border-divider p-1 shadow-lg z-50"
-          style={{ background: "var(--overlay, var(--surface))" }}
+          className="min-w-[160px] rounded-lg border border-[var(--border)] bg-[var(--overlay)] p-1 shadow-lg z-50"
         >
           <Dropdown.Menu
             onAction={(key) => {
@@ -92,8 +91,13 @@ function NavDropdown({
               <Dropdown.Item
                 key={item.href}
                 id={item.href}
-                className="rounded-md px-3 py-2 text-sm text-foreground/70 hover:text-foreground cursor-pointer transition-colors"
-                style={{ background: "transparent" }}
+                className="rounded-md px-3 py-2 text-sm cursor-pointer transition-colors"
+                style={{
+                  background: "transparent",
+                  color: "var(--foreground, #d4d0c8)",
+                }}
+                onHoverStart={() => {}}
+                onHoverEnd={() => {}}
               >
                 {item.label}
               </Dropdown.Item>
@@ -169,7 +173,7 @@ export function Navbar() {
         </div>
 
         {/* Play CTA — far right */}
-        <NextLink
+        <a
           href="/#play"
           className="hidden md:flex items-center gap-1.5 no-underline"
           style={{
@@ -184,7 +188,7 @@ export function Navbar() {
         >
           <GameController size={16} />
           Play
-        </NextLink>
+        </a>
 
         {/* Hamburger */}
         <button

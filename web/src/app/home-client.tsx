@@ -527,9 +527,10 @@ export function WaitlistSection() {
           <div
             style={{
               display: "flex",
-              gap: "0.5rem",
+              gap: "0.75rem",
               flexWrap: "wrap",
               justifyContent: "center",
+              alignItems: "flex-start",
             }}
           >
             <Input
@@ -537,12 +538,14 @@ export function WaitlistSection() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
+              className="rounded-full"
               style={{
                 flex: 1,
-                minWidth: "220px",
+                minWidth: "240px",
+                borderRadius: "9999px",
               }}
             />
-            <Button type="submit" variant="primary">
+            <Button type="submit" variant="primary" className="rounded-full" style={{ borderRadius: "9999px" }}>
               Get Early Access
             </Button>
           </div>

@@ -63,3 +63,22 @@ h1, h2, h3, h4 {
   font-family: var(--font-prose);
   line-height: 1.8;
 }
+
+/* Smooth scroll for hash navigation */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Dropdown item hover — gold accent (MF-STD) */
+[data-slot="dropdown-item"]:hover,
+[data-heroui-dropdown-item]:hover {
+  background: rgba(201, 168, 76, 0.1) !important;
+  color: var(--foreground) !important;
+}
+
+/* Override any default light-mode dropdown borders */
+[data-slot="popover"],
+[data-heroui-dropdown-menu] {
+  border-color: var(--border) !important;
+  background: var(--overlay) !important;
+}
