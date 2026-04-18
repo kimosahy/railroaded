@@ -470,7 +470,7 @@ export function WaitlistSection() {
 
   return (
     <section
-      id="waitlist"
+      id="play"
       style={{
         padding: "5rem 2rem",
         maxWidth: "600px",
