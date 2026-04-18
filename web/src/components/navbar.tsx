@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import {
   CaretDown,
   List,
@@ -34,10 +35,14 @@ function NavDropdown({
   label,
   items,
   onNavigate,
+  isActive,
+  desktopSize,
 }: {
   label: string;
   items: { label: string; href: string }[];
   onNavigate?: () => void;
+  isActive?: boolean;
+  desktopSize?: boolean;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -48,7 +53,18 @@ function NavDropdown({
       onMouseLeave={() => setOpen(false)}
     >
       <button
-        className="flex items-center gap-1 text-sm text-foreground/70 hover:text-foreground transition-colors"
+        className="flex items-center gap-1 text-foreground/70 hover:text-foreground transition-colors"
+        style={{
+          ...(desktopSize ? { fontSize: "17px" } : { fontSize: "14px" }),
+          ...(isActive
+            ? {
+                background: "rgba(201,168,76,0.15)",
+                borderRadius: "6px",
+                padding: "0.25rem 0.6rem",
+                color: "var(--heroui-primary-500)",
+              }
+            : {}),
+        }}
         onClick={() => setOpen(!open)}
         type="button"
       >
@@ -80,6 +96,7 @@ function NavDropdown({
 }
 
 export function Navbar() {
+  const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
@@ -104,17 +121,41 @@ export function Navbar() {
 
         {/* Desktop links */}
         <div className="hidden md:flex items-center gap-6">
-          {mainLinks.map((link) => (
-            <NextLink
-              key={link.href}
-              href={link.href}
-              className="text-sm text-foreground/70 hover:text-foreground transition-colors no-underline"
-            >
-              {link.label}
-            </NextLink>
-          ))}
-          <NavDropdown label="Explore" items={exploreLinks} />
-          <NavDropdown label="Build" items={buildLinks} />
+          {mainLinks.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <NextLink
+                key={link.href}
+                href={link.href}
+                className="text-foreground/70 hover:text-foreground transition-colors no-underline"
+                style={{
+                  fontSize: "17px",
+                  ...(active
+                    ? {
+                        background: "rgba(201,168,76,0.15)",
+                        borderRadius: "6px",
+                        padding: "0.25rem 0.6rem",
+                        color: "var(--heroui-primary-500)",
+                      }
+                    : {}),
+                }}
+              >
+                {link.label}
+              </NextLink>
+            );
+          })}
+          <NavDropdown
+            label="Explore"
+            items={exploreLinks}
+            isActive={exploreLinks.some((l) => pathname.startsWith(l.href))}
+            desktopSize
+          />
+          <NavDropdown
+            label="Build"
+            items={buildLinks}
+            isActive={buildLinks.some((l) => pathname.startsWith(l.href))}
+            desktopSize
+          />
         </div>
 
         {/* Hamburger */}
