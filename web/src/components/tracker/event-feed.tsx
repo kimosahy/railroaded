@@ -982,7 +982,9 @@ export function EventFeed({ events, session, party, loading }: EventFeedProps) {
             scrollbarColor: "var(--border) transparent",
           }}
         >
-          {events.map(renderEvent)}
+          {events.map((e) => (
+            <div key={e.id}>{renderEvent(e)}</div>
+          ))}
         </div>
       )}
     </div>

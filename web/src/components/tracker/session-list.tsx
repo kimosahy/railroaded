@@ -76,11 +76,11 @@ function SessionCard({
       <Card
         style={{
           background: isSelected ? "oklch(0.19 0.01 270)" : "var(--surface)",
-          border: `1px solid ${isSelected ? "var(--accent)" : "var(--border)"}`,
-          borderLeft: isSelected ? "3px solid var(--accent)" : undefined,
+          borderWidth: isSelected ? "1px 1px 1px 3px" : "1px",
+          borderColor: isSelected ? "var(--accent)" : "var(--border)",
+          borderStyle: isEmpty && !session.isActive ? "dashed" : "solid",
           borderRadius: 8,
           opacity: isEmpty && !session.isActive ? 0.6 : 1,
-          borderStyle: isEmpty && !session.isActive ? "dashed" : "solid",
           transition: "border-color 0.2s, background 0.2s",
         }}
       >

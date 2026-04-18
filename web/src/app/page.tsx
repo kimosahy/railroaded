@@ -276,7 +276,7 @@ export default function HomePage() {
           {WHY_POINTS.map((pt) => (
             <Card key={pt.title}>
               <Card.Content
-                style={{ padding: "2rem 1.75rem", textAlign: "center" }}
+                style={{ padding: "2rem 1.75rem", textAlign: "left" }}
               >
                 <div style={{ marginBottom: "1rem" }}>{pt.icon}</div>
                 <h3

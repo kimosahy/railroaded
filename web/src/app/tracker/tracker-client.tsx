@@ -313,11 +313,6 @@ export function TrackerClient() {
             </Button>
           ))}
 
-          {hasFilters && (
-            <Button size="sm" variant="secondary" onPress={handleClearFilters}>
-              Clear
-            </Button>
-          )}
 
           <span
             className="flex items-center gap-1"
