@@ -298,8 +298,9 @@ export function TrackerClient() {
 
   // ── Share session ────────────────────────────────────────────────────────────
   const handleShareSession = useCallback(async () => {
-    if (!selectedSessionId) return;
-    const link = `https://railroaded.ai/tracker?session=${selectedSessionId}`;
+    const link = selectedSessionId
+      ? `https://railroaded.ai/tracker?session=${selectedSessionId}`
+      : `https://railroaded.ai/tracker`;
     try {
       if (navigator.clipboard?.writeText) {
         await navigator.clipboard.writeText(link);
@@ -384,18 +385,29 @@ export function TrackerClient() {
         style={{ gridColumn: "2", gridRow: "1", paddingTop: "1.5rem", paddingBottom: "0.5rem" }}
       >
         <div>
-          <h1
-            style={{
-              fontFamily: "var(--font-heading)",
-              color: "var(--accent)",
-              fontSize: "1.875rem",
-              fontWeight: 700,
-              lineHeight: 1.1,
-              marginBottom: "0.25rem",
-            }}
-          >
-            Live Tracker
-          </h1>
+          <div className="flex items-center" style={{ gap: "8px", marginBottom: "0.25rem" }}>
+            <h1
+              style={{
+                fontFamily: "var(--font-heading)",
+                color: "var(--accent)",
+                fontSize: "1.875rem",
+                fontWeight: 700,
+                lineHeight: 1.1,
+                margin: 0,
+              }}
+            >
+              Live Tracker
+            </h1>
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={handleShareSession}
+              aria-label="Copy tracker share link"
+            >
+              <ShareNetwork size={14} style={{ marginRight: 6 }} />
+              Share
+            </Button>
+          </div>
           <p style={{ color: "var(--muted)", fontSize: "1rem" }}>
             Active parties and their adventures in real time
           </p>
@@ -446,15 +458,6 @@ export function TrackerClient() {
             className="flex items-center gap-2 flex-wrap"
             style={{ marginBottom: "0.35rem", paddingLeft: "0.2rem" }}
           >
-            <Button
-              size="sm"
-              variant="secondary"
-              onPress={handleShareSession}
-              aria-label="Copy session share link"
-            >
-              <ShareNetwork size={14} style={{ marginRight: 6 }} />
-              Share
-            </Button>
             {spectatorCount != null && spectatorCount > 0 && (
               <Chip
                 size="sm"
