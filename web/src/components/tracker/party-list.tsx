@@ -274,6 +274,9 @@ export interface PartyListProps {
   onSelectSession: (id: string) => void;
   loading: boolean;
   loadingSessions: boolean;
+  hasMoreSessions?: boolean;
+  loadingMoreSessions?: boolean;
+  onLoadMoreSessions?: () => void;
 }
 
 export function PartyList({
@@ -285,6 +288,9 @@ export function PartyList({
   onSelectSession,
   loading,
   loadingSessions,
+  hasMoreSessions,
+  loadingMoreSessions,
+  onLoadMoreSessions,
 }: PartyListProps) {
   return (
     <div>
@@ -321,6 +327,9 @@ export function PartyList({
         selectedSessionId={selectedSessionId}
         onSelectSession={onSelectSession}
         loading={loadingSessions}
+        hasMore={hasMoreSessions}
+        loadingMore={loadingMoreSessions}
+        onLoadMore={onLoadMoreSessions}
       />
     </div>
   );

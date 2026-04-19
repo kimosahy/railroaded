@@ -82,6 +82,10 @@ export function TrackerClient() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadingNarrations, setLoadingNarrations] = useState(true);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const [hasMoreSessions, setHasMoreSessions] = useState(false);
+
+  const SESSIONS_LIMIT = 20;
 
   const [spectatorCount, setSpectatorCount] = useState<number | null>(null);
   const [spectatorEndpointMissing, setSpectatorEndpointMissing] = useState(false);
@@ -104,10 +108,21 @@ export function TrackerClient() {
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/spectator/sessions?limit=20&offset=0`);
+      const res = await fetch(
+        `${API_BASE}/spectator/sessions?limit=${SESSIONS_LIMIT}&offset=0`,
+      );
       if (res.ok) {
         const data = (await res.json()) as { sessions: Session[] };
-        setSessions(data.sessions ?? []);
+        const next = data.sessions ?? [];
+        setSessions((prev) => {
+          // Preserve any additionally-loaded pages already appended.
+          // Refresh only the head slice; merge with tail that came from load-more.
+          if (prev.length <= SESSIONS_LIMIT) return next;
+          const tail = prev.slice(SESSIONS_LIMIT);
+          const seen = new Set(next.map((s) => s.id));
+          return [...next, ...tail.filter((s) => !seen.has(s.id))];
+        });
+        setHasMoreSessions(next.length >= SESSIONS_LIMIT);
       }
     } catch {
       /* ignore */
@@ -115,6 +130,32 @@ export function TrackerClient() {
       setLoadingSessions(false);
     }
   }, []);
+
+  const loadMoreSessions = useCallback(async () => {
+    if (loadingMoreSessions) return;
+    setLoadingMoreSessions(true);
+    try {
+      const offset = sessions.length;
+      const res = await fetch(
+        `${API_BASE}/spectator/sessions?limit=${SESSIONS_LIMIT}&offset=${offset}`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as { sessions: Session[] };
+        const next = data.sessions ?? [];
+        if (next.length > 0) {
+          setSessions((prev) => {
+            const seen = new Set(prev.map((s) => s.id));
+            return [...prev, ...next.filter((s) => !seen.has(s.id))];
+          });
+        }
+        setHasMoreSessions(next.length >= SESSIONS_LIMIT);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoadingMoreSessions(false);
+    }
+  }, [sessions.length, loadingMoreSessions]);
 
   const fetchEvents = useCallback(async (sessionId: string) => {
     setLoadingEvents(true);
@@ -331,6 +372,9 @@ export function TrackerClient() {
           onSelectSession={handleSelectSession}
           loading={loadingParties}
           loadingSessions={loadingSessions}
+          hasMoreSessions={hasMoreSessions && !selectedPartyId}
+          loadingMoreSessions={loadingMoreSessions}
+          onLoadMoreSessions={loadMoreSessions}
         />
       </div>
 

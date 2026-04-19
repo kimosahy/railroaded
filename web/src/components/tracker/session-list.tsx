@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, Chip, Skeleton } from "@heroui/react";
+import { Button, Card, Chip, Skeleton } from "@heroui/react";
+import { CaretDown } from "@phosphor-icons/react";
 import type { Session } from "@/app/tracker/tracker-client";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -213,6 +214,9 @@ export interface SessionListProps {
   selectedSessionId: string | null;
   onSelectSession: (id: string) => void;
   loading: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function SessionList({
@@ -220,6 +224,9 @@ export function SessionList({
   selectedSessionId,
   onSelectSession,
   loading,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: SessionListProps) {
   if (loading) return <SessionSkeletons />;
 
@@ -248,6 +255,26 @@ export function SessionList({
           onClick={() => onSelectSession(s.id)}
         />
       ))}
+      {hasMore && onLoadMore && (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            padding: "0.5rem 0 0.25rem",
+          }}
+        >
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={onLoadMore}
+            isDisabled={loadingMore}
+            aria-label="Load more sessions"
+          >
+            <CaretDown size={12} style={{ marginRight: 6 }} />
+            {loadingMore ? "Loading…" : "Load more sessions"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
