@@ -1,16 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Accordion, Button, Chip, Select, ListBoxItem, Skeleton } from "@heroui/react";
+import { useSearchParams } from "next/navigation";
+import { Accordion, Avatar, Button, Chip, Select, ListBoxItem, Skeleton } from "@heroui/react";
 import {
   BookOpen,
   ChatCircle,
   Crosshair,
   RssSimple,
+  ShareNetwork,
   Skull,
   Sparkle,
   Sword,
   Users,
+  X,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
 
@@ -34,6 +37,17 @@ interface JournalSession {
   eventCount: number;
   events: GameEvent[];
 }
+
+interface Narration {
+  id: string;
+  content: string;
+  createdAt?: string;
+  sessionId?: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const NARRATOR_FALLBACK_AVATAR = "https://files.catbox.moe/ns31js.jpg";
 
 // ─── Event helpers ────────────────────────────────────────────────────────────
 
@@ -139,6 +153,155 @@ function formatDate(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function formatTime(iso?: string) {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+// ─── Toast ────────────────────────────────────────────────────────────────────
+
+function Toast({ message }: { message: string }) {
+  return (
+    <div
+      style={{
+        position: "fixed",
+        bottom: "2rem",
+        left: "50%",
+        transform: "translateX(-50%)",
+        background: "var(--surface)",
+        color: "var(--foreground)",
+        border: "1px solid var(--accent)",
+        borderRadius: "0.5rem",
+        padding: "0.625rem 1rem",
+        fontSize: "0.875rem",
+        fontFamily: "var(--font-heading)",
+        zIndex: 1000,
+        boxShadow: "0 6px 20px rgba(0,0,0,0.35)",
+        animation: "toastFade 2.2s ease-out forwards",
+      }}
+    >
+      {message}
+      <style>{`@keyframes toastFade { 0% { opacity: 0; transform: translate(-50%, 10px); } 15% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }`}</style>
+    </div>
+  );
+}
+
+// ─── Narrator panel ───────────────────────────────────────────────────────────
+
+function NarratorPanel({
+  narrations,
+  loading,
+  avatarUrl,
+  sessionScoped,
+}: {
+  narrations: Narration[];
+  loading: boolean;
+  avatarUrl: string;
+  sessionScoped: boolean;
+}) {
+  return (
+    <section
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "0.5rem",
+        padding: "1rem 1.25rem",
+        marginBottom: "1rem",
+        background: "var(--surface)",
+      }}
+    >
+      {/* Header */}
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          marginBottom: narrations.length > 0 ? "0.875rem" : 0,
+        }}
+      >
+        <Avatar size="md">
+          <Avatar.Image alt="Poormetheus" src={avatarUrl} />
+          <Avatar.Fallback
+            style={{
+              background: "var(--accent)",
+              color: "var(--background)",
+              fontFamily: "var(--font-heading)",
+              fontWeight: 700,
+            }}
+          >
+            P
+          </Avatar.Fallback>
+        </Avatar>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontFamily: "var(--font-heading)",
+              fontSize: "1rem",
+              color: "var(--accent)",
+              fontWeight: 600,
+              lineHeight: 1.2,
+            }}
+          >
+            Poormetheus
+          </div>
+          <div style={{ color: "var(--muted)", fontSize: "0.75rem", fontStyle: "italic" }}>
+            {sessionScoped ? "Narrating this session" : "Narrator — Chronicler of dungeons, narrator of fools."}
+          </div>
+        </div>
+      </header>
+
+      {/* Body */}
+      {loading ? (
+        <Skeleton style={{ height: 48, width: "100%", borderRadius: 4 }} />
+      ) : narrations.length === 0 ? (
+        <p
+          className="prose-narrative"
+          style={{
+            color: "var(--muted)",
+            fontSize: "0.875rem",
+            fontStyle: "italic",
+            margin: 0,
+          }}
+        >
+          The narrator is silent... for now.
+        </p>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+          {narrations.map((n) => (
+            <div
+              key={n.id}
+              style={{
+                paddingBottom: "0.625rem",
+                borderBottom: "1px dashed var(--border)",
+              }}
+            >
+              <p
+                className="prose-narrative"
+                style={{
+                  color: "var(--foreground)",
+                  fontSize: "0.9rem",
+                  margin: 0,
+                  lineHeight: 1.7,
+                }}
+              >
+                {n.content}
+              </p>
+              {n.createdAt && (
+                <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
+                  {formatTime(n.createdAt)}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -280,12 +443,31 @@ function SkeletonSessions() {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function JournalsClient() {
+  const searchParams = useSearchParams();
+
   const [journals, setJournals] = useState<JournalSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   const [characterFilter, setCharacterFilter] = useState("");
   const [sessionFilter, setSessionFilter] = useState("");
+
+  const [narrations, setNarrations] = useState<Narration[]>([]);
+  const [loadingNarrations, setLoadingNarrations] = useState(true);
+  const [narratorAvatar, setNarratorAvatar] = useState<string>(NARRATOR_FALLBACK_AVATAR);
+
+  const [toast, setToast] = useState<string | null>(null);
+
+  // ── Deep-link support ──────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const s = searchParams.get("session");
+    const c = searchParams.get("character");
+    if (s) setSessionFilter(s);
+    if (c) setCharacterFilter(c);
+  }, [searchParams]);
+
+  // ── Fetch journals ─────────────────────────────────────────────────────────
 
   const fetchJournals = useCallback(async () => {
     try {
@@ -303,6 +485,69 @@ export function JournalsClient() {
   useEffect(() => {
     fetchJournals();
   }, [fetchJournals]);
+
+  // ── Narrator avatar (try parties endpoint for Poormetheus) ─────────────────
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/spectator/parties`);
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          parties?: { members?: { name?: string; avatarUrl?: string }[] }[];
+        };
+        for (const p of data.parties ?? []) {
+          for (const m of p.members ?? []) {
+            if (m.name && /poormetheus/i.test(m.name) && m.avatarUrl) {
+              if (!cancelled) setNarratorAvatar(m.avatarUrl);
+              return;
+            }
+          }
+        }
+      } catch {
+        /* silent — fallback remains */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // ── Load narrations (global, or session-scoped when filter is set) ─────────
+
+  const fetchNarrations = useCallback(async (sessionId: string) => {
+    setLoadingNarrations(true);
+    try {
+      const url = sessionId
+        ? `${API_BASE}/spectator/sessions/${sessionId}/narrations`
+        : `${API_BASE}/spectator/narrations?limit=20`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        // Fallback to legacy endpoint pattern
+        if (sessionId) {
+          const alt = await fetch(`${API_BASE}/spectator/narrations/${sessionId}`);
+          if (alt.ok) {
+            const data = (await alt.json()) as { narrations?: Narration[] };
+            setNarrations(data.narrations ?? []);
+            return;
+          }
+        }
+        throw new Error("Failed");
+      }
+      const data = (await res.json()) as { narrations?: Narration[] };
+      const list = data.narrations ?? [];
+      setNarrations(sessionId ? list : list.slice().reverse());
+    } catch {
+      setNarrations([]);
+    } finally {
+      setLoadingNarrations(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNarrations(sessionFilter);
+  }, [sessionFilter, fetchNarrations]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
@@ -338,6 +583,32 @@ export function JournalsClient() {
   }, [journals, sessionFilter, characterFilter]);
 
   const hasFilters = !!(sessionFilter || characterFilter);
+  const bothFiltersSet = !!(sessionFilter && characterFilter);
+
+  // ── Share journal ──────────────────────────────────────────────────────────
+
+  const showToast = useCallback((msg: string) => {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 2200);
+  }, []);
+
+  const shareJournal = useCallback(
+    (sessionId: string) => {
+      const url =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/journals?session=${sessionId}`
+          : `/journals?session=${sessionId}`;
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        navigator.clipboard
+          .writeText(url)
+          .then(() => showToast("Link copied!"))
+          .catch(() => showToast("Copy failed — use Ctrl+C"));
+      } else {
+        showToast("Copy not supported");
+      }
+    },
+    [showToast],
+  );
 
   // ── Shared select style ────────────────────────────────────────────────────
 
@@ -409,6 +680,14 @@ export function JournalsClient() {
         </a>
       </header>
 
+      {/* Narrator panel — always shown, session-scoped when a session is selected */}
+      <NarratorPanel
+        narrations={narrations}
+        loading={loadingNarrations}
+        avatarUrl={narratorAvatar}
+        sessionScoped={!!sessionFilter}
+      />
+
       {/* Filters */}
       {!loading && journals.length > 0 && (
         <div
@@ -470,7 +749,8 @@ export function JournalsClient() {
             </Select>
           )}
 
-          {hasFilters && (
+          {/* Clear filters — prominent when both are set */}
+          {bothFiltersSet ? (
             <Button
               size="sm"
               variant="secondary"
@@ -479,8 +759,22 @@ export function JournalsClient() {
                 setCharacterFilter("");
               }}
             >
-              Clear
+              <X size={12} weight="bold" />
+              Clear filters
             </Button>
+          ) : (
+            hasFilters && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  setSessionFilter("");
+                  setCharacterFilter("");
+                }}
+              >
+                Clear
+              </Button>
+            )
           )}
         </div>
       )}
@@ -582,6 +876,40 @@ export function JournalsClient() {
                         {session.outcome}
                       </Chip>
                     )}
+                    {/* Share button */}
+                    <button
+                      type="button"
+                      aria-label="Share journal link"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        shareJournal(session.sessionId);
+                      }}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "0.25rem",
+                        background: "transparent",
+                        border: "1px solid var(--border)",
+                        borderRadius: "0.375rem",
+                        padding: "0.2rem 0.45rem",
+                        color: "var(--muted)",
+                        cursor: "pointer",
+                        fontSize: "0.7rem",
+                        flexShrink: 0,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.color = "var(--accent)";
+                        e.currentTarget.style.borderColor = "var(--accent)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = "var(--muted)";
+                        e.currentTarget.style.borderColor = "var(--border)";
+                      }}
+                    >
+                      <ShareNetwork size={11} weight="fill" />
+                      Share
+                    </button>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
                     <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
@@ -600,6 +928,9 @@ export function JournalsClient() {
           ))}
         </Accordion>
       )}
+
+      {/* Toast */}
+      {toast && <Toast message={toast} />}
     </div>
   );
 }
