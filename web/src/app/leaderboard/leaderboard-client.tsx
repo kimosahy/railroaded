@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Avatar, Chip, Skeleton, Table, Tabs } from "@heroui/react";
-import { Crown, Medal, Skull, Star, Sword, Trophy, Users } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, Coins, Crown, Medal, Skull, Star, Sword, Target, Trophy, Users } from "@phosphor-icons/react";
+import Link from "next/link";
 import { API_BASE } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,6 +23,7 @@ interface CharacterEntry {
   criticalHits?: number;
   timesKnockedOut?: number;
   goldEarned?: number;
+  description?: string;
 }
 
 interface PartyEntry {
@@ -158,6 +160,80 @@ interface CharacterTableProps {
   col5Key: keyof CharacterEntry;
 }
 
+function ExpandedDetails({ entry }: { entry: CharacterEntry }) {
+  const stats = [
+    { icon: <Sword size={13} weight="fill" />, label: "Monsters Killed", value: entry.monstersKilled ?? 0 },
+    { icon: <Target size={13} weight="fill" />, label: "Damage Dealt", value: (entry.totalDamageDealt ?? 0).toLocaleString() },
+    { icon: <Star size={13} weight="fill" />, label: "Critical Hits", value: entry.criticalHits ?? 0 },
+    { icon: <Skull size={13} weight="fill" />, label: "Times KO'd", value: entry.timesKnockedOut ?? 0 },
+    { icon: <Coins size={13} weight="fill" />, label: "Gold Earned", value: (entry.goldEarned ?? 0).toLocaleString() },
+  ];
+
+  return (
+    <div
+      style={{
+        padding: "0.875rem 1rem 0.875rem 3.5rem",
+        borderTop: "1px solid var(--border)",
+        background: "var(--surface)",
+      }}
+    >
+      {entry.description && (
+        <p
+          className="prose-narrative"
+          style={{
+            color: "var(--muted)",
+            fontSize: "0.85rem",
+            lineHeight: 1.7,
+            marginBottom: "0.75rem",
+            fontStyle: "italic",
+          }}
+        >
+          {entry.description}
+        </p>
+      )}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+          gap: "0.5rem",
+        }}
+      >
+        {stats.map((s) => (
+          <div
+            key={s.label}
+            style={{
+              padding: "0.4rem 0.5rem",
+              background: "var(--surface-secondary, var(--background))",
+              borderRadius: 6,
+              display: "flex",
+              alignItems: "center",
+              gap: "0.4rem",
+            }}
+          >
+            <span style={{ color: "var(--accent)", flexShrink: 0 }}>{s.icon}</span>
+            <div>
+              <div
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "0.6rem",
+                  color: "var(--muted)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                {s.label}
+              </div>
+              <div style={{ color: "var(--foreground)", fontSize: "0.8rem", fontWeight: 600 }}>
+                {s.value}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CharacterTable({
   entries,
   col3Label,
@@ -167,6 +243,8 @@ function CharacterTable({
   col5Label,
   col5Key,
 }: CharacterTableProps) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   if (entries.length === 0) {
     return (
       <EmptyState message="No adventurers ranked yet. The legends are still being written." />
@@ -185,49 +263,75 @@ function CharacterTable({
             <Table.Column>{col5Label}</Table.Column>
           </Table.Header>
           <Table.Body>
-            {entries.map((entry, i) => (
-              <Table.Row key={entry.id}>
-                <Table.Cell>
-                  <RankBadge rank={i + 1} />
-                </Table.Cell>
-                <Table.Cell>
-                  <div className="flex items-center gap-2">
-                    <CharacterAvatar entry={entry} />
-                    <div>
-                      <div
-                        style={{
-                          fontFamily: "var(--font-heading)",
-                          fontSize: "0.875rem",
-                          fontWeight: 600,
-                        }}
-                      >
-                        {entry.name}
+            {entries.flatMap((entry, i) => {
+              const isExpanded = expandedId === entry.id;
+              const rows = [
+                <Table.Row
+                  key={entry.id}
+                  style={{ cursor: "pointer" }}
+                  onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                >
+                  <Table.Cell>
+                    <RankBadge rank={i + 1} />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <div className="flex items-center gap-2">
+                      <CharacterAvatar entry={entry} />
+                      <div>
+                        <Link
+                          href={`/character/${entry.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            fontFamily: "var(--font-heading)",
+                            fontSize: "0.875rem",
+                            fontWeight: 600,
+                            color: "var(--foreground)",
+                            textDecoration: "none",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--foreground)")}
+                        >
+                          {entry.name}
+                        </Link>
+                        <div style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
+                          {entry.race} {entry.class}
+                        </div>
                       </div>
-                      <div style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
-                        {entry.race} {entry.class}
-                      </div>
+                      <span style={{ color: "var(--muted)", marginLeft: "auto" }}>
+                        {isExpanded ? <CaretUp size={12} /> : <CaretDown size={12} />}
+                      </span>
                     </div>
-                  </div>
-                </Table.Cell>
-                <Table.Cell>
-                  <span
-                    style={{
-                      color: "var(--accent)",
-                      fontFamily: "var(--font-heading)",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {((entry[col3Key] as number) ?? 0).toLocaleString()}
-                  </span>
-                </Table.Cell>
-                <Table.Cell>
-                  {((entry[col4Key] as number) ?? 0).toLocaleString()}
-                </Table.Cell>
-                <Table.Cell>
-                  {((entry[col5Key] as number) ?? 0).toLocaleString()}
-                </Table.Cell>
-              </Table.Row>
-            ))}
+                  </Table.Cell>
+                  <Table.Cell>
+                    <span
+                      style={{
+                        color: "var(--accent)",
+                        fontFamily: "var(--font-heading)",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {((entry[col3Key] as number) ?? 0).toLocaleString()}
+                    </span>
+                  </Table.Cell>
+                  <Table.Cell>
+                    {((entry[col4Key] as number) ?? 0).toLocaleString()}
+                  </Table.Cell>
+                  <Table.Cell>
+                    {((entry[col5Key] as number) ?? 0).toLocaleString()}
+                  </Table.Cell>
+                </Table.Row>,
+              ];
+              if (isExpanded) {
+                rows.push(
+                  <Table.Row key={`${entry.id}-details`}>
+                    <Table.Cell colSpan={5} style={{ padding: 0 }}>
+                      <ExpandedDetails entry={entry} />
+                    </Table.Cell>
+                  </Table.Row>
+                );
+              }
+              return rows;
+            })}
           </Table.Body>
         </Table.Content>
       </Table.ScrollContainer>

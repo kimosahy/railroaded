@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Avatar, Card, Chip, Skeleton } from "@heroui/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Avatar, Card, Chip, Input, ListBoxItem, Select, Skeleton } from "@heroui/react";
 import {
   Coins,
   Skull,
@@ -9,6 +9,7 @@ import {
   Target,
   UserCircle,
 } from "@phosphor-icons/react";
+import Link from "next/link";
 import { API_BASE } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -49,6 +50,10 @@ const CLASS_COLORS: Record<string, string> = {
   Warlock: "#7209b7",
   Sorcerer: "#c77dff",
 };
+
+const CLASS_OPTIONS = ["Fighter", "Rogue", "Cleric", "Wizard", "Ranger", "Barbarian", "Bard", "Druid", "Monk", "Paladin", "Warlock", "Sorcerer"];
+
+type SortKey = "name" | "level" | "xp";
 
 function getClassColor(cls: string): string {
   return CLASS_COLORS[cls] ?? "#c9a84c";
@@ -136,16 +141,21 @@ function CharacterCard({ character }: { character: Character }) {
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", flexWrap: "wrap" }}>
-              <span
+              <Link
+                href={`/character/${character.id}`}
+                onClick={(e) => e.stopPropagation()}
                 style={{
                   fontFamily: "var(--font-heading)",
                   fontSize: "0.95rem",
                   color: "var(--foreground)",
                   fontWeight: 600,
+                  textDecoration: "none",
                 }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "var(--foreground)")}
               >
                 {character.name}
-              </span>
+              </Link>
               {character.isAlive === false && (
                 <Skull size={14} color="var(--danger)" weight="fill" aria-label="Deceased" />
               )}
@@ -291,6 +301,9 @@ export function CharactersClient() {
   const [characters, setCharacters] = useState<Character[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [search, setSearch] = useState("");
+  const [classFilter, setClassFilter] = useState("");
+  const [sortBy, setSortBy] = useState<SortKey>("level");
 
   const fetchCharacters = useCallback(async () => {
     try {
@@ -309,10 +322,34 @@ export function CharactersClient() {
     fetchCharacters();
   }, [fetchCharacters]);
 
+  const filtered = useMemo(() => {
+    let list = [...characters];
+
+    // Search filter
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter((c) => c.name.toLowerCase().includes(q));
+    }
+
+    // Class filter
+    if (classFilter) {
+      list = list.filter((c) => c.class === classFilter);
+    }
+
+    // Sort
+    list.sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name);
+      if (sortBy === "xp") return b.xp - a.xp;
+      return b.level - a.level || b.xp - a.xp; // level default
+    });
+
+    return list;
+  }, [characters, search, classFilter, sortBy]);
+
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
       {/* Header */}
-      <header style={{ marginBottom: "2rem" }}>
+      <header style={{ marginBottom: "1.5rem" }}>
         <h1
           style={{
             fontFamily: "var(--font-heading)",
@@ -328,6 +365,67 @@ export function CharactersClient() {
           Every AI adventurer who has stepped into the dungeon.
         </p>
       </header>
+
+      {/* Filters */}
+      {!loading && !error && characters.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            gap: "0.75rem",
+            marginBottom: "1.5rem",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+          }}
+        >
+          <div style={{ flex: "1 1 200px", minWidth: 180 }}>
+            <Input
+              placeholder="Search by name…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="Search characters"
+            />
+          </div>
+          <div style={{ minWidth: 140 }}>
+            <Select
+              aria-label="Filter by class"
+              placeholder="All Classes"
+              selectedKey={classFilter}
+              onSelectionChange={(key) => setClassFilter(key as string)}
+            >
+              <Select.Trigger />
+              <Select.Popover
+                className="rounded-lg border border-divider shadow-lg z-50"
+                style={{ background: "var(--surface)" }}
+              >
+                <ListBoxItem id="" textValue="All Classes">All Classes</ListBoxItem>
+                {CLASS_OPTIONS.map((cls) => (
+                  <ListBoxItem key={cls} id={cls} textValue={cls}>
+                    {cls}
+                  </ListBoxItem>
+                ))}
+              </Select.Popover>
+            </Select>
+          </div>
+          <div style={{ minWidth: 130 }}>
+            <Select
+              aria-label="Sort by"
+              placeholder="Sort by"
+              selectedKey={sortBy}
+              onSelectionChange={(key) => { if (key) setSortBy(key as SortKey); }}
+            >
+              <Select.Trigger />
+              <Select.Popover
+                className="rounded-lg border border-divider shadow-lg z-50"
+                style={{ background: "var(--surface)" }}
+              >
+                <ListBoxItem id="level" textValue="Level">Level</ListBoxItem>
+                <ListBoxItem id="xp" textValue="XP">XP</ListBoxItem>
+                <ListBoxItem id="name" textValue="Name">Name</ListBoxItem>
+              </Select.Popover>
+            </Select>
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -358,8 +456,15 @@ export function CharactersClient() {
         </div>
       )}
 
+      {/* No results from filter */}
+      {!loading && !error && characters.length > 0 && filtered.length === 0 && (
+        <p style={{ color: "var(--muted)", textAlign: "center", padding: "3rem 0" }}>
+          No characters match your filters.
+        </p>
+      )}
+
       {/* Grid */}
-      {!loading && !error && characters.length > 0 && (
+      {!loading && !error && filtered.length > 0 && (
         <div
           style={{
             display: "grid",
@@ -367,7 +472,7 @@ export function CharactersClient() {
             gap: "1rem",
           }}
         >
-          {characters.map((c) => (
+          {filtered.map((c) => (
             <CharacterCard key={c.id} character={c} />
           ))}
         </div>

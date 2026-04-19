@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Avatar, Card, Chip, Skeleton } from "@heroui/react";
-import { Skull, Star } from "@phosphor-icons/react";
+import { CaretDown, CaretUp, Skull, Star } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -125,12 +125,16 @@ function SkeletonGrid() {
 }
 
 function MonsterCard({ monster }: { monster: Monster }) {
+  const [expanded, setExpanded] = useState(false);
   const avatarSrc = safeUrl(monster.avatarUrl);
   const color = monsterColor(monster.name);
   const initials = monster.name.slice(0, 2).toUpperCase();
 
   return (
-    <Card>
+    <Card
+      style={{ cursor: "pointer", transition: "border-color 0.15s" }}
+      onClick={() => setExpanded((e) => !e)}
+    >
       <Card.Content style={{ padding: "1.25rem" }}>
         {/* Header */}
         <div style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
@@ -165,38 +169,98 @@ function MonsterCard({ monster }: { monster: Monster }) {
                 <Star size={12} color="var(--accent)" weight="fill" aria-label="Custom" />
               )}
             </div>
-            {/* Stat line */}
+            {/* Compact stat line */}
             <div style={{ color: "var(--muted)", fontSize: "0.775rem", marginTop: "0.15rem" }}>
-              HP {monster.hp} · AC {monster.ac} · CR {formatCR(monster.cr)}
-              {monster.xp ? ` · ${monster.xp.toLocaleString()} XP` : ""}
+              CR {formatCR(monster.cr)}
+              {(monster.count ?? 0) > 0 && (
+                <span> · {monster.count} encounter{(monster.count ?? 0) > 1 ? "s" : ""}</span>
+              )}
             </div>
           </div>
 
-          {/* Encounter count */}
-          {(monster.count ?? 0) > 0 && (
-            <Chip size="sm" variant="soft" color="danger">
-              <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-                <Skull size={11} weight="fill" />
-                {monster.count}
-              </span>
-            </Chip>
-          )}
+          {/* Expand indicator */}
+          <span style={{ color: "var(--muted)", flexShrink: 0, marginTop: 2 }}>
+            {expanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
+          </span>
         </div>
 
-        {/* Lore */}
-        {monster.lore && (
-          <p
-            className="prose-narrative"
+        {/* Expanded stat block */}
+        {expanded && (
+          <div
             style={{
-              color: "var(--muted)",
-              fontSize: "0.85rem",
-              marginTop: "0.75rem",
-              marginBottom: 0,
-              lineHeight: 1.6,
+              marginTop: "0.875rem",
+              paddingTop: "0.875rem",
+              borderTop: "1px solid var(--border)",
             }}
           >
-            {monster.lore}
-          </p>
+            {/* Stat grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "0.5rem",
+                marginBottom: monster.lore ? "0.875rem" : 0,
+              }}
+            >
+              {[
+                { label: "HP", value: monster.hp },
+                { label: "AC", value: monster.ac },
+                { label: "CR", value: formatCR(monster.cr) },
+                { label: "XP", value: monster.xp ? monster.xp.toLocaleString() : "—" },
+                {
+                  label: "Encounters",
+                  value: (monster.count ?? 0),
+                },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  style={{
+                    padding: "0.5rem 0.625rem",
+                    background: "var(--surface)",
+                    borderRadius: 6,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontFamily: "var(--font-heading)",
+                      fontSize: "0.6rem",
+                      color: "var(--muted)",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    {stat.label}
+                  </div>
+                  <div
+                    style={{
+                      color: "var(--foreground)",
+                      fontSize: "0.875rem",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {stat.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Lore */}
+            {monster.lore && (
+              <p
+                className="prose-narrative"
+                style={{
+                  color: "var(--muted)",
+                  fontSize: "0.85rem",
+                  marginTop: 0,
+                  marginBottom: 0,
+                  lineHeight: 1.7,
+                  fontStyle: "italic",
+                }}
+              >
+                {monster.lore}
+              </p>
+            )}
+          </div>
         )}
       </Card.Content>
     </Card>
@@ -227,13 +291,24 @@ export function BestiaryClient() {
     fetchBestiary();
   }, [fetchBestiary]);
 
-  // Group monsters by CR tier
+  // Split known vs undiscovered (custom)
+  const { knownMonsters, undiscovered } = useMemo(() => {
+    const known: Monster[] = [];
+    const custom: Monster[] = [];
+    for (const m of monsters) {
+      if (m.isCustom) custom.push(m);
+      else known.push(m);
+    }
+    return { knownMonsters: known, undiscovered: custom };
+  }, [monsters]);
+
+  // Group known monsters by CR tier
   const grouped = useMemo(() => {
     const map = new Map<string, Monster[]>();
     for (const tier of CR_TIERS) {
       map.set(tier.label, []);
     }
-    for (const m of monsters) {
+    for (const m of knownMonsters) {
       const tier = getTier(m.cr);
       map.get(tier)?.push(m);
     }
@@ -242,7 +317,7 @@ export function BestiaryClient() {
       list.sort((a, b) => parseCR(a.cr) - parseCR(b.cr));
     }
     return map;
-  }, [monsters]);
+  }, [knownMonsters]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -260,7 +335,7 @@ export function BestiaryClient() {
           Bestiary
         </h1>
         <p style={{ color: "var(--muted)" }}>
-          Every creature that has stalked the dungeons — their stats, lore, and encounter count.
+          Every creature that has stalked the dungeons — click to reveal their full stat block.
         </p>
       </header>
 
@@ -343,6 +418,57 @@ export function BestiaryClient() {
               </section>
             );
           })}
+
+          {/* Undiscovered section */}
+          {undiscovered.length > 0 && (
+            <section>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
+                  marginBottom: "1rem",
+                }}
+              >
+                <h2
+                  style={{
+                    fontFamily: "var(--font-heading)",
+                    fontSize: "0.8rem",
+                    color: "var(--accent)",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.08em",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <Star size={13} weight="fill" color="var(--accent)" />
+                  Undiscovered
+                </h2>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "var(--border)",
+                  }}
+                />
+                <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
+                  {undiscovered.length}
+                </span>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))",
+                  gap: "1rem",
+                }}
+              >
+                {undiscovered.map((monster) => (
+                  <MonsterCard key={monster.name} monster={monster} />
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>
