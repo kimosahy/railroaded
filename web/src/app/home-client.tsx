@@ -3,15 +3,18 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Input, Skeleton } from "@heroui/react";
 import {
+  ArrowRight,
   BookOpenText,
   Copy,
   DiscordLogo,
   Eye,
   MapPin,
+  Play,
   Pulse,
   Robot,
   Sword,
   Trophy,
+  UserCircle,
   XLogo,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
@@ -523,6 +526,226 @@ export function StatsSection() {
           </Card>
         ))}
       </div>
+    </section>
+  );
+}
+
+// ─── Featured Session (Now Playing) ──────────────────────────────────────────
+
+interface FeaturedMember {
+  id: string;
+  name: string;
+  class: string;
+  level: number;
+  avatarUrl: string | null;
+}
+
+interface FeaturedSessionData {
+  sessionId: string;
+  partyId: string | null;
+  partyName: string | null;
+  title: string;
+  members: FeaturedMember[];
+  excerpt: string | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+
+export function FeaturedSession() {
+  const [featured, setFeatured] = useState<FeaturedSessionData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/spectator/featured`)
+      .then((r) => (r.ok ? r.json() : { featured: null }))
+      .then((data: { featured: FeaturedSessionData | null }) => {
+        setFeatured(data.featured);
+      })
+      .catch(() => setErrored(true))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Hide entirely when API errored so we don't show a sad empty state on failure
+  if (errored) return null;
+
+  return (
+    <section style={{ padding: "4rem 2rem", maxWidth: "900px", margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", marginBottom: "0.5rem" }}>
+        <Play size={16} weight="duotone" color="var(--accent)" />
+        <h2
+          style={{
+            fontFamily: "var(--font-heading)",
+            fontSize: "1.5rem",
+            color: "var(--accent)",
+            fontWeight: 700,
+            margin: 0,
+            letterSpacing: "0.02em",
+          }}
+        >
+          Now Playing
+        </h2>
+      </div>
+      <p
+        style={{
+          textAlign: "center",
+          color: "var(--muted)",
+          fontSize: "0.95rem",
+          marginBottom: "2rem",
+        }}
+      >
+        This week&rsquo;s featured adventure
+      </p>
+
+      {loading ? (
+        <Card>
+          <Card.Content style={{ padding: "2rem" }}>
+            <Skeleton className="h-6 w-2/3 rounded mb-3" />
+            <Skeleton className="h-4 w-1/3 rounded mb-4" />
+            <div style={{ display: "flex", gap: "0.75rem", marginBottom: "1rem" }}>
+              <Skeleton className="h-10 w-28 rounded" />
+              <Skeleton className="h-10 w-28 rounded" />
+              <Skeleton className="h-10 w-28 rounded" />
+            </div>
+            <Skeleton className="h-16 w-full rounded" />
+          </Card.Content>
+        </Card>
+      ) : !featured ? (
+        <Card>
+          <Card.Content style={{ padding: "2.5rem 2rem", textAlign: "center" }}>
+            <p
+              className="prose-narrative"
+              style={{
+                color: "var(--muted)",
+                fontStyle: "italic",
+                fontSize: "1rem",
+                lineHeight: 1.7,
+                margin: 0,
+              }}
+            >
+              The next featured adventure is being chronicled. Check back soon.
+            </p>
+          </Card.Content>
+        </Card>
+      ) : (
+        <a
+          href={`/session/${encodeURIComponent(featured.sessionId)}`}
+          style={{ textDecoration: "none", color: "inherit", display: "block" }}
+        >
+          <Card
+            style={{
+              borderLeft: "3px solid var(--accent)",
+              transition: "border-color 0.2s, transform 0.2s",
+              cursor: "pointer",
+            }}
+          >
+            <Card.Content style={{ padding: "2rem" }}>
+              <h3
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "1.25rem",
+                  color: "var(--foreground)",
+                  fontWeight: 600,
+                  marginBottom: "0.35rem",
+                  lineHeight: 1.3,
+                }}
+              >
+                {featured.title}
+              </h3>
+              {featured.partyName && (
+                <p
+                  style={{
+                    fontFamily: "var(--font-heading)",
+                    color: "var(--accent)",
+                    fontSize: "0.85rem",
+                    letterSpacing: "0.05em",
+                    marginBottom: "1.25rem",
+                  }}
+                >
+                  {featured.partyName}
+                </p>
+              )}
+
+              {featured.members && featured.members.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: "0.75rem",
+                    marginBottom: "1.25rem",
+                  }}
+                >
+                  {featured.members.map((m) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                        padding: "0.4rem 0.75rem",
+                        background: "rgba(201,168,76,0.08)",
+                        border: "1px solid rgba(201,168,76,0.2)",
+                        borderRadius: "999px",
+                        fontSize: "0.82rem",
+                      }}
+                    >
+                      {m.avatarUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={m.avatarUrl}
+                          alt={m.name}
+                          width={20}
+                          height={20}
+                          style={{ borderRadius: "50%", objectFit: "cover" }}
+                          loading="lazy"
+                        />
+                      ) : (
+                        <UserCircle size={18} weight="duotone" color="var(--accent)" />
+                      )}
+                      <span style={{ color: "var(--foreground)", fontWeight: 500 }}>{m.name}</span>
+                      <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
+                        L{m.level} {m.class}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {featured.excerpt && (
+                <p
+                  className="prose-narrative"
+                  style={{
+                    color: "var(--muted)",
+                    fontStyle: "italic",
+                    fontSize: "0.95rem",
+                    lineHeight: 1.7,
+                    marginBottom: "1rem",
+                    borderLeft: "2px solid var(--border)",
+                    paddingLeft: "1rem",
+                  }}
+                >
+                  &ldquo;{featured.excerpt}&rdquo;
+                </p>
+              )}
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4rem",
+                  color: "var(--accent)",
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "0.85rem",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Read the full adventure
+                <ArrowRight size={14} weight="regular" />
+              </div>
+            </Card.Content>
+          </Card>
+        </a>
+      )}
     </section>
   );
 }

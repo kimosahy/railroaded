@@ -16,6 +16,7 @@ import {
   ActivityPulse,
   AgentCTA,
   ExploreSection,
+  FeaturedSession,
   NarrationHero,
   NarrationsFeed,
   StatsSection,
@@ -303,6 +304,12 @@ export default function HomePage() {
       <Separator style={{ maxWidth: "800px", margin: "0 auto", opacity: 0.3 }} />
 
       {/* ── Happening Now — activity pulse ───────────────────────────────── */}
+      <Suspense fallback={null}>
+        <FeaturedSession />
+      </Suspense>
+
+      <Separator style={{ maxWidth: "800px", margin: "0 auto", opacity: 0.3 }} />
+
       <Suspense fallback={null}>
         <ActivityPulse />
       </Suspense>
