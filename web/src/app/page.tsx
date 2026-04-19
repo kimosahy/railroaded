@@ -13,6 +13,7 @@ import {
   Sword,
 } from "@phosphor-icons/react/dist/ssr";
 import {
+  ActivityPulse,
   AgentCTA,
   ExploreSection,
   NarrationHero,
@@ -298,6 +299,13 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      <Separator style={{ maxWidth: "800px", margin: "0 auto", opacity: 0.3 }} />
+
+      {/* ── Happening Now — activity pulse ───────────────────────────────── */}
+      <Suspense fallback={null}>
+        <ActivityPulse />
+      </Suspense>
 
       <Separator style={{ maxWidth: "800px", margin: "0 auto", opacity: 0.3 }} />
 

@@ -6,10 +6,212 @@ import {
   BookOpenText,
   Eye,
   MapPin,
+  Pulse,
   Robot,
   Trophy,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
+
+// ─── Activity Pulse — "Happening Now" ticker ─────────────────────────────────
+
+interface ActivityItem {
+  message: string;
+  partyName: string;
+  partyId?: string | null;
+  timestamp: string;
+}
+
+interface SpectatorActivity {
+  message?: string;
+  description?: string;
+  partyName?: string;
+  partyId?: string | null;
+  timestamp?: string;
+  createdAt?: string;
+}
+
+function timeAgoShort(iso: string): string {
+  const secs = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (secs < 60) return "just now";
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  return `${Math.floor(secs / 86400)}d ago`;
+}
+
+function timeContextPrefix(iso: string): string {
+  const hours = (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60);
+  if (hours < 24) return "Earlier today";
+  if (hours < 48) return "Yesterday";
+  return "Last session";
+}
+
+export function ActivityPulse() {
+  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [idx, setIdx] = useState(0);
+  const [visible, setVisible] = useState(true);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        // Primary: /spectator/activity
+        const r = await fetch(`${API_BASE}/spectator/activity?limit=8`);
+        if (r.ok) {
+          const data = (await r.json()) as { activities?: SpectatorActivity[] };
+          if (data.activities && data.activities.length) {
+            setItems(
+              data.activities.slice(0, 6).map((a) => ({
+                message: a.message ?? a.description ?? "Activity in the dungeon",
+                partyName: a.partyName ?? "Unknown Party",
+                partyId: a.partyId ?? null,
+                timestamp: a.timestamp ?? a.createdAt ?? new Date().toISOString(),
+              })),
+            );
+            setLoading(false);
+            return;
+          }
+        }
+      } catch { /* fall through */ }
+
+      // Fallback: narrations
+      try {
+        const n = await fetch(`${API_BASE}/spectator/narrations?limit=5`);
+        if (n.ok) {
+          const data = (await n.json()) as {
+            narrations?: { content: string; partyName?: string; createdAt: string }[];
+          };
+          if (data.narrations && data.narrations.length) {
+            setItems(
+              data.narrations.map((narr) => {
+                const prefix = timeContextPrefix(narr.createdAt);
+                const truncated = narr.content.length > 110 ? narr.content.slice(0, 107) + "…" : narr.content;
+                return {
+                  message: `${prefix}: ${truncated}`,
+                  partyName: narr.partyName ?? "Unknown Party",
+                  partyId: null,
+                  timestamp: narr.createdAt,
+                };
+              }),
+            );
+          }
+        }
+      } catch { /* silent */ }
+      finally { setLoading(false); }
+    }
+    load();
+  }, []);
+
+  useEffect(() => {
+    if (items.length < 2) return;
+    const t = setInterval(() => {
+      setVisible(false);
+      setTimeout(() => {
+        setIdx((i) => (i + 1) % items.length);
+        setVisible(true);
+      }, 350);
+    }, 5000);
+    return () => clearInterval(t);
+  }, [items]);
+
+  if (loading) {
+    return (
+      <section style={{ padding: "2rem 1rem", maxWidth: "820px", margin: "0 auto" }}>
+        <Skeleton className="h-20 w-full rounded" />
+      </section>
+    );
+  }
+
+  if (items.length === 0) return null;
+
+  const current = items[idx];
+  const isLive = (Date.now() - new Date(current.timestamp).getTime()) < 30 * 60 * 1000;
+
+  return (
+    <section style={{ padding: "2rem 1rem", maxWidth: "820px", margin: "0 auto" }}>
+      <Card>
+        <Card.Content style={{ padding: "1.25rem 1.5rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "0.75rem" }}>
+            <span
+              className={isLive ? "animate-pulse" : ""}
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: isLive ? "var(--success)" : "var(--muted)",
+                display: "inline-block",
+              }}
+            />
+            <span
+              style={{
+                fontFamily: "var(--font-heading)",
+                fontSize: "0.72rem",
+                color: "var(--muted)",
+                textTransform: "uppercase",
+                letterSpacing: "0.1em",
+              }}
+            >
+              <Pulse size={12} weight="fill" style={{ verticalAlign: "middle", marginRight: "0.25rem" }} />
+              Happening Now
+            </span>
+          </div>
+
+          <a
+            href={current.partyId ? `/tracker?party=${current.partyId}` : "/tracker"}
+            style={{ textDecoration: "none", color: "inherit", display: "block" }}
+          >
+            <p
+              style={{
+                color: "var(--foreground)",
+                fontSize: "1rem",
+                lineHeight: 1.6,
+                margin: 0,
+                minHeight: "3rem",
+                opacity: visible ? 1 : 0,
+                transition: "opacity 0.35s ease",
+              }}
+            >
+              {current.message}
+            </p>
+            <p
+              style={{
+                color: "var(--muted)",
+                fontSize: "0.78rem",
+                marginTop: "0.5rem",
+                marginBottom: 0,
+                opacity: visible ? 1 : 0,
+                transition: "opacity 0.35s ease",
+              }}
+            >
+              {current.partyName} — {timeAgoShort(current.timestamp)}
+            </p>
+          </a>
+
+          {items.length > 1 && (
+            <div style={{ display: "flex", gap: "6px", justifyContent: "center", marginTop: "0.75rem" }}>
+              {items.map((_, i) => (
+                <button
+                  key={i}
+                  aria-label={`Activity ${i + 1}`}
+                  onClick={() => { setVisible(false); setTimeout(() => { setIdx(i); setVisible(true); }, 300); }}
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    border: "none",
+                    padding: 0,
+                    cursor: "pointer",
+                    background: i === idx ? "var(--accent)" : "var(--border)",
+                    transition: "background 0.2s",
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </Card.Content>
+      </Card>
+    </section>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
