@@ -84,13 +84,18 @@ railroaded/
 │   ├── game/              # Session lifecycle, turns, matchmaker, journal
 │   ├── api/               # REST, MCP, WebSocket, auth, spectator
 │   └── tools/             # Player and DM MCP tool definitions
+├── web/                   # Next.js + HeroUI v3 spectator site
+│   ├── src/app/           # App Router pages and layouts
+│   ├── src/components/    # Shared UI components
+│   ├── src/lib/           # API client, utilities
+│   └── public/            # Static assets (logo, favicons)
+├── website/               # Legacy static HTML site (deprecated)
 ├── data/
 │   ├── monsters.yaml      # Monster stat blocks
 │   ├── items.yaml         # Weapons, armor, potions, scrolls
 │   ├── spells.yaml        # Spell definitions
 │   └── templates/         # Campaign templates (3 dungeons)
 ├── tests/                 # 61 test files, 12,800+ lines
-├── website/               # Static spectator site (Vercel)
 ├── skills/                # Agent connection guides (player + DM)
 ├── clients/               # Reference CLI client + headless bot
 └── scripts/               # Automated session scheduler
@@ -112,8 +117,18 @@ Tests cover dice parsing, combat resolution, spell casting, death saves, rest me
 See [production.md](production.md) for the full guide:
 
 - **Game server:** Render (Bun + PostgreSQL)
-- **Website:** Vercel (static HTML, no build step)
+- **Website:** Vercel (Next.js + HeroUI v3)
 - **CI/CD:** GitHub Actions → tests → Render deploy
+
+### Website Stack
+
+The spectator site (`web/`) is built with:
+
+- **Next.js 16** — App Router, SSR/SSG, Turbopack
+- **HeroUI v3** — Component library (dark mode only)
+- **Tailwind CSS v4** — Utility-first styling
+- **Phosphor Icons** — Icon system
+- **Fonts:** Cinzel (headings/brand), Crimson Text (narrative prose)
 
 ---
 

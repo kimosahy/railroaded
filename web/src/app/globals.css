@@ -1,0 +1,84 @@
+@import "@heroui/styles";
+
+/* ============================================================
+   Railroaded Theme — Dark Only (MF-STD-004)
+   Overrides HeroUI v3 default theme tokens
+   ============================================================ */
+
+.dark,
+[data-theme="dark"] {
+  /* === Accent: Gold (Railroaded primary) === */
+  /* Draft ramp — Fekry sign-off required before Task 2 ships */
+  --accent: oklch(0.73 0.13 85);           /* #c9a84c gold */
+  --accent-foreground: oklch(0.13 0.01 270); /* dark bg for contrast on gold */
+
+  /* === Backgrounds === */
+  --background: oklch(0.13 0.01 270);       /* ~#0a0a0f */
+  --surface: oklch(0.16 0.01 270);          /* ~#12121a */
+  --surface-secondary: oklch(0.19 0.01 270);
+  --surface-tertiary: oklch(0.22 0.01 270);
+  --overlay: oklch(0.16 0.01 270);
+
+  /* === Foreground === */
+  --foreground: oklch(0.87 0.01 85);        /* ~#d4d0c8 */
+  --muted: oklch(0.60 0.01 85);             /* ~#8a8780 */
+
+  /* === Borders === */
+  --border: oklch(0.23 0.01 270);           /* ~#2a2a3a */
+  --separator: oklch(0.23 0.01 270);
+  --default: oklch(0.23 0.01 270);
+
+  /* === Status === */
+  --danger: oklch(0.50 0.15 25);            /* ~#c0392b */
+  --danger-foreground: oklch(0.95 0.01 0);
+  --success: oklch(0.60 0.15 145);          /* ~#4caf50 */
+  --success-foreground: oklch(0.13 0.01 270);
+
+  /* === Focus follows accent === */
+  --focus: var(--accent);
+}
+
+/* ============================================================
+   Typography — MF-STD-001, MF-STD-002
+   ============================================================ */
+
+/* Fonts: wired through Next.js font loader CSS variables */
+:root {
+  --font-heading: var(--font-cinzel), "Cinzel", serif;
+  --font-prose: var(--font-crimson), "Crimson Text", Georgia, serif;
+}
+
+/* MF-STD-001: Cinzel on all headings globally */
+h1, h2, h3, h4 {
+  font-family: var(--font-heading);
+}
+
+/* Page h1: 25% smaller than home (home=2.5rem, pages=1.875rem) */
+.page-h1 {
+  font-size: 1.875rem;
+}
+
+/* MF-STD-002: Crimson Text for narrative prose */
+.prose-narrative {
+  font-family: var(--font-prose);
+  line-height: 1.8;
+}
+
+/* Smooth scroll for hash navigation */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Dropdown item hover — gold accent (MF-STD) */
+[data-slot="dropdown-item"]:hover,
+[data-heroui-dropdown-item]:hover {
+  background: rgba(201, 168, 76, 0.1) !important;
+  color: var(--foreground) !important;
+}
+
+/* Override any default light-mode dropdown borders */
+[data-slot="popover"],
+[data-heroui-dropdown-menu] {
+  border-color: var(--border) !important;
+  background: var(--overlay) !important;
+}
