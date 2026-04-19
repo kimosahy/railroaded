@@ -6,7 +6,8 @@ import { API_BASE } from "@/lib/api";
 import { PartyList } from "@/components/tracker/party-list";
 import { EventFeed } from "@/components/tracker/event-feed";
 import { NarratorPanel } from "@/components/tracker/narrator-panel";
-import { Button } from "@heroui/react";
+import { Button, Chip, toast } from "@heroui/react";
+import { ShareNetwork, Eye } from "@phosphor-icons/react";
 
 // ─── Shared types (exported for sub-components) ───────────────────────────────
 
@@ -81,6 +82,9 @@ export function TrackerClient() {
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(false);
   const [loadingNarrations, setLoadingNarrations] = useState(true);
+
+  const [spectatorCount, setSpectatorCount] = useState<number | null>(null);
+  const [spectatorEndpointMissing, setSpectatorEndpointMissing] = useState(false);
 
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
@@ -210,6 +214,70 @@ export function TrackerClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSessionId]);
 
+  // ── Spectator / viewer count (hide silently on 404) ──────────────────
+  useEffect(() => {
+    if (!selectedSessionId || spectatorEndpointMissing) {
+      setSpectatorCount(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchCount = async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/spectator/sessions/${selectedSessionId}/count`,
+        );
+        if (cancelled) return;
+        if (res.status === 404) {
+          setSpectatorEndpointMissing(true);
+          setSpectatorCount(null);
+          return;
+        }
+        if (!res.ok) return;
+        const data = (await res.json()) as { count?: number; viewers?: number; spectators?: number };
+        const n =
+          typeof data.count === "number"
+            ? data.count
+            : typeof data.viewers === "number"
+              ? data.viewers
+              : typeof data.spectators === "number"
+                ? data.spectators
+                : null;
+        if (n != null) setSpectatorCount(n);
+      } catch {
+        /* network errors silent */
+      }
+    };
+    fetchCount();
+    const id = setInterval(fetchCount, 10_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [selectedSessionId, spectatorEndpointMissing]);
+
+  // ── Share session ────────────────────────────────────────────────────────────
+  const handleShareSession = useCallback(async () => {
+    if (!selectedSessionId) return;
+    const link = `https://railroaded.ai/tracker?session=${selectedSessionId}`;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(link);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = link;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      toast.success("Session link copied to clipboard");
+    } catch {
+      toast.danger("Couldn't copy the link. Try again?");
+    }
+  }, [selectedSessionId]);
+
   // Load events from deep-link on mount
   useEffect(() => {
     const sId = searchParams.get("session");
@@ -327,8 +395,40 @@ export function TrackerClient() {
         </div>
       </header>
 
-      {/* ── Col 2, Row 2: Event feed ────────────────────────────────────────── */}
+      {/* ── Col 2, Row 2: Event feed ─────────────────────────────────── */}
       <div style={{ gridColumn: "2", gridRow: "2" }}>
+        {selectedSession && (
+          <div
+            className="flex items-center gap-2 flex-wrap"
+            style={{ marginBottom: "0.35rem", paddingLeft: "0.2rem" }}
+          >
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={handleShareSession}
+              aria-label="Copy session share link"
+            >
+              <ShareNetwork size={14} style={{ marginRight: 6 }} />
+              Share
+            </Button>
+            {spectatorCount != null && spectatorCount > 0 && (
+              <Chip
+                size="sm"
+                variant="secondary"
+                style={{
+                  fontSize: "0.72rem",
+                  fontFamily: "var(--font-heading)",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                <span className="flex items-center gap-1">
+                  <Eye size={12} />
+                  {spectatorCount} watching
+                </span>
+              </Chip>
+            )}
+          </div>
+        )}
         <EventFeed
           events={events}
           session={selectedSession}

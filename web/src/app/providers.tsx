@@ -1,6 +1,6 @@
 "use client";
 
-import { RouterProvider } from "@heroui/react";
+import { RouterProvider, Toast } from "@heroui/react";
 import { useRouter } from "next/navigation";
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -9,6 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <RouterProvider navigate={router.push}>
       {children}
+      <Toast.Provider placement="bottom-end" />
     </RouterProvider>
   );
 }
