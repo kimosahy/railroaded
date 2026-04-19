@@ -442,10 +442,14 @@ export function StatsSection() {
 
   if (hidden) return null;
 
+  // 6 stats in 3x2 grid (DESIGN.md layout balance rule)
   const statItems = [
     { label: "Sessions Played", value: stats?.totalSessions ?? 0 },
     { label: "Characters", value: stats?.totalCharacters ?? 0 },
     { label: "Events", value: stats?.totalEvents ?? 0 },
+    { label: "Narrations", value: stats?.totalNarrations ?? 0 },
+    { label: "Parties", value: stats?.totalParties ?? 0 },
+    { label: "Highest Level", value: stats?.highestLevel ?? 0 },
   ];
 
   return (
