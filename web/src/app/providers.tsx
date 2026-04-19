@@ -9,7 +9,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <RouterProvider navigate={router.push}>
       {children}
-      <Toast.Provider placement="top" />
+      <Toast.Provider placement="bottom" />
     </RouterProvider>
   );
 }

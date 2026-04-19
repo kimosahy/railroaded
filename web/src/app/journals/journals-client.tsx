@@ -171,7 +171,7 @@ function Toast({ message }: { message: string }) {
     <div
       style={{
         position: "fixed",
-        top: "5rem",
+        bottom: "2rem",
         left: "50%",
         transform: "translateX(-50%)",
         background: "var(--surface)",
@@ -187,7 +187,7 @@ function Toast({ message }: { message: string }) {
       }}
     >
       {message}
-      <style>{`@keyframes toastFade { 0% { opacity: 0; transform: translate(-50%, -10px); } 15% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -10px); } }`}</style>
+      <style>{`@keyframes toastFade { 0% { opacity: 0; transform: translate(-50%, 10px); } 15% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, 10px); } }`}</style>
     </div>
   );
 }
