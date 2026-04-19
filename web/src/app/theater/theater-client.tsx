@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Chip, Skeleton } from "@heroui/react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Avatar, Button, Card, Chip, Skeleton } from "@heroui/react";
 import {
   BookOpenText,
   CalendarBlank,
@@ -10,8 +10,11 @@ import {
   MaskHappy,
   PlayCircle,
   Star,
+  Sword,
+  Target,
   Timer,
   Trophy,
+  Users,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { API_BASE } from "@/lib/api";
@@ -38,6 +41,39 @@ interface Narration {
   sessionId?: string;
   trigger?: string;
   createdAt?: string;
+}
+
+interface SpotlightCharacter {
+  id: string;
+  name: string;
+  class?: string;
+  race?: string;
+  level?: number;
+  avatarUrl?: string;
+  description?: string;
+  monstersKilled?: number;
+  sessionsPlayed?: number;
+  dungeonsCleared?: number;
+  isAlive?: boolean;
+  model?: { name?: string };
+}
+
+const CLASS_COLORS: Record<string, string> = {
+  fighter: "#ef4444",
+  paladin: "#f59e0b",
+  ranger: "#22c55e",
+  rogue: "#8b5cf6",
+  wizard: "#3b82f6",
+  sorcerer: "#ec4899",
+  warlock: "#6366f1",
+  cleric: "#f97316",
+  druid: "#84cc16",
+  bard: "#14b8a6",
+  barbarian: "#dc2626",
+  monk: "#0ea5e9",
+};
+function classColor(cls?: string): string {
+  return CLASS_COLORS[(cls ?? "").toLowerCase()] ?? "#8a8780";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -167,6 +203,193 @@ function SessionCard({ session, featured }: { session: Session; featured?: boole
   );
 }
 
+function SpotlightCard({ character }: { character: SpotlightCharacter }) {
+  const color = classColor(character.class);
+  const lvl = character.level ?? 1;
+  const modelName = character.model?.name;
+
+  // Flavour line (parity with old theater.html)
+  const flavour = useMemo(() => {
+    if (character.description && character.description.length > 10) return character.description;
+    if (character.isAlive === false) return "Fell in the dungeon. Their legend endures.";
+    if ((character.monstersKilled ?? 0) > 10)
+      return `Slayer of ${character.monstersKilled} monsters and counting.`;
+    if ((character.sessionsPlayed ?? 0) > 5)
+      return `Veteran of ${character.sessionsPlayed} sessions in the dungeon.`;
+    if ((character.dungeonsCleared ?? 0) > 0)
+      return `Has cleared ${character.dungeonsCleared} dungeon${(character.dungeonsCleared ?? 0) > 1 ? "s" : ""}.`;
+    return `${character.race ?? ""} ${character.class ?? ""}, level ${lvl}.`;
+  }, [character, lvl]);
+
+  // 3 key stats (balanced)
+  const stats: { icon: React.ReactNode; label: string; value: string }[] = [
+    {
+      icon: <Sword size={13} weight="fill" />,
+      label: "Monsters",
+      value: (character.monstersKilled ?? 0).toLocaleString(),
+    },
+    {
+      icon: <Users size={13} weight="fill" />,
+      label: "Sessions",
+      value: (character.sessionsPlayed ?? 0).toLocaleString(),
+    },
+    {
+      icon: <Target size={13} weight="fill" />,
+      label: "Dungeons",
+      value: (character.dungeonsCleared ?? 0).toLocaleString(),
+    },
+  ];
+
+  return (
+    <Card
+      style={{
+        border: `1px solid color-mix(in oklch, var(--accent) 35%, transparent)`,
+        background: `linear-gradient(180deg, color-mix(in oklch, var(--accent) 10%, var(--surface)) 0%, var(--surface) 65%)`,
+      }}
+    >
+      <Card.Content style={{ padding: "1.5rem" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "auto 1fr",
+            gap: "1.25rem",
+            alignItems: "center",
+          }}
+        >
+          {/* Avatar */}
+          <div
+            style={{
+              border: `2px solid ${color}80`,
+              borderRadius: "50%",
+              padding: 3,
+              flexShrink: 0,
+            }}
+          >
+            <Avatar size="lg">
+              {character.avatarUrl && !character.avatarUrl.includes("dicebear.com") && (
+                <Avatar.Image alt={character.name} src={character.avatarUrl} />
+              )}
+              <Avatar.Fallback
+                style={{
+                  background: color + "33",
+                  color,
+                  fontFamily: "var(--font-heading)",
+                  fontWeight: 700,
+                }}
+              >
+                {character.name.slice(0, 2).toUpperCase()}
+              </Avatar.Fallback>
+            </Avatar>
+          </div>
+
+          {/* Body */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap", marginBottom: "0.2rem" }}>
+              <span
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "1.1rem",
+                  color: "var(--accent)",
+                  fontWeight: 700,
+                }}
+              >
+                {character.name}
+              </span>
+              {modelName && (
+                <Chip size="sm" variant="soft" color="default">
+                  {modelName}
+                </Chip>
+              )}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: "0.8rem", marginBottom: "0.5rem" }}>
+              Lv {lvl} {character.race ?? ""} {character.class ?? ""}
+            </div>
+
+            <p
+              className="prose-narrative"
+              style={{
+                color: "var(--foreground)",
+                fontSize: "0.9rem",
+                fontStyle: "italic",
+                lineHeight: 1.6,
+                margin: 0,
+                marginBottom: "0.75rem",
+              }}
+            >
+              {flavour}
+            </p>
+
+            {/* 3 stats — balanced 3-column grid */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(3, 1fr)",
+                gap: "0.5rem",
+                marginBottom: "0.75rem",
+              }}
+            >
+              {stats.map((s) => (
+                <div
+                  key={s.label}
+                  style={{
+                    padding: "0.4rem 0.55rem",
+                    background: "var(--surface)",
+                    border: "1px solid var(--border)",
+                    borderRadius: 6,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
+                  <span style={{ color: "var(--accent)", flexShrink: 0 }}>{s.icon}</span>
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontFamily: "var(--font-heading)",
+                        fontSize: "0.58rem",
+                        color: "var(--muted)",
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      {s.label}
+                    </div>
+                    <div
+                      style={{
+                        color: "var(--foreground)",
+                        fontSize: "0.85rem",
+                        fontWeight: 600,
+                        fontFamily: "var(--font-heading)",
+                      }}
+                    >
+                      {s.value}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <Link
+              href={`/character/${character.id}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.3rem",
+                color: "var(--accent)",
+                fontSize: "0.85rem",
+                textDecoration: "none",
+                fontFamily: "var(--font-heading)",
+              }}
+            >
+              View full profile →
+            </Link>
+          </div>
+        </div>
+      </Card.Content>
+    </Card>
+  );
+}
+
 function NarrationCard({ narration }: { narration: Narration }) {
   return (
     <Card>
@@ -193,9 +416,11 @@ export function TheaterClient() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [allSessions, setAllSessions] = useState<Session[]>([]);
   const [narrations, setNarrations] = useState<Narration[]>([]);
+  const [spotlight, setSpotlight] = useState<SpotlightCharacter | null>(null);
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingAll, setLoadingAll] = useState(true);
   const [loadingNarrations, setLoadingNarrations] = useState(true);
+  const [loadingSpotlight, setLoadingSpotlight] = useState(true);
   const [errorSessions, setErrorSessions] = useState(false);
 
   const fetchSessions = useCallback(async () => {
@@ -228,11 +453,48 @@ export function TheaterClient() {
     finally { setLoadingNarrations(false); }
   }, []);
 
+  // Try /spectator/spotlight first; fall back to picking from /spectator/characters
+  const fetchSpotlight = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/spectator/spotlight`);
+      if (res.ok) {
+        const data = (await res.json()) as
+          | { character?: SpotlightCharacter }
+          | SpotlightCharacter;
+        const c = (data as { character?: SpotlightCharacter }).character
+          ?? (data as SpotlightCharacter);
+        if (c && c.id) {
+          setSpotlight(c);
+          return;
+        }
+      }
+      // Fallback: choose most "interesting" character from list (parity with old theater.html)
+      const alt = await fetch(`${API_BASE}/spectator/characters`);
+      if (!alt.ok) return;
+      const payload = await alt.json();
+      const list: SpotlightCharacter[] = Array.isArray(payload)
+        ? (payload as SpotlightCharacter[])
+        : ((payload as { characters?: SpotlightCharacter[] }).characters ?? []);
+      if (!list.length) return;
+      const sorted = [...list].sort((a, b) => {
+        const sA = (a.monstersKilled ?? 0) + (a.sessionsPlayed ?? 0) * 2 + (a.isAlive === false ? 3 : 0);
+        const sB = (b.monstersKilled ?? 0) + (b.sessionsPlayed ?? 0) * 2 + (b.isAlive === false ? 3 : 0);
+        return sB - sA;
+      });
+      setSpotlight(sorted[0] ?? null);
+    } catch {
+      /* silent — spotlight is optional */
+    } finally {
+      setLoadingSpotlight(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchSessions();
     fetchAllSessions();
     fetchNarrations();
-  }, [fetchSessions, fetchAllSessions, fetchNarrations]);
+    fetchSpotlight();
+  }, [fetchSessions, fetchAllSessions, fetchNarrations, fetchSpotlight]);
 
   const activeSessions = sessions.filter((s) => s.isActive);
   const recentSessions = sessions.filter((s) => !s.isActive);
@@ -257,6 +519,32 @@ export function TheaterClient() {
           Live shows, recent sessions, and narrated highlights from the dungeon.
         </p>
       </header>
+
+      {/* Character Spotlight — featured "character of the day" */}
+      {(loadingSpotlight || spotlight) && (
+        <section style={{ marginBottom: "2.5rem" }}>
+          <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "0.8rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Star size={14} weight="fill" style={{ color: "var(--accent)" }} />
+            Character Spotlight
+          </h2>
+          {loadingSpotlight ? (
+            <Card>
+              <Card.Content style={{ padding: "1.5rem" }}>
+                <div style={{ display: "flex", gap: "1.25rem", alignItems: "center" }}>
+                  <Skeleton style={{ height: 64, width: 64, borderRadius: "50%", flexShrink: 0 }} />
+                  <div style={{ flex: 1 }}>
+                    <Skeleton style={{ height: 16, width: "40%", borderRadius: 4, marginBottom: 8 }} />
+                    <Skeleton style={{ height: 12, width: "60%", borderRadius: 4, marginBottom: 12 }} />
+                    <Skeleton style={{ height: 12, width: "90%", borderRadius: 4 }} />
+                  </div>
+                </div>
+              </Card.Content>
+            </Card>
+          ) : spotlight ? (
+            <SpotlightCard character={spotlight} />
+          ) : null}
+        </section>
+      )}
 
       {/* Now Playing */}
       <section style={{ marginBottom: "2.5rem" }}>
