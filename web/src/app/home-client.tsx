@@ -1613,6 +1613,10 @@ export function LivePulseTicker() {
         overflow: "hidden",
         position: "relative",
         zIndex: 1,
+        WebkitMaskImage:
+          "linear-gradient(to right, transparent 0%, black 7%, black 93%, transparent 100%)",
+        maskImage:
+          "linear-gradient(to right, transparent 0%, black 7%, black 93%, transparent 100%)",
       }}
       aria-label="Live activity pulse"
     >
@@ -1625,11 +1629,11 @@ export function LivePulseTicker() {
           display: inline-flex;
           gap: 2.5rem;
           white-space: nowrap;
-          animation: railroaded-marquee 60s linear infinite;
+          animation: railroaded-marquee 180s linear infinite;
           will-change: transform;
         }
         .railroaded-marquee-wrapper:hover .railroaded-marquee-track {
-          animation-play-state: paused;
+          animation-duration: 600s;
         }
       `}</style>
       <div
