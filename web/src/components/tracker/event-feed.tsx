@@ -16,6 +16,7 @@ import {
   Scroll,
   Coins,
   Heartbeat,
+  DiceFive,
 } from "@phosphor-icons/react";
 import type { GameEvent, Member, Party, Session } from "@/app/tracker/tracker-client";
 
@@ -578,6 +579,208 @@ function EvCheck({
   );
 }
 
+// ─── Group check (shared block) ───────────────────────────────────────────────
+
+function GroupCheckBlock({
+  title,
+  titleIcon,
+  headerBadge,
+  rows,
+}: {
+  title: ReactNode;
+  titleIcon?: ReactNode;
+  headerBadge?: ReactNode;
+  rows: ReactNode[];
+}): ReactNode {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        background: "oklch(0.14 0.01 270)",
+        borderRadius: 8,
+        padding: "0.6rem 0.9rem",
+        margin: "0.45rem 0",
+      }}
+    >
+      <div
+        className="flex items-center justify-between"
+        style={{ marginBottom: "0.45rem", gap: "0.5rem" }}
+      >
+        <span
+          className="flex items-center gap-2"
+          style={{
+            fontFamily: "var(--font-heading)",
+            fontSize: "0.82rem",
+            color: "var(--accent)",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {titleIcon}
+          {title}
+        </span>
+        {headerBadge}
+      </div>
+      <div className="flex flex-col" style={{ gap: "0.3rem" }}>
+        {rows}
+      </div>
+    </div>
+  );
+}
+
+function resultBadge(pass: boolean, text?: string): ReactNode {
+  return (
+    <span
+      style={{
+        fontFamily: "var(--font-heading)",
+        fontSize: "0.68rem",
+        fontWeight: 700,
+        padding: "0.15rem 0.5rem",
+        borderRadius: 3,
+        textTransform: "uppercase",
+        letterSpacing: "0.06em",
+        background: pass ? "rgba(45,107,63,0.3)" : "rgba(139,32,32,0.3)",
+        color: pass ? "#4caf50" : "#e85555",
+        border: `1px solid ${pass ? "#2d6b3f" : "#8b2020"}`,
+      }}
+    >
+      {text ?? (pass ? "Success" : "Failure")}
+    </span>
+  );
+}
+
+function EvGroupCheck({ d }: { d: Record<string, unknown> }): ReactNode {
+  const results = arr<Record<string, unknown>>(d.results);
+  const pass = bool(d.overallSuccess);
+  const ability = str(d.ability);
+  const skill = str(d.skill);
+  const dc = num(d.dc);
+
+  const title = (
+    <span>
+      Group {displayName(ability)}
+      {skill ? ` (${skill})` : ""} Check
+      {dc > 0 ? <span style={{ color: "var(--muted)", marginLeft: 6 }}>DC {dc}</span> : null}
+    </span>
+  );
+
+  const rows = results.map((r, idx) => {
+    const name = str(r.name) || "Unknown";
+    const ok = bool(r.success);
+    const roll = typeof r.roll === "number" ? (r.roll as number) : null;
+    const margin = typeof r.margin === "number" ? (r.margin as number) : null;
+    return (
+      <div
+        key={idx}
+        className="flex items-center gap-2"
+        style={{ fontSize: "0.85rem" }}
+      >
+        <span style={{ color: charColor(name), fontWeight: 600, flex: 1, minWidth: 0 }}>
+          {name}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-heading)",
+            fontWeight: 700,
+            color: ok ? "#4caf50" : "#e85555",
+            minWidth: 26,
+            textAlign: "right",
+          }}
+        >
+          {roll != null ? roll : "?"}
+        </span>
+        {ok ? (
+          <CheckCircle size={14} color="#4caf50" />
+        ) : (
+          <XCircle size={14} color="#e85555" />
+        )}
+        {margin != null && (
+          <span style={{ fontSize: "0.72rem", color: "var(--muted)", minWidth: 32 }}>
+            ({margin > 0 ? "+" : ""}{margin})
+          </span>
+        )}
+      </div>
+    );
+  });
+
+  return (
+    <GroupCheckBlock
+      title={title}
+      titleIcon={<DiceFive size={16} color="var(--accent)" />}
+      headerBadge={resultBadge(pass)}
+      rows={rows}
+    />
+  );
+}
+
+function EvContestedCheck({ d }: { d: Record<string, unknown> }): ReactNode {
+  const p1 = (d.player1 as Record<string, unknown>) ?? {};
+  const p2 = (d.player2 as Record<string, unknown>) ?? {};
+  const winner = num(d.winner); // 1 or 2
+  const margin = typeof d.margin === "number" ? (d.margin as number) : null;
+
+  function row(p: Record<string, unknown>, isWinner: boolean): ReactNode {
+    const name = str(p.name) || "Unknown";
+    const ability = str(p.ability).toUpperCase();
+    const skill = str(p.skill);
+    const roll = typeof p.roll === "number" ? (p.roll as number) : null;
+    return (
+      <div
+        className="flex items-center gap-2"
+        style={{ fontSize: "0.85rem", opacity: isWinner ? 1 : 0.65 }}
+      >
+        <div
+          style={{
+            width: 28,
+            height: 28,
+            borderRadius: "50%",
+            background: isWinner ? "rgba(45,107,63,0.2)" : "rgba(139,32,32,0.2)",
+            border: `1px solid ${isWinner ? "#2d6b3f" : "#8b2020"}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              fontFamily: "var(--font-heading)",
+              fontWeight: 700,
+              fontSize: "0.7rem",
+              color: isWinner ? "#4caf50" : "#e85555",
+            }}
+          >
+            {roll != null ? roll : "?"}
+          </span>
+        </div>
+        <span style={{ color: charColor(name), fontWeight: 600, flex: 1, minWidth: 0 }}>
+          {name}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--font-heading)",
+            fontSize: "0.68rem",
+            color: "var(--muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.05em",
+          }}
+        >
+          {ability}
+          {skill ? ` (${skill})` : ""}
+        </span>
+        {isWinner && resultBadge(true, margin != null ? `Win (+${margin})` : "Win")}
+      </div>
+    );
+  }
+
+  return (
+    <GroupCheckBlock
+      title="Contested Check"
+      titleIcon={<Sword size={16} color="var(--accent)" />}
+      rows={[row(p1, winner === 1), row(p2, winner === 2)]}
+    />
+  );
+}
+
 function EvDeathSave({ d }: { d: Record<string, unknown> }): ReactNode {
   const name = str(d.characterName) || str(d.character) || "Unknown";
   const success = bool(d.success);
@@ -827,6 +1030,8 @@ function renderEvent(e: GameEvent): ReactNode {
     case "ability_check": return <EvCheck key={e.id} d={d} label="Ability Check" />;
     case "saving_throw":  return <EvCheck key={e.id} d={d} label="Saving Throw" />;
     case "skill_check":   return <EvCheck key={e.id} d={d} label="Skill Check" />;
+    case "group_check":     return <EvGroupCheck key={e.id} d={d} />;
+    case "contested_check": return <EvContestedCheck key={e.id} d={d} />;
     case "death_save":    return <EvDeathSave key={e.id} d={d} />;
     case "heal":          return <EvHeal key={e.id} d={d} />;
     case "spell_cast":    return <EvSpell key={e.id} d={d} />;
