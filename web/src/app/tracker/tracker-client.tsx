@@ -452,7 +452,15 @@ export function TrackerClient() {
       </header>
 
       {/* ── Col 2, Row 2: Event feed ─────────────────────────────────── */}
-      <div style={{ gridColumn: "2", gridRow: "2" }}>
+      <div
+        style={{
+          gridColumn: "2",
+          gridRow: "2",
+          minHeight: "calc(100dvh - 64px - 6rem)",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
         {selectedSession && (
           <div
             className="flex items-center gap-2 flex-wrap"

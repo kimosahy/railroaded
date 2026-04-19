@@ -1118,6 +1118,10 @@ export function EventFeed({ events, session, party, loading }: EventFeedProps) {
         borderRadius: 8,
         overflow: "hidden",
         marginTop: "0.25rem",
+        display: "flex",
+        flexDirection: "column",
+        flex: "1 1 auto",
+        minHeight: 0,
       }}
     >
       {/* Session header */}
@@ -1179,7 +1183,8 @@ export function EventFeed({ events, session, party, loading }: EventFeedProps) {
       ) : (
         <div
           style={{
-            maxHeight: "70vh",
+            flex: "1 1 auto",
+            minHeight: 0,
             overflowY: "auto",
             padding: "0.6rem",
             scrollBehavior: "smooth",
