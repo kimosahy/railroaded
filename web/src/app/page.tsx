@@ -125,7 +125,7 @@ export default function HomePage() {
           alignItems: "center",
           justifyContent: "center",
           textAlign: "center",
-          padding: "6rem 2rem 4rem",
+          padding: "4.5rem 2rem 4rem",
           position: "relative",
           overflow: "hidden",
         }}
