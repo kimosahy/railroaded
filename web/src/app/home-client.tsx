@@ -4,11 +4,15 @@ import { useEffect, useState } from "react";
 import { Button, Card, Input, Skeleton } from "@heroui/react";
 import {
   BookOpenText,
+  Copy,
+  DiscordLogo,
   Eye,
   MapPin,
   Pulse,
   Robot,
+  Sword,
   Trophy,
+  XLogo,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
 
@@ -654,19 +658,146 @@ export function NarrationsFeed() {
 
 // ─── Waitlist Form ─────────────────────────────────────────────────────────────
 
+const REFERRAL_STORAGE_KEY = "railroaded_referral_code";
+const REFERRAL_PARAM_KEY = "railroaded_ref";
+
+interface WaitlistResponse {
+  referral_code: string;
+  position: number;
+  already_registered?: boolean;
+  error?: string;
+}
+
+interface WaitlistPositionResponse {
+  position: number;
+  referral_count: number;
+}
+
 export function WaitlistSection() {
   const [email, setEmail] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState<null | {
+    referralCode: string;
+    position: number;
+    referralCount: number;
+    alreadyExists: boolean;
+  }>(null);
+  const [referredByFriend, setReferredByFriend] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  function handleSubmit(e: React.FormEvent) {
+  // Capture ?ref= param on load; restore success state if previously signed up
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const ref = params.get("ref");
+      if (ref) {
+        localStorage.setItem(REFERRAL_PARAM_KEY, ref);
+        setReferredByFriend(true);
+      }
+    } catch { /* ignore */ }
+
+    // If already signed up, restore success state
+    try {
+      const savedCode = localStorage.getItem(REFERRAL_STORAGE_KEY);
+      if (savedCode) {
+        fetch(`${API_BASE}/spectator/waitlist/position/${encodeURIComponent(savedCode)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data: WaitlistPositionResponse | null) => {
+            if (data && typeof data.position === "number") {
+              setSuccess({
+                referralCode: savedCode,
+                position: data.position,
+                referralCount: data.referral_count ?? 0,
+                alreadyExists: true,
+              });
+            }
+          })
+          .catch(() => { /* ignore */ });
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!email.includes("@")) {
+    const trimmed = email.trim();
+    if (!trimmed.includes("@") || !trimmed.includes(".")) {
       setError("Please enter a valid email address.");
       return;
     }
     setError("");
-    setSubmitted(true);
+    setSubmitting(true);
+
+    try {
+      let ref: string | null = null;
+      try {
+        const params = new URLSearchParams(window.location.search);
+        ref = params.get("ref") || localStorage.getItem(REFERRAL_PARAM_KEY);
+      } catch { /* ignore */ }
+
+      const payload: { email: string; ref?: string } = { email: trimmed };
+      if (ref) payload.ref = ref;
+
+      const res = await fetch(`${API_BASE}/spectator/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(errData.error || "Something went wrong. Try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      const data = (await res.json()) as WaitlistResponse;
+      try {
+        localStorage.setItem(REFERRAL_STORAGE_KEY, data.referral_code);
+      } catch { /* ignore */ }
+
+      // Fetch referral stats for this code
+      let referralCount = 0;
+      try {
+        const posRes = await fetch(
+          `${API_BASE}/spectator/waitlist/position/${encodeURIComponent(data.referral_code)}`,
+        );
+        if (posRes.ok) {
+          const posData = (await posRes.json()) as WaitlistPositionResponse;
+          referralCount = posData.referral_count ?? 0;
+        }
+      } catch { /* ignore */ }
+
+      setSuccess({
+        referralCode: data.referral_code,
+        position: data.position ?? 0,
+        referralCount,
+        alreadyExists: Boolean(data.already_registered),
+      });
+      setSubmitting(false);
+    } catch (err) {
+      console.warn("Waitlist submit error:", err);
+      setError("Network error. Please try again.");
+      setSubmitting(false);
+    }
+  }
+
+  function getReferralUrl(code: string) {
+    if (typeof window === "undefined") return `https://railroaded.ai?ref=${code}`;
+    return `${window.location.origin}?ref=${code}`;
+  }
+
+  function copyReferralLink() {
+    if (!success) return;
+    const url = getReferralUrl(success.referralCode);
+    navigator.clipboard.writeText(url).then(
+      () => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      },
+      () => { /* ignore */ },
+    );
   }
 
   return (
@@ -700,29 +831,136 @@ export function WaitlistSection() {
         We&rsquo;ll send a raven when it&rsquo;s time to enter the dungeon.
       </p>
 
-      {submitted ? (
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--accent)",
-            borderRadius: "10px",
-            padding: "2rem",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "var(--font-heading)",
-              color: "var(--accent)",
-              fontSize: "1.2rem",
-              marginBottom: "0.5rem",
-            }}
-          >
-            You&rsquo;re on the list.
-          </p>
-          <p style={{ color: "var(--muted)", fontSize: "0.95rem" }}>
-            We&rsquo;ll notify you when human players can join.
-          </p>
-        </div>
+      {success ? (
+        <Card style={{ border: "1px solid var(--accent)" }}>
+          <Card.Content style={{ padding: "2rem" }}>
+            <p
+              style={{
+                fontFamily: "var(--font-heading)",
+                color: "var(--accent)",
+                fontSize: "1.3rem",
+                marginBottom: "0.5rem",
+              }}
+            >
+              <Sword
+                size={20}
+                weight="duotone"
+                style={{ verticalAlign: "middle", marginRight: "0.4rem" }}
+              />
+              {success.alreadyExists ? (
+                <>You&rsquo;re #{success.position} in line</>
+              ) : (
+                <>You&rsquo;re #{success.position} on the waitlist!</>
+              )}
+            </p>
+            {success.alreadyExists && (
+              <p
+                style={{
+                  color: "var(--muted)",
+                  fontSize: "0.9rem",
+                  marginBottom: "1rem",
+                }}
+              >
+                You were already signed up — here&rsquo;s your referral link.
+              </p>
+            )}
+
+            <div
+              style={{
+                background: "rgba(0,0,0,0.3)",
+                border: "1px solid var(--border)",
+                borderRadius: "8px",
+                padding: "1rem",
+                marginTop: "1rem",
+              }}
+            >
+              <p
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "0.85rem",
+                  color: "var(--accent)",
+                  marginBottom: "0.6rem",
+                  letterSpacing: "0.05em",
+                }}
+              >
+                Move up the line — share your referral link
+              </p>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <Input
+                  type="text"
+                  readOnly
+                  value={getReferralUrl(success.referralCode)}
+                  style={{
+                    flex: 1,
+                    minWidth: "200px",
+                    fontSize: "0.85rem",
+                  }}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onPress={copyReferralLink}
+                >
+                  <Copy size={14} weight="regular" style={{ marginRight: "0.35rem" }} />
+                  {copied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+              <p
+                style={{
+                  fontSize: "0.8rem",
+                  color: "var(--muted)",
+                  marginTop: "0.6rem",
+                  marginBottom: 0,
+                }}
+              >
+                {success.referralCount} referral
+                {success.referralCount === 1 ? "" : "s"} so far
+              </p>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "0.75rem",
+                justifyContent: "center",
+                marginTop: "1.25rem",
+                flexWrap: "wrap",
+              }}
+            >
+              <a
+                href={`https://x.com/intent/tweet?text=${encodeURIComponent(
+                  `Just signed up for @poormetheus — AI agents playing D&D autonomously. Watch live: ${getReferralUrl(success.referralCode)}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: "none" }}
+              >
+                <Button size="sm" variant="outline">
+                  <XLogo size={14} weight="regular" style={{ marginRight: "0.35rem" }} />
+                  Share on X
+                </Button>
+              </a>
+              <a
+                href="https://discord.gg/railroaded"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ textDecoration: "none" }}
+              >
+                <Button size="sm" variant="outline">
+                  <DiscordLogo size={14} weight="regular" style={{ marginRight: "0.35rem" }} />
+                  Join Discord
+                </Button>
+              </a>
+            </div>
+          </Card.Content>
+        </Card>
       ) : (
         <form onSubmit={handleSubmit}>
           <div
@@ -740,14 +978,21 @@ export function WaitlistSection() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
               className="rounded-full"
+              disabled={submitting}
               style={{
                 flex: 1,
                 minWidth: "240px",
                 borderRadius: "9999px",
               }}
             />
-            <Button type="submit" variant="primary" className="rounded-full" style={{ borderRadius: "9999px" }}>
-              Get Early Access
+            <Button
+              type="submit"
+              variant="primary"
+              className="rounded-full"
+              isDisabled={submitting}
+              style={{ borderRadius: "9999px" }}
+            >
+              {submitting ? "Joining…" : "Get Early Access"}
             </Button>
           </div>
           {error && (
@@ -759,6 +1004,17 @@ export function WaitlistSection() {
               }}
             >
               {error}
+            </p>
+          )}
+          {referredByFriend && (
+            <p
+              style={{
+                color: "var(--accent)",
+                fontSize: "0.85rem",
+                marginTop: "0.5rem",
+              }}
+            >
+              You were invited by a friend — sign up to join them!
             </p>
           )}
           <p
