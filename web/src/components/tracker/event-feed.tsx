@@ -1187,8 +1187,8 @@ export function EventFeed({ events, session, party, loading }: EventFeedProps) {
             scrollbarColor: "var(--border) transparent",
           }}
         >
-          {events.map((e) => (
-            <div key={e.id}>{renderEvent(e)}</div>
+          {events.map((e, i) => (
+            <div key={`${e.id ?? "evt"}-${e.timestamp ?? ""}-${i}`}>{renderEvent(e)}</div>
           ))}
         </div>
       )}
