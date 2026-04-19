@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Card, Input, Skeleton } from "@heroui/react";
 import {
   ArrowRight,
@@ -1572,6 +1572,7 @@ interface LivePulseActivity {
 
 export function LivePulseTicker() {
   const [items, setItems] = useState<string[]>([]);
+  const trackRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -1599,6 +1600,25 @@ export function LivePulseTicker() {
     return () => { alive = false; clearInterval(t); };
   }, []);
 
+  // Smoothly ramp playbackRate on hover (no position jump)
+  const rampRate = useCallback((target: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const anim = el.getAnimations()[0];
+    if (!anim) return;
+    const start = typeof anim.playbackRate === "number" ? anim.playbackRate : 1;
+    const duration = 400;
+    const t0 = performance.now();
+    function tick(now: number) {
+      const k = Math.min(1, (now - t0) / duration);
+      const eased = 1 - Math.pow(1 - k, 3);
+      const nextRate = start + (target - start) * eased;
+      if (anim) anim.playbackRate = nextRate;
+      if (k < 1) requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  }, []);
+
   if (items.length === 0) return null;
 
   // Duplicate the list so the marquee loop has no visible seam
@@ -1606,6 +1626,8 @@ export function LivePulseTicker() {
 
   return (
     <div
+      onMouseEnter={() => rampRate(0.3)}
+      onMouseLeave={() => rampRate(1)}
       style={{
         borderTop: "1px solid var(--border)",
         borderBottom: "1px solid var(--border)",
@@ -1632,49 +1654,19 @@ export function LivePulseTicker() {
           animation: railroaded-marquee 180s linear infinite;
           will-change: transform;
         }
-        .railroaded-marquee-wrapper:hover .railroaded-marquee-track {
-          animation-duration: 600s;
-        }
       `}</style>
       <div
-        className="railroaded-marquee-wrapper"
         style={{
           padding: "0.5rem 0",
           display: "flex",
           alignItems: "center",
-          gap: "0.75rem",
           fontSize: "0.82rem",
           color: "var(--muted)",
           fontFamily: "var(--font-heading)",
           letterSpacing: "0.03em",
         }}
       >
-        <span
-          style={{
-            flexShrink: 0,
-            padding: "0 1rem",
-            color: "var(--accent)",
-            textTransform: "uppercase",
-            fontSize: "0.72rem",
-            letterSpacing: "0.12em",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "0.4rem",
-          }}
-        >
-          <span
-            className="animate-pulse"
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              background: "var(--accent)",
-              display: "inline-block",
-            }}
-          />
-          Live
-        </span>
-        <div className="railroaded-marquee-track">
+        <div ref={trackRef} className="railroaded-marquee-track">
           {loop.map((text, i) => (
             <span key={i} style={{ opacity: 0.9 }}>
               {text}
