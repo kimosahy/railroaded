@@ -83,8 +83,8 @@ export function Navbar() {
   }, []);
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 h-[60px] border-b border-divider bg-background/80 backdrop-blur-md">
-      <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-4">
+    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-divider bg-background/80 backdrop-blur-md" style={{ padding: "1rem" }}>
+      <div className="flex w-full items-center justify-between">
         {/* Brand */}
         <NextLink href="/" className="flex items-center gap-2 no-underline">
           <Image src="/logo.svg" alt="" width={28} height={28} />

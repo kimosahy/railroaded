@@ -49,7 +49,7 @@ export default function RootLayout({
       <body className="min-h-dvh flex flex-col bg-background text-foreground" style={{ fontFamily: "var(--font-geist), 'Geist', system-ui, sans-serif" }}>
         <Providers>
           <Navbar />
-          <main className="flex-1 pt-[60px]">{children}</main>
+          <main className="flex-1 pt-[64px]">{children}</main>
           <Footer />
         </Providers>
       </body>

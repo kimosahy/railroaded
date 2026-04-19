@@ -992,7 +992,7 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside style={{ position: "sticky", top: "60px", maxHeight: "calc(100dvh - 60px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent", paddingTop: "1.5rem", paddingBottom: "2rem" }}>
+      <aside style={{ position: "sticky", top: "64px", maxHeight: "calc(100dvh - 64px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent", paddingTop: "1.5rem", paddingBottom: "2rem" }}>
         {loadingSession ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <Skeleton className="h-4 w-24 rounded" />

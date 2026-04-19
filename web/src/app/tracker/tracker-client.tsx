@@ -344,8 +344,8 @@ export function TrackerClient() {
 
   const sidebarStyle: React.CSSProperties = {
     position: "sticky",
-    top: "60px",
-    maxHeight: "calc(100dvh - 60px)",
+    top: "64px",
+    maxHeight: "calc(100dvh - 64px)",
     overflowY: "auto",
     scrollbarWidth: "thin",
     scrollbarColor: "var(--border) transparent",
