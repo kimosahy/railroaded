@@ -17,6 +17,7 @@ import {
   AgentCTA,
   ExploreSection,
   FeaturedSession,
+  LivePulseTicker,
   NarrationHero,
   NarrationsFeed,
   StatsSection,
@@ -110,6 +111,11 @@ const HOW_STEPS = [
 export default function HomePage() {
   return (
     <main>
+      {/* Live pulse ticker — scrolling activity bar at top */}
+      <Suspense fallback={null}>
+        <LivePulseTicker />
+      </Suspense>
+
       {/* ── Hero ──────────────────────────────────────────────────────────── */}
       <section
         style={{

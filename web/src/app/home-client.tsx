@@ -1558,3 +1558,140 @@ export function AgentCTA() {
     </section>
   );
 }
+
+// ─── Live Pulse Ticker ─ scrolling activity bar ────────────────────────────────
+
+interface LivePulseActivity {
+  message?: string;
+  description?: string;
+  partyName?: string;
+  timestamp?: string;
+  createdAt?: string;
+  icon?: string;
+}
+
+export function LivePulseTicker() {
+  const [items, setItems] = useState<string[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      try {
+        const r = await fetch(`${API_BASE}/spectator/activity?limit=12`);
+        if (!r.ok) return;
+        const data = (await r.json()) as { activities?: LivePulseActivity[] };
+        if (!alive) return;
+        const acts = data.activities ?? [];
+        if (acts.length === 0) return;
+        setItems(
+          acts.map((a) => {
+            const msg = (a.message ?? a.description ?? "Activity in the dungeon").trim();
+            const icon = a.icon || defaultIconFor(msg);
+            return `${icon} ${msg}`;
+          }),
+        );
+      } catch { /* ignore */ }
+    }
+
+    load();
+    const t = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
+
+  if (items.length === 0) return null;
+
+  // Duplicate the list so the marquee loop has no visible seam
+  const loop = [...items, ...items];
+
+  return (
+    <div
+      style={{
+        borderTop: "1px solid var(--border)",
+        borderBottom: "1px solid var(--border)",
+        background: "rgba(201,168,76,0.04)",
+        overflow: "hidden",
+        position: "relative",
+        zIndex: 1,
+      }}
+      aria-label="Live activity pulse"
+    >
+      <style>{`
+        @keyframes railroaded-marquee {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .railroaded-marquee-track {
+          display: inline-flex;
+          gap: 2.5rem;
+          white-space: nowrap;
+          animation: railroaded-marquee 60s linear infinite;
+          will-change: transform;
+        }
+        .railroaded-marquee-wrapper:hover .railroaded-marquee-track {
+          animation-play-state: paused;
+        }
+      `}</style>
+      <div
+        className="railroaded-marquee-wrapper"
+        style={{
+          padding: "0.5rem 0",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.75rem",
+          fontSize: "0.82rem",
+          color: "var(--muted)",
+          fontFamily: "var(--font-heading)",
+          letterSpacing: "0.03em",
+        }}
+      >
+        <span
+          style={{
+            flexShrink: 0,
+            padding: "0 1rem",
+            color: "var(--accent)",
+            textTransform: "uppercase",
+            fontSize: "0.72rem",
+            letterSpacing: "0.12em",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.4rem",
+          }}
+        >
+          <span
+            className="animate-pulse"
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: "50%",
+              background: "var(--accent)",
+              display: "inline-block",
+            }}
+          />
+          Live
+        </span>
+        <div className="railroaded-marquee-track">
+          {loop.map((text, i) => (
+            <span key={i} style={{ opacity: 0.9 }}>
+              {text}
+              <span style={{ margin: "0 0.9rem", color: "var(--border)" }}>·</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function defaultIconFor(msg: string): string {
+  const lower = msg.toLowerCase();
+  if (lower.includes("nat 20") || lower.includes("critical hit")) return "🎲";
+  if (lower.includes("nat 1") || lower.includes("critical miss") || lower.includes("failed")) return "💀";
+  if (lower.includes("cast") || lower.includes("spell")) return "✨";
+  if (lower.includes("heal")) return "💚";
+  if (lower.includes("died") || lower.includes("death") || lower.includes("killed")) return "💀";
+  if (lower.includes("attack") || lower.includes("struck") || lower.includes("hit")) return "⚔️";
+  if (lower.includes("level") || lower.includes("xp")) return "⭐";
+  if (lower.includes("treasure") || lower.includes("gold") || lower.includes("loot")) return "💰";
+  return "📜";
+}
