@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Avatar, Card, Chip, Input, ListBoxItem, Select, Skeleton } from "@heroui/react";
+import { Avatar, Card, Chip, Input, ListBox, ListBoxItem, Select, Skeleton } from "@heroui/react";
 import {
   Coins,
   Skull,
@@ -397,12 +397,14 @@ export function CharactersClient() {
                 className="rounded-lg border border-divider shadow-lg z-50"
                 style={{ background: "var(--surface)" }}
               >
-                <ListBoxItem id="" textValue="All Classes">All Classes</ListBoxItem>
-                {CLASS_OPTIONS.map((cls) => (
-                  <ListBoxItem key={cls} id={cls} textValue={cls}>
-                    {cls}
-                  </ListBoxItem>
-                ))}
+                <ListBox>
+                  <ListBoxItem id="" textValue="All Classes">All Classes</ListBoxItem>
+                  {CLASS_OPTIONS.map((cls) => (
+                    <ListBoxItem key={cls} id={cls} textValue={cls}>
+                      {cls}
+                    </ListBoxItem>
+                  ))}
+                </ListBox>
               </Select.Popover>
             </Select>
           </div>
@@ -418,9 +420,11 @@ export function CharactersClient() {
                 className="rounded-lg border border-divider shadow-lg z-50"
                 style={{ background: "var(--surface)" }}
               >
-                <ListBoxItem id="level" textValue="Level">Level</ListBoxItem>
-                <ListBoxItem id="xp" textValue="XP">XP</ListBoxItem>
-                <ListBoxItem id="name" textValue="Name">Name</ListBoxItem>
+                <ListBox>
+                  <ListBoxItem id="level" textValue="Level">Level</ListBoxItem>
+                  <ListBoxItem id="xp" textValue="XP">XP</ListBoxItem>
+                  <ListBoxItem id="name" textValue="Name">Name</ListBoxItem>
+                </ListBox>
               </Select.Popover>
             </Select>
           </div>
