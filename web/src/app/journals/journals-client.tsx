@@ -2,40 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Accordion, Avatar, Button, Chip, Select, ListBoxItem, Skeleton } from "@heroui/react";
+import { Accordion, Avatar, Button, Chip, ListBox, ListBoxItem, Select, Skeleton } from "@heroui/react";
 import {
   BookOpen,
-  ChatCircle,
-  Crosshair,
   RssSimple,
   ShareNetwork,
-  Skull,
-  Sparkle,
-  Sword,
-  Users,
   X,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface GameEvent {
-  id: string;
-  type: string;
-  data: Record<string, unknown>;
-  timestamp: string;
-  actorId?: string;
-}
-
-interface JournalSession {
-  sessionId: string;
+interface JournalEntry {
   partyId: string;
   partyName: string;
-  startedAt: string;
-  endedAt?: string;
-  outcome?: string;
+  memberNames: string[];
+  summary: string | null;
   eventCount: number;
-  events: GameEvent[];
 }
 
 interface Narration {
@@ -49,111 +32,7 @@ interface Narration {
 
 const NARRATOR_FALLBACK_AVATAR = "https://files.catbox.moe/ns31js.jpg";
 
-// ─── Event helpers ────────────────────────────────────────────────────────────
-
-const EVENT_META: Record<
-  string,
-  { label: string; color: "default" | "accent" | "success" | "danger" | "warning" }
-> = {
-  combat_start: { label: "Combat", color: "danger" },
-  combat_end: { label: "Combat End", color: "default" },
-  player_attack: { label: "Attack", color: "warning" },
-  monster_attack: { label: "Monster", color: "danger" },
-  player_action: { label: "Action", color: "accent" },
-  spell_cast: { label: "Spell", color: "accent" },
-  death_save: { label: "Death Save", color: "danger" },
-  party_chat: { label: "Chat", color: "default" },
-  narration: { label: "Narration", color: "accent" },
-  session_start: { label: "Session Start", color: "success" },
-  session_end: { label: "Session End", color: "default" },
-  level_up: { label: "Level Up", color: "success" },
-  rest: { label: "Rest", color: "default" },
-  loot: { label: "Loot", color: "warning" },
-};
-
-function getEventMeta(type: string): { label: string; color: "default" | "accent" | "success" | "danger" | "warning" } {
-  return EVENT_META[type] ?? { label: type.replace(/_/g, " "), color: "default" };
-}
-
-function eventSummary(event: GameEvent): string {
-  const d = event.data;
-  switch (event.type) {
-    case "player_attack":
-    case "monster_attack": {
-      const attacker = (d.attackerName ?? d.actorName ?? "Unknown") as string;
-      const target = (d.targetName ?? d.target ?? "") as string;
-      const dmg = d.damage ?? d.totalDamage;
-      if (target && dmg !== undefined) return `${attacker} attacked ${target} for ${dmg} damage`;
-      if (target) return `${attacker} attacked ${target}`;
-      return `${attacker} attacked`;
-    }
-    case "party_chat": {
-      const speaker = (d.characterName ?? d.actorName ?? "") as string;
-      const msg = (d.message ?? d.content ?? "") as string;
-      if (speaker && msg) return `${speaker}: "${msg}"`;
-      return msg || speaker || "Party chat";
-    }
-    case "narration": {
-      const content = (d.content ?? d.narration ?? "") as string;
-      return content.length > 140 ? content.slice(0, 137) + "…" : content;
-    }
-    case "spell_cast": {
-      const caster = (d.casterName ?? d.actorName ?? "") as string;
-      const spell = (d.spellName ?? d.spell ?? "") as string;
-      if (caster && spell) return `${caster} cast ${spell}`;
-      return spell || caster || "Spell cast";
-    }
-    case "death_save": {
-      const name = (d.characterName ?? "") as string;
-      const result = (d.result ?? d.outcome ?? "") as string;
-      return `${name} death save${result ? `: ${result}` : ""}`;
-    }
-    case "combat_start":
-      return (d.description ?? "Combat begins.") as string;
-    case "combat_end":
-      return (d.outcome ?? d.description ?? "Combat ends.") as string;
-    case "session_start":
-      return (d.description ?? "A new session begins.") as string;
-    case "session_end":
-      return (d.summary ?? d.description ?? "The session draws to a close.") as string;
-    case "level_up": {
-      const name = (d.characterName ?? "") as string;
-      const lvl = d.newLevel ?? d.level;
-      return `${name} reached level ${lvl}`;
-    }
-    default: {
-      const desc =
-        (d.description ?? d.message ?? d.content ?? d.summary ?? "") as string;
-      return desc.length > 140 ? desc.slice(0, 137) + "…" : desc || event.type;
-    }
-  }
-}
-
-function eventIcon(type: string) {
-  if (type.includes("combat") || type.includes("attack"))
-    return <Sword size={13} weight="fill" />;
-  if (type.includes("spell")) return <Sparkle size={13} weight="fill" />;
-  if (type.includes("death")) return <Skull size={13} weight="fill" />;
-  if (type.includes("chat")) return <ChatCircle size={13} weight="fill" />;
-  if (type.includes("session")) return <BookOpen size={13} weight="fill" />;
-  if (type.includes("party") || type.includes("level"))
-    return <Users size={13} weight="fill" />;
-  return <Crosshair size={13} weight="fill" />;
-}
-
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  } catch {
-    return iso;
-  }
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatTime(iso?: string) {
   if (!iso) return "";
@@ -198,12 +77,10 @@ function NarratorPanel({
   narrations,
   loading,
   avatarUrl,
-  sessionScoped,
 }: {
   narrations: Narration[];
   loading: boolean;
   avatarUrl: string;
-  sessionScoped: boolean;
 }) {
   return (
     <section
@@ -250,7 +127,7 @@ function NarratorPanel({
             Poormetheus
           </div>
           <div style={{ color: "var(--muted)", fontSize: "0.75rem", fontStyle: "italic" }}>
-            {sessionScoped ? "Narrating this session" : "Narrator — Chronicler of dungeons, narrator of fools."}
+            Narrator — Chronicler of dungeons, narrator of fools.
           </div>
         </div>
       </header>
@@ -304,114 +181,60 @@ function NarratorPanel({
   );
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Journal card ─────────────────────────────────────────────────────────────
 
-function EventRow({ event }: { event: GameEvent }) {
-  const meta = getEventMeta(event.type);
-  const summary = eventSummary(event);
-  const isNarration = event.type === "narration";
-
+function JournalCard({ entry }: { entry: JournalEntry }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: "0.75rem",
-        alignItems: "flex-start",
-        paddingBottom: "0.75rem",
-        borderBottom: "1px solid var(--border)",
-      }}
-    >
-      {/* Icon + chip */}
-      <div style={{ paddingTop: "0.1rem", flexShrink: 0 }}>
-        <Chip size="sm" variant="soft" color={meta.color}>
-          <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
-            {eventIcon(event.type)}
-            {meta.label}
+    <div style={{ padding: "0.5rem 0 0.25rem" }}>
+      {/* Members */}
+      {entry.memberNames.length > 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            gap: "0.375rem",
+            alignItems: "center",
+            marginBottom: "1rem",
+          }}
+        >
+          <span style={{ color: "var(--muted)", fontSize: "0.8rem", marginRight: "0.25rem" }}>
+            Members:
           </span>
-        </Chip>
-      </div>
-
-      {/* Content */}
-      <div style={{ flex: 1, minWidth: 0 }}>
-        {isNarration ? (
-          <p
-            className="prose-narrative"
-            style={{ color: "var(--foreground)", fontSize: "0.95rem", margin: 0 }}
-          >
-            {summary}
-          </p>
-        ) : (
-          <p style={{ color: "var(--foreground)", fontSize: "0.875rem", margin: 0 }}>
-            {summary}
-          </p>
-        )}
-        <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>
-          {formatDate(event.timestamp)}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function SessionCard({ session }: { session: JournalSession }) {
-  const duration =
-    session.endedAt
-      ? (() => {
-          const ms =
-            new Date(session.endedAt).getTime() -
-            new Date(session.startedAt).getTime();
-          const mins = Math.round(ms / 60_000);
-          return mins >= 60
-            ? `${Math.floor(mins / 60)}h ${mins % 60}m`
-            : `${mins}m`;
-        })()
-      : null;
-
-  return (
-    <div style={{ padding: "0.75rem 0" }}>
-      {/* Session meta */}
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          gap: "0.5rem",
-          marginBottom: "0.75rem",
-          alignItems: "center",
-        }}
-      >
-        <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-          {formatDate(session.startedAt)}
-        </span>
-        {duration && (
-          <Chip size="sm" variant="secondary" color="default">
-            {duration}
-          </Chip>
-        )}
-        {session.outcome && (
-          <Chip
-            size="sm"
-            variant="soft"
-            color={session.outcome === "victory" ? "success" : "default"}
-          >
-            {session.outcome}
-          </Chip>
-        )}
-        <span style={{ color: "var(--muted)", fontSize: "0.8rem", marginLeft: "auto" }}>
-          {session.eventCount} events
-        </span>
-      </div>
-
-      {/* Events */}
-      {session.events.length === 0 ? (
-        <p style={{ color: "var(--muted)", fontSize: "0.875rem", fontStyle: "italic" }}>
-          No events recorded for this session.
-        </p>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-          {session.events.map((ev) => (
-            <EventRow key={ev.id} event={ev} />
+          {entry.memberNames.map((name) => (
+            <Chip key={name} size="sm" variant="secondary" color="default">
+              {name}
+            </Chip>
           ))}
         </div>
+      )}
+
+      {/* Summary in narrative prose */}
+      {entry.summary && entry.summary.trim().length > 0 ? (
+        <p
+          className="prose-narrative"
+          style={{
+            color: "var(--foreground)",
+            fontSize: "0.95rem",
+            lineHeight: 1.8,
+            margin: 0,
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          {entry.summary}
+        </p>
+      ) : (
+        <p
+          className="prose-narrative"
+          style={{
+            color: "var(--muted)",
+            fontSize: "0.9rem",
+            fontStyle: "italic",
+            margin: 0,
+            lineHeight: 1.7,
+          }}
+        >
+          The chronicler has not yet set down this session&apos;s events.
+        </p>
       )}
     </div>
   );
@@ -445,12 +268,11 @@ function SkeletonSessions() {
 export function JournalsClient() {
   const searchParams = useSearchParams();
 
-  const [journals, setJournals] = useState<JournalSession[]>([]);
+  const [journals, setJournals] = useState<JournalEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const [characterFilter, setCharacterFilter] = useState("");
-  const [sessionFilter, setSessionFilter] = useState("");
+  const [partyFilter, setPartyFilter] = useState("");
 
   const [narrations, setNarrations] = useState<Narration[]>([]);
   const [loadingNarrations, setLoadingNarrations] = useState(true);
@@ -461,10 +283,8 @@ export function JournalsClient() {
   // ── Deep-link support ──────────────────────────────────────────────────────
 
   useEffect(() => {
-    const s = searchParams.get("session");
-    const c = searchParams.get("character");
-    if (s) setSessionFilter(s);
-    if (c) setCharacterFilter(c);
+    const p = searchParams.get("party");
+    if (p) setPartyFilter(p);
   }, [searchParams]);
 
   // ── Fetch journals ─────────────────────────────────────────────────────────
@@ -473,7 +293,7 @@ export function JournalsClient() {
     try {
       const res = await fetch(`${API_BASE}/spectator/journals?limit=20&offset=0`);
       if (!res.ok) throw new Error("Failed");
-      const data = (await res.json()) as { journals?: JournalSession[] };
+      const data = (await res.json()) as { journals?: JournalEntry[] };
       setJournals(data.journals ?? []);
     } catch {
       setError(true);
@@ -514,30 +334,15 @@ export function JournalsClient() {
     };
   }, []);
 
-  // ── Load narrations (global, or session-scoped when filter is set) ─────────
+  // ── Load global narrations ─────────────────────────────────────────────────
 
-  const fetchNarrations = useCallback(async (sessionId: string) => {
+  const fetchNarrations = useCallback(async () => {
     setLoadingNarrations(true);
     try {
-      const url = sessionId
-        ? `${API_BASE}/spectator/sessions/${sessionId}/narrations`
-        : `${API_BASE}/spectator/narrations?limit=20`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        // Fallback to legacy endpoint pattern
-        if (sessionId) {
-          const alt = await fetch(`${API_BASE}/spectator/narrations/${sessionId}`);
-          if (alt.ok) {
-            const data = (await alt.json()) as { narrations?: Narration[] };
-            setNarrations(data.narrations ?? []);
-            return;
-          }
-        }
-        throw new Error("Failed");
-      }
+      const res = await fetch(`${API_BASE}/spectator/narrations?limit=20`);
+      if (!res.ok) throw new Error("Failed");
       const data = (await res.json()) as { narrations?: Narration[] };
-      const list = data.narrations ?? [];
-      setNarrations(sessionId ? list : list.slice().reverse());
+      setNarrations((data.narrations ?? []).slice().reverse());
     } catch {
       setNarrations([]);
     } finally {
@@ -546,44 +351,15 @@ export function JournalsClient() {
   }, []);
 
   useEffect(() => {
-    fetchNarrations(sessionFilter);
-  }, [sessionFilter, fetchNarrations]);
+    fetchNarrations();
+  }, [fetchNarrations]);
 
   // ── Derived ────────────────────────────────────────────────────────────────
 
-  const allCharacters = useMemo(() => {
-    const names = new Set<string>();
-    for (const session of journals) {
-      for (const ev of session.events) {
-        const d = ev.data;
-        const name =
-          (d.characterName ?? d.actorName ?? d.attackerName ?? "") as string;
-        if (name) names.add(name);
-      }
-    }
-    return Array.from(names).sort();
-  }, [journals]);
-
   const filteredJournals = useMemo(() => {
-    let result = journals;
-    if (sessionFilter) {
-      result = result.filter((j) => j.sessionId === sessionFilter);
-    }
-    if (characterFilter) {
-      result = result.filter((j) =>
-        j.events.some((ev) => {
-          const d = ev.data;
-          const name =
-            (d.characterName ?? d.actorName ?? d.attackerName ?? "") as string;
-          return name === characterFilter;
-        }),
-      );
-    }
-    return result;
-  }, [journals, sessionFilter, characterFilter]);
-
-  const hasFilters = !!(sessionFilter || characterFilter);
-  const bothFiltersSet = !!(sessionFilter && characterFilter);
+    if (!partyFilter) return journals;
+    return journals.filter((j) => j.partyId === partyFilter);
+  }, [journals, partyFilter]);
 
   // ── Share journal ──────────────────────────────────────────────────────────
 
@@ -593,11 +369,11 @@ export function JournalsClient() {
   }, []);
 
   const shareJournal = useCallback(
-    (sessionId: string) => {
+    (partyId: string) => {
       const url =
         typeof window !== "undefined"
-          ? `${window.location.origin}/journals?session=${sessionId}`
-          : `/journals?session=${sessionId}`;
+          ? `${window.location.origin}/journals?party=${partyId}`
+          : `/journals?party=${partyId}`;
       if (typeof navigator !== "undefined" && navigator.clipboard) {
         navigator.clipboard
           .writeText(url)
@@ -680,12 +456,11 @@ export function JournalsClient() {
         </a>
       </header>
 
-      {/* Narrator panel — always shown, session-scoped when a session is selected */}
+      {/* Narrator panel */}
       <NarratorPanel
         narrations={narrations}
         loading={loadingNarrations}
         avatarUrl={narratorAvatar}
-        sessionScoped={!!sessionFilter}
       />
 
       {/* Filters */}
@@ -699,12 +474,11 @@ export function JournalsClient() {
             marginBottom: "1.5rem",
           }}
         >
-          {/* Session filter */}
           <Select
-            aria-label="Filter by session"
-            placeholder="All Sessions"
-            selectedKey={sessionFilter}
-            onSelectionChange={(key) => setSessionFilter(key as string)}
+            aria-label="Filter by party"
+            placeholder="All Parties"
+            selectedKey={partyFilter}
+            onSelectionChange={(key) => setPartyFilter(key as string)}
             style={{ minWidth: "10rem" }}
           >
             <Select.Trigger style={selectStyle}>
@@ -714,67 +488,26 @@ export function JournalsClient() {
               className="rounded-lg border border-divider shadow-lg z-50"
               style={{ background: "var(--surface)" }}
             >
-              <ListBoxItem id="" textValue="All Sessions">All Sessions</ListBoxItem>
-              {journals.map((j) => (
-                <ListBoxItem key={j.sessionId} id={j.sessionId} textValue={`${j.partyName} — ${formatDate(j.startedAt)}`}>
-                  {j.partyName} — {formatDate(j.startedAt)}
-                </ListBoxItem>
-              ))}
+              <ListBox>
+                <ListBoxItem id="" textValue="All Parties">All Parties</ListBoxItem>
+                {journals.map((j) => (
+                  <ListBoxItem key={j.partyId} id={j.partyId} textValue={j.partyName}>
+                    {j.partyName}
+                  </ListBoxItem>
+                ))}
+              </ListBox>
             </Select.Popover>
           </Select>
 
-          {/* Character filter */}
-          {allCharacters.length > 0 && (
-            <Select
-              aria-label="Filter by character"
-              placeholder="All Characters"
-              selectedKey={characterFilter}
-              onSelectionChange={(key) => setCharacterFilter(key as string)}
-              style={{ minWidth: "10rem" }}
-            >
-              <Select.Trigger style={selectStyle}>
-                <Select.Value />
-              </Select.Trigger>
-              <Select.Popover
-                className="rounded-lg border border-divider shadow-lg z-50"
-                style={{ background: "var(--surface)" }}
-              >
-                <ListBoxItem id="" textValue="All Characters">All Characters</ListBoxItem>
-                {allCharacters.map((name) => (
-                  <ListBoxItem key={name} id={name} textValue={name}>
-                    {name}
-                  </ListBoxItem>
-                ))}
-              </Select.Popover>
-            </Select>
-          )}
-
-          {/* Clear filters — prominent when both are set */}
-          {bothFiltersSet ? (
+          {partyFilter && (
             <Button
               size="sm"
               variant="secondary"
-              onPress={() => {
-                setSessionFilter("");
-                setCharacterFilter("");
-              }}
+              onPress={() => setPartyFilter("")}
             >
               <X size={12} weight="bold" />
-              Clear filters
+              Clear
             </Button>
-          ) : (
-            hasFilters && (
-              <Button
-                size="sm"
-                variant="secondary"
-                onPress={() => {
-                  setSessionFilter("");
-                  setCharacterFilter("");
-                }}
-              >
-                Clear
-              </Button>
-            )
           )}
         </div>
       )}
@@ -831,8 +564,8 @@ export function JournalsClient() {
       {/* Sessions accordion */}
       {!loading && !error && filteredJournals.length > 0 && (
         <Accordion allowsMultipleExpanded>
-          {filteredJournals.map((session) => (
-            <Accordion.Item key={session.sessionId} id={session.sessionId}>
+          {filteredJournals.map((entry) => (
+            <Accordion.Item key={entry.partyId} id={entry.partyId}>
               <Accordion.Heading>
                 <Accordion.Trigger
                   style={{
@@ -861,29 +594,18 @@ export function JournalsClient() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {session.partyName}
+                      {entry.partyName}
                     </span>
                     <Chip size="sm" variant="secondary" color="default" style={{ flexShrink: 0 }}>
-                      {session.eventCount} events
+                      {entry.eventCount} events
                     </Chip>
-                    {session.outcome && (
-                      <Chip
-                        size="sm"
-                        variant="soft"
-                        color={session.outcome === "victory" ? "success" : "default"}
-                        style={{ flexShrink: 0 }}
-                      >
-                        {session.outcome}
-                      </Chip>
-                    )}
-                    {/* Share button */}
                     <button
                       type="button"
                       aria-label="Share journal link"
                       onClick={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
-                        shareJournal(session.sessionId);
+                        shareJournal(entry.partyId);
                       }}
                       style={{
                         display: "inline-flex",
@@ -911,17 +633,12 @@ export function JournalsClient() {
                       Share
                     </button>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexShrink: 0 }}>
-                    <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>
-                      {formatDate(session.startedAt)}
-                    </span>
-                    <Accordion.Indicator />
-                  </div>
+                  <Accordion.Indicator />
                 </Accordion.Trigger>
               </Accordion.Heading>
               <Accordion.Panel>
                 <Accordion.Body style={{ paddingBottom: "1rem" }}>
-                  <SessionCard session={session} />
+                  <JournalCard entry={entry} />
                 </Accordion.Body>
               </Accordion.Panel>
             </Accordion.Item>
