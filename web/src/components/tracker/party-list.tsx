@@ -184,7 +184,7 @@ function PartyCard({
           </div>
 
           <div className="flex flex-wrap gap-1">
-            {party.members.slice(0, 4).map((m) => (
+            {party.members.map((m) => (
               <MemberPip key={m.name} member={m} />
             ))}
           </div>
