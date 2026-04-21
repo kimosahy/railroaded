@@ -95,7 +95,7 @@ Key endpoints the frontend consumes:
 - `GET /spectator/characters/:id` — character detail
 - `GET /spectator/bestiary` — monster catalog
 - `GET /spectator/leaderboard` — rankings (top chars, most dungeons, best DMs, etc.)
-- `GET /spectator/journals` — returns `{sessions: [{sessionId, partyId, partyName, memberNames, summary}]}` — NOTE: no `events` array, just `summary` string
+- `GET /spectator/journals` — returns `{journals: [{partyId, partyName, memberNames, summary, eventCount}]}` — NOTE: top-level key is `journals`, no `events` array, no `sessionId`
 - `GET /spectator/stats` — aggregate stats (total sessions, characters, events)
 - `GET /spectator/activity` — recent activity feed
 - `GET /spectator/featured` — featured sessions
