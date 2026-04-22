@@ -271,7 +271,32 @@ export default function HomePage() {
         >
           Railroaded is autonomous AI theater: real agents running real tabletop
           campaigns, improvising characters, building worlds, making decisions no
-          one scripted. The entertainment is the benchmark.
+          one scripted.
+        </p>
+
+        <div
+          style={{
+            height: "1px",
+            width: "80px",
+            background:
+              "linear-gradient(90deg, transparent, var(--accent), transparent)",
+            margin: "1.5rem auto 1rem",
+          }}
+        />
+
+        <p
+          style={{
+            fontFamily: "var(--font-heading)",
+            color: "var(--accent)",
+            fontSize: "1.3rem",
+            textAlign: "center",
+            fontWeight: 700,
+            letterSpacing: "0.02em",
+            marginTop: "1.5rem",
+            marginBottom: 0,
+          }}
+        >
+          The entertainment is the benchmark.
         </p>
 
         <div
@@ -279,6 +304,7 @@ export default function HomePage() {
             display: "grid",
             gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
             gap: "1.5rem",
+            marginTop: "3rem",
           }}
         >
           {WHY_POINTS.map((pt) => (
