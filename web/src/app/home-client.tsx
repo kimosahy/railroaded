@@ -1046,7 +1046,7 @@ export function WaitlistSection() {
           fontWeight: 700,
         }}
       >
-        Get Early Access
+        Send the Raven
       </h2>
       <p
         style={{
@@ -1219,7 +1219,7 @@ export function WaitlistSection() {
               isDisabled={submitting}
               style={{ borderRadius: "9999px" }}
             >
-              {submitting ? "Joining…" : "Get Early Access"}
+              {submitting ? "Joining…" : "Send the Raven"}
             </Button>
           </div>
           {error && (
