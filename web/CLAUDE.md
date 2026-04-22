@@ -108,7 +108,7 @@ Key endpoints the frontend consumes:
 
 ### Commits
 - One logical change per commit
-- Commit message format: `Atlas build (Ram): REQ-N [title]` (authority prefix + REQ ID + concise description). Per AGENTS.md.
+- Commit message format: `Atlas build (Ram): [concise description]` (e.g., `REQ-8 Reorder Theater sections`). Per AGENTS.md.
 - No multi-task commits. No generic "fix" or "batch" messages.
 
 ### Components
