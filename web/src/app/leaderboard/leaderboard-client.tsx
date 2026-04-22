@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar, Chip, Skeleton, Table, Tabs } from "@heroui/react";
 import {
   CaretDown,
@@ -12,7 +12,6 @@ import {
   Star,
   Sword,
   Target,
-  Trophy,
 } from "@phosphor-icons/react";
 import Link from "next/link";
 import { API_BASE } from "@/lib/api";
@@ -39,14 +38,6 @@ interface CharacterEntry {
   description?: string;
 }
 
-interface PartyEntry {
-  id: string;
-  name: string;
-  memberCount: number;
-  sessionsPlayed: number;
-  totalEvents: number;
-}
-
 interface DMEntry {
   id: string;
   name: string;
@@ -59,45 +50,8 @@ interface LeaderboardData {
   leaderboards: {
     highestLevel: CharacterEntry[];
     mostXP: CharacterEntry[];
-    longestParties: PartyEntry[];
-    dungeons_cleared: CharacterEntry[];
     best_dms: DMEntry[];
   };
-}
-
-// ─── Achievement definitions (parity with /character) ────────────────────────
-
-const ACHIEVEMENTS: {
-  id: string;
-  name: string;
-  icon: string;
-  check: (c: CharacterEntry) => boolean;
-}[] = [
-  { id: "first_blood", name: "First Blood", icon: "🗡️", check: (c) => (c.monstersKilled ?? 0) >= 1 },
-  { id: "slayer_5", name: "Monster Slayer", icon: "⚔️", check: (c) => (c.monstersKilled ?? 0) >= 5 },
-  { id: "slayer_20", name: "Monster Hunter", icon: "🏹", check: (c) => (c.monstersKilled ?? 0) >= 20 },
-  { id: "dungeon_1", name: "Dungeon Crawler", icon: "🚪", check: (c) => (c.dungeonsCleared ?? 0) >= 1 },
-  { id: "dungeon_5", name: "Dungeon Delver", icon: "🏰", check: (c) => (c.dungeonsCleared ?? 0) >= 5 },
-  { id: "veteran", name: "Veteran", icon: "🎖️", check: (c) => (c.sessionsPlayed ?? 0) >= 10 },
-  { id: "crit_king", name: "Critical King", icon: "💥", check: (c) => (c.criticalHits ?? 0) >= 5 },
-  {
-    id: "survivor",
-    name: "Survivor",
-    icon: "💪",
-    check: (c) => (c.timesKnockedOut ?? 0) >= 1 && (c.hpCurrent ?? 0) > 0,
-  },
-  { id: "rich", name: "Gold Hoarder", icon: "💰", check: (c) => (c.goldEarned ?? 0) >= 100 },
-  { id: "level_3", name: "Seasoned", icon: "⭐", check: (c) => (c.level ?? 1) >= 3 },
-  { id: "level_5", name: "Hero", icon: "🌟", check: (c) => (c.level ?? 1) >= 5 },
-  { id: "level_10", name: "Legend", icon: "👑", check: (c) => (c.level ?? 1) >= 10 },
-];
-
-function countAchievements(c: CharacterEntry): number {
-  return ACHIEVEMENTS.filter((a) => a.check(c)).length;
-}
-
-function earnedAchievements(c: CharacterEntry): { id: string; icon: string; name: string }[] {
-  return ACHIEVEMENTS.filter((a) => a.check(c)).map((a) => ({ id: a.id, icon: a.icon, name: a.name }));
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -596,163 +550,6 @@ function CharacterTable({
   );
 }
 
-// ─── Achievements table ───────────────────────────────────────────────────────
-
-function AchievementsTable({ entries }: { entries: (CharacterEntry & { _achCount: number })[] }) {
-  if (entries.length === 0 || entries[0]._achCount === 0) {
-    return <EmptyState message="No achievements earned yet. Once adventurers start earning achievements, they'll appear here." />;
-  }
-
-  return (
-    <Table>
-      <Table.ScrollContainer>
-        <Table.Content aria-label="Achievement rankings" className="min-w-[540px]">
-          <Table.Header>
-            <Table.Column isRowHeader>Rank</Table.Column>
-            <Table.Column>Adventurer</Table.Column>
-            <Table.Column>Achievements</Table.Column>
-            <Table.Column>Earned</Table.Column>
-          </Table.Header>
-          <Table.Body>
-            {entries.map((entry, i) => {
-              const earned = earnedAchievements(entry);
-              return (
-                <Table.Row key={entry.id}>
-                  <Table.Cell>
-                    <RankBadge rank={i + 1} />
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex items-center gap-2">
-                      <CharacterAvatar entry={entry} />
-                      <div style={{ minWidth: 0 }}>
-                        <Link
-                          href={`/character/${entry.id}`}
-                          style={{
-                            fontFamily: "var(--font-heading)",
-                            fontSize: "0.875rem",
-                            fontWeight: 600,
-                            color: "var(--foreground)",
-                            textDecoration: "none",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.color = "var(--accent)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.color = "var(--foreground)")}
-                        >
-                          {entry.name}
-                        </Link>
-                        <div style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
-                          {entry.race} {entry.class}
-                        </div>
-                        <div
-                          style={{
-                            color: "var(--muted)",
-                            fontSize: "0.7rem",
-                            fontStyle: "italic",
-                            marginTop: "0.1rem",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                            maxWidth: "24rem",
-                          }}
-                        >
-                          {charTagline(entry)}
-                        </div>
-                      </div>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span
-                      style={{
-                        color: "var(--accent)",
-                        fontFamily: "var(--font-heading)",
-                        fontWeight: 700,
-                      }}
-                    >
-                      {entry._achCount}
-                    </span>
-                    <span style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-                      {" "}
-                      / {ACHIEVEMENTS.length}
-                    </span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span
-                      style={{
-                        fontSize: "1rem",
-                        letterSpacing: "0.1em",
-                        lineHeight: 1.2,
-                      }}
-                      title={earned.map((e) => e.name).join(", ")}
-                    >
-                      {earned.length > 0 ? earned.map((e) => e.icon).join(" ") : "—"}
-                    </span>
-                  </Table.Cell>
-                </Table.Row>
-              );
-            })}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
-  );
-}
-
-// ─── Party table ──────────────────────────────────────────────────────────────
-
-function PartyTable({ entries }: { entries: PartyEntry[] }) {
-  if (entries.length === 0) {
-    return (
-      <EmptyState message="No parties have stood the test of time. Yet." />
-    );
-  }
-
-  return (
-    <Table>
-      <Table.ScrollContainer>
-        <Table.Content aria-label="Party rankings" className="min-w-[400px]">
-          <Table.Header>
-            <Table.Column isRowHeader>Rank</Table.Column>
-            <Table.Column>Party</Table.Column>
-            <Table.Column>Members</Table.Column>
-            <Table.Column>Sessions</Table.Column>
-            <Table.Column>Total Events</Table.Column>
-          </Table.Header>
-          <Table.Body>
-            {entries.map((entry, i) => (
-              <Table.Row key={entry.id}>
-                <Table.Cell>
-                  <RankBadge rank={i + 1} />
-                </Table.Cell>
-                <Table.Cell>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-heading)",
-                      fontSize: "0.875rem",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {entry.name}
-                  </span>
-                </Table.Cell>
-                <Table.Cell>{entry.memberCount}</Table.Cell>
-                <Table.Cell>
-                  <span
-                    style={{ color: "var(--accent)", fontWeight: 700 }}
-                  >
-                    {entry.sessionsPlayed}
-                  </span>
-                </Table.Cell>
-                <Table.Cell>
-                  {(entry.totalEvents ?? 0).toLocaleString()}
-                </Table.Cell>
-              </Table.Row>
-            ))}
-          </Table.Body>
-        </Table.Content>
-      </Table.ScrollContainer>
-    </Table>
-  );
-}
-
 // ─── DM table ─────────────────────────────────────────────────────────────────
 
 function DMTable({ entries }: { entries: DMEntry[] }) {
@@ -830,15 +627,6 @@ function charPodium(
   }));
 }
 
-function partyPodium(entries: PartyEntry[]): PodiumEntry[] {
-  return entries.slice(0, 3).map((p) => ({
-    id: p.id,
-    name: p.name,
-    statValue: `${p.sessionsPlayed}`,
-    subLabel: `${p.memberCount} members`,
-  }));
-}
-
 function dmPodium(entries: DMEntry[]): PodiumEntry[] {
   return entries.slice(0, 3).map((d) => ({
     id: d.id || d.name,
@@ -867,15 +655,6 @@ export function LeaderboardClient() {
   }, []);
 
   const lb = data?.leaderboards;
-
-  // Compute achievements ranking (reuse highestLevel as full roster)
-  const achievementsRanking = useMemo(() => {
-    const source = lb?.highestLevel ?? [];
-    return source
-      .filter((c) => c.name && c.name.trim())
-      .map((c) => ({ ...c, _achCount: countAchievements(c) }))
-      .sort((a, b) => b._achCount - a._achCount || (b.level ?? 0) - (a.level ?? 0));
-  }, [lb]);
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-8">
@@ -920,18 +699,6 @@ export function LeaderboardClient() {
             </Tabs.Tab>
             <Tabs.Tab id="xp">
               Most XP
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="dungeons">
-              Dungeons Cleared
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="achievements">
-              Achievements
-              <Tabs.Indicator />
-            </Tabs.Tab>
-            <Tabs.Tab id="parties">
-              Longest Parties
               <Tabs.Indicator />
             </Tabs.Tab>
             <Tabs.Tab id="dms">
@@ -989,82 +756,6 @@ export function LeaderboardClient() {
                 col5Label="Monsters Killed"
                 col5Key="monstersKilled"
               />
-            </>
-          )}
-        </Tabs.Panel>
-
-        {/* ── Dungeons Cleared ──────────────────────────────────────────────── */}
-        <Tabs.Panel id="dungeons" className="pt-6">
-          {loading ? (
-            <SkeletonRows />
-          ) : (
-            <>
-              <Podium
-                entries={charPodium(
-                  lb?.dungeons_cleared ?? [],
-                  (c) => `${c.dungeonsCleared ?? 0}`,
-                  (c) => `${c.class || "?"} Lv${c.level ?? 1}`,
-                )}
-              />
-              <CharacterTable
-                entries={lb?.dungeons_cleared ?? []}
-                col3Label="Dungeons"
-                col3Key="dungeonsCleared"
-                col4Label="Sessions"
-                col4Key="sessionsPlayed"
-                col5Label="Monsters Killed"
-                col5Key="monstersKilled"
-              />
-            </>
-          )}
-        </Tabs.Panel>
-
-        {/* ── Achievements ──────────────────────────────────────────────────── */}
-        <Tabs.Panel id="achievements" className="pt-6">
-          {loading ? (
-            <SkeletonRows />
-          ) : achievementsRanking.length === 0 || achievementsRanking[0]._achCount === 0 ? (
-            <EmptyState message="No achievements earned yet. Once adventurers start earning achievements, they'll appear here." />
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.5rem",
-                  marginBottom: "1rem",
-                  color: "var(--muted)",
-                }}
-              >
-                <Trophy size={14} weight="fill" style={{ color: "var(--accent)" }} />
-                <span style={{ fontSize: "0.85rem" }}>
-                  The most decorated adventurers — ranked by achievements earned.
-                </span>
-              </div>
-              <Podium
-                entries={achievementsRanking.slice(0, 3).map((c) => ({
-                  id: c.id,
-                  name: c.name,
-                  avatarUrl: c.avatarUrl,
-                  classForColor: c.class,
-                  statValue: `${c._achCount}/${ACHIEVEMENTS.length}`,
-                  subLabel: `${c.class || "?"} Lv${c.level ?? 1}`,
-                  href: `/character/${c.id}`,
-                }))}
-              />
-              <AchievementsTable entries={achievementsRanking} />
-            </>
-          )}
-        </Tabs.Panel>
-
-        {/* ── Longest Parties ───────────────────────────────────────────────── */}
-        <Tabs.Panel id="parties" className="pt-6">
-          {loading ? (
-            <SkeletonRows />
-          ) : (
-            <>
-              <Podium entries={partyPodium(lb?.longestParties ?? [])} />
-              <PartyTable entries={lb?.longestParties ?? []} />
             </>
           )}
         </Tabs.Panel>
