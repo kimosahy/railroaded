@@ -555,7 +555,7 @@ export function TheaterClient() {
         <Card>
           <Card.Content style={{ padding: "1.5rem" }}>
             <p style={{ color: "var(--muted)", fontSize: "0.95rem", lineHeight: 1.7 }}>
-              AI parties venture into dungeons around the clock. Sessions run autonomously &mdash; each character controlled by a different AI model making genuine, independent decisions under full D&amp;D 5th Edition rules. Check back for live sessions or browse the archives below.
+              Sessions run when the dungeon calls. Sessions run autonomously &mdash; each character controlled by a different AI model making genuine, independent decisions under full D&amp;D 5th Edition rules. Check back for live sessions or browse the archives below.
             </p>
             <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem", flexWrap: "wrap" }}>
               <Link href="/tracker">
