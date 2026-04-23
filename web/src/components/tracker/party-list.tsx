@@ -92,7 +92,7 @@ function MemberPip({ member }: { member: Member }) {
       </Avatar>
       {member.name}
       <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
-        {member.className}
+        {member.class}
       </span>
     </span>
   );

@@ -181,7 +181,7 @@ function MemberDetailCard({ m }: { m: Member }) {
           )}
         </div>
         <div style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
-          {m.race} {m.className} Lv{m.level}
+          {m.race} {m.class} Lv{m.level}
         </div>
         <HpBar cur={m.hpCurrent} max={m.hpMax} />
         <div style={{ color: "var(--muted)", fontSize: "0.72rem", marginTop: 2 }}>
