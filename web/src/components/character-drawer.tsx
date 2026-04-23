@@ -149,16 +149,19 @@ export function CharacterDrawer() {
 
   // ── Parallel fetch with AbortController ────────────────────────────────────
   useEffect(() => {
-    if (!isOpen || !characterId) {
-      setCharacter(null);
-      setEvents([]);
-      setError(false);
-      return;
-    }
+    if (!isOpen || !characterId) return;
 
     const controller = new AbortController();
-    setLoading(true);
+    // On every distinct open (fresh or swap-in-place), clear stale display and
+    // show loading before firing the two parallel fetches. This matches the
+    // pre-existing fetch-driven setState pattern used elsewhere in this app
+    // (see tracker-client.tsx polling effects).
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setCharacter(null);
+    setEvents([]);
     setError(false);
+    setLoading(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     Promise.all([
       fetch(`${API_BASE}/spectator/characters/${characterId}`, {
