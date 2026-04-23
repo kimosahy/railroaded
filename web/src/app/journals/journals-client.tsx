@@ -10,6 +10,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
+import { useCharacterDrawer } from "@/components/character-drawer-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ interface JournalEntry {
   partyId: string;
   partyName: string;
   memberNames: string[];
+  memberIds: string[];
   summary: string | null;
   eventCount: number;
 }
@@ -184,6 +186,7 @@ function NarratorPanel({
 // ─── Journal card ─────────────────────────────────────────────────────────────
 
 function JournalCard({ entry }: { entry: JournalEntry }) {
+  const { openDrawer } = useCharacterDrawer();
   return (
     <div style={{ padding: "0.5rem 0 0.25rem" }}>
       {/* Members */}
@@ -200,11 +203,37 @@ function JournalCard({ entry }: { entry: JournalEntry }) {
           <span style={{ color: "var(--muted)", fontSize: "0.8rem", marginRight: "0.25rem" }}>
             Members:
           </span>
-          {entry.memberNames.map((name) => (
-            <Chip key={name} size="sm" variant="secondary" color="default">
-              {name}
-            </Chip>
-          ))}
+          {entry.memberNames.map((name, i) => {
+            const memberId = entry.memberIds?.[i];
+            if (memberId) {
+              return (
+                <Chip
+                  key={`${memberId}-${name}`}
+                  size="sm"
+                  variant="secondary"
+                  color="default"
+                  onClick={() => openDrawer(memberId, null)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e: React.KeyboardEvent<HTMLSpanElement>) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openDrawer(memberId, null);
+                    }
+                  }}
+                  style={{ cursor: "pointer" }}
+                  aria-label={`Open character details for ${name}`}
+                >
+                  {name}
+                </Chip>
+              );
+            }
+            return (
+              <Chip key={name} size="sm" variant="secondary" color="default">
+                {name}
+              </Chip>
+            );
+          })}
         </div>
       )}
 
