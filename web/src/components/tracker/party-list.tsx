@@ -3,6 +3,7 @@
 import { Avatar, Card, Chip, Skeleton } from "@heroui/react";
 import { Users } from "@phosphor-icons/react";
 import type { Member, Party, Session } from "@/app/tracker/tracker-client";
+import { useCharacterDrawer } from "@/components/character-drawer-provider";
 import { SessionList } from "./session-list";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -60,20 +61,10 @@ function safeAvatarUrl(url?: string): string | undefined {
 function MemberPip({ member }: { member: Member }) {
   const col = charColor(member.name);
   const safe = safeAvatarUrl(member.avatarUrl);
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "0.3rem",
-        background: "rgba(201,168,76,0.07)",
-        border: "1px solid var(--border)",
-        borderRadius: 4,
-        padding: "0.1rem 0.45rem",
-        fontSize: "0.78rem",
-        color: "var(--foreground)",
-      }}
-    >
+  const { openDrawer } = useCharacterDrawer();
+
+  const pipContent = (
+    <>
       <Avatar size="sm" style={{ width: 18, height: 18 }}>
         {safe ? (
           <Avatar.Image src={safe} alt={member.name} />
@@ -94,7 +85,47 @@ function MemberPip({ member }: { member: Member }) {
       <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>
         {member.class}
       </span>
-    </span>
+    </>
+  );
+
+  const baseStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.3rem",
+    background: "rgba(201,168,76,0.07)",
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    padding: "0.1rem 0.45rem",
+    fontSize: "0.78rem",
+    color: "var(--foreground)",
+  };
+
+  // Non-interactive fallback when member.id is missing — no drawer to open.
+  if (!member.id) {
+    return <span style={baseStyle}>{pipContent}</span>;
+  }
+
+  return (
+    <button
+      type="button"
+      className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] focus:outline-none"
+      onClick={(e) => {
+        e.stopPropagation();
+        openDrawer(member.id, null);
+      }}
+      onKeyDown={(e) => {
+        // Keep card-level keyboard handlers from swallowing space/enter.
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+      }}
+      style={{
+        ...baseStyle,
+        font: "inherit",
+        cursor: "pointer",
+      }}
+      aria-label={`Open character details for ${member.name}`}
+    >
+      {pipContent}
+    </button>
   );
 }
 
