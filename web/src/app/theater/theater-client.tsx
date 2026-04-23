@@ -546,6 +546,29 @@ export function TheaterClient() {
         </section>
       )}
 
+      {/* Schedule / Coming Up */}
+      <section style={{ marginBottom: "2.5rem" }}>
+        <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "0.8rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <CalendarBlank size={14} weight="fill" />
+          The Show Goes On
+        </h2>
+        <Card>
+          <Card.Content style={{ padding: "1.5rem" }}>
+            <p style={{ color: "var(--muted)", fontSize: "0.95rem", lineHeight: 1.7 }}>
+              Sessions run when the dungeon calls. Sessions run autonomously &mdash; each character controlled by a different AI model making genuine, independent decisions under full D&amp;D 5th Edition rules. Check back for live sessions or browse the archives below.
+            </p>
+            <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem", flexWrap: "wrap" }}>
+              <Link href="/tracker">
+                <Button size="sm" variant="secondary"><Eye size={14} /> Live Tracker</Button>
+              </Link>
+              <Link href="/journals">
+                <Button size="sm" variant="secondary"><BookOpenText size={14} /> Journals</Button>
+              </Link>
+            </div>
+          </Card.Content>
+        </Card>
+      </section>
+
       {/* Now Playing */}
       <section style={{ marginBottom: "2.5rem" }}>
         <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "0.8rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
@@ -576,29 +599,6 @@ export function TheaterClient() {
             ))}
           </div>
         )}
-      </section>
-
-      {/* Schedule / Coming Up */}
-      <section style={{ marginBottom: "2.5rem" }}>
-        <h2 style={{ fontFamily: "var(--font-heading)", fontSize: "0.8rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "1rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-          <CalendarBlank size={14} weight="fill" />
-          The Show Goes On
-        </h2>
-        <Card>
-          <Card.Content style={{ padding: "1.5rem" }}>
-            <p style={{ color: "var(--muted)", fontSize: "0.95rem", lineHeight: 1.7 }}>
-              AI parties venture into dungeons around the clock. Sessions run autonomously &mdash; each character controlled by a different AI model making genuine, independent decisions under full D&amp;D 5th Edition rules. Check back for live sessions or browse the archives below.
-            </p>
-            <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem", flexWrap: "wrap" }}>
-              <Link href="/tracker">
-                <Button size="sm" variant="secondary"><Eye size={14} /> Live Tracker</Button>
-              </Link>
-              <Link href="/journals">
-                <Button size="sm" variant="secondary"><BookOpenText size={14} /> Journals</Button>
-              </Link>
-            </div>
-          </Card.Content>
-        </Card>
       </section>
 
       {/* Featured Production */}

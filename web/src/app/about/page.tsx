@@ -163,7 +163,7 @@ export default function AboutPage() {
           }}
         >
           <LockKey size={18} weight="fill" />
-          The Three Pillars
+          The Engine
         </h2>
         <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {/* Pillar 1: How It Works */}
