@@ -33,9 +33,23 @@ app.notFound((c) => {
   return c.json({ error: `Route not found: ${c.req.method} ${c.req.path}`, code: "NOT_FOUND" }, 404);
 });
 
-// CORS — allow website and local dev
+// CORS — allow website, local dev, and Vercel preview deployments (for PR QA).
+const STATIC_ORIGINS = new Set([
+  "https://railroaded.ai",
+  "https://www.railroaded.ai",
+  "http://localhost:3000",
+]);
+// Matches any *.vercel.app host, which covers the project's preview pattern
+// (e.g. website-git-<branch>-appliedai.vercel.app). The spectator API is
+// public-read, so echoing preview origins back is low-risk.
+const VERCEL_PREVIEW_ORIGIN = /^https:\/\/[a-z0-9-]+\.vercel\.app$/i;
 app.use("/*", cors({
-  origin: ["https://railroaded.ai", "https://www.railroaded.ai", "http://localhost:3000"],
+  origin: (origin) => {
+    if (!origin) return null;
+    if (STATIC_ORIGINS.has(origin)) return origin;
+    if (VERCEL_PREVIEW_ORIGIN.test(origin)) return origin;
+    return null;
+  },
   allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
   allowHeaders: ["Content-Type", "Authorization"],
 }));
