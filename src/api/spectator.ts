@@ -276,6 +276,7 @@ spectator.get("/journals", async (c) => {
     partyId: string;
     partyName: string;
     memberNames: string[];
+    memberIds: string[];
     summary: string;
     eventCount: number;
   }[] = [];
@@ -287,16 +288,20 @@ spectator.get("/journals", async (c) => {
     if (party.events.length === 0) continue;
     if (party.dbPartyId) knownDbIds.add(party.dbPartyId);
 
-    const memberNames = party.members.map((charId) => {
+    const memberNames: string[] = [];
+    const memberIds: string[] = [];
+    for (const charId of party.members) {
       const char = state.characters.get(charId);
-      return char?.name ?? "Unknown";
-    });
+      memberNames.push(char?.name ?? "Unknown");
+      memberIds.push(char?.dbCharId ?? charId);
+    }
 
     const summary = summarizeSession(party.events);
     journals.push({
       partyId: party.dbPartyId ?? partyId,
       partyName: party.name,
       memberNames,
+      memberIds,
       summary,
       eventCount: party.events.length,
     });
@@ -308,6 +313,7 @@ spectator.get("/journals", async (c) => {
       partyId: gameSessionsTable.partyId,
       partyName: partiesTable.name,
       content: journalEntriesTable.content,
+      characterId: charactersTable.id,
       characterName: charactersTable.name,
       sessionId: journalEntriesTable.sessionId,
     })
@@ -317,24 +323,29 @@ spectator.get("/journals", async (c) => {
       .innerJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
       .orderBy(desc(journalEntriesTable.createdAt));
 
-    // Group by partyId
-    const byParty = new Map<string, { partyName: string; memberNames: Set<string>; entries: string[] }>();
+    // Group by partyId. Preserve name↔id parallel ordering via a Map keyed by character id.
+    const byParty = new Map<string, { partyName: string; membersById: Map<string, string>; entries: string[] }>();
     for (const row of dbEntries) {
       if (knownDbIds.has(row.partyId)) continue;
       let group = byParty.get(row.partyId);
       if (!group) {
-        group = { partyName: row.partyName ?? "Unknown Party", memberNames: new Set(), entries: [] };
+        group = { partyName: row.partyName ?? "Unknown Party", membersById: new Map(), entries: [] };
         byParty.set(row.partyId, group);
       }
-      group.memberNames.add(row.characterName);
+      if (!group.membersById.has(row.characterId)) {
+        group.membersById.set(row.characterId, row.characterName);
+      }
       group.entries.push(row.content);
     }
 
     for (const [pid, group] of byParty) {
+      const memberIds = [...group.membersById.keys()];
+      const memberNames = memberIds.map((id) => group.membersById.get(id) ?? "Unknown");
       journals.push({
         partyId: pid,
         partyName: group.partyName,
-        memberNames: [...group.memberNames],
+        memberNames,
+        memberIds,
         summary: group.entries.slice(0, 5).join("\n"),
         eventCount: group.entries.length,
       });
@@ -768,6 +779,7 @@ spectator.get("/characters/:id", async (c) => {
       flaw: char.flaw ?? null, bond: char.bond ?? null,
       ideal: char.ideal ?? null, fear: char.fear ?? null,
       avatarUrl: char.avatarUrl, description: char.description,
+      isAlive: char.isAlive !== false,
       monstersKilled: char.monstersKilled ?? 0,
       dungeonsCleared: char.dungeonsCleared ?? 0,
       sessionsPlayed: char.sessionsPlayed ?? 0,
@@ -798,6 +810,7 @@ spectator.get("/characters/:id", async (c) => {
       monstersKilled: charactersTable.monstersKilled,
       dungeonsCleared: charactersTable.dungeonsCleared,
       sessionsPlayed: charactersTable.sessionsPlayed,
+      isAlive: charactersTable.isAlive,
       totalDamageDealt: charactersTable.totalDamageDealt,
       criticalHits: charactersTable.criticalHits,
       timesKnockedOut: charactersTable.timesKnockedOut,
@@ -825,6 +838,7 @@ spectator.get("/characters/:id", async (c) => {
       flaw: row.flaw || null, bond: row.bond || null,
       ideal: row.ideal || null, fear: row.fear || null,
       avatarUrl: row.avatarUrl ?? null, description: row.description ?? null,
+      isAlive: row.isAlive ?? true,
       monstersKilled: row.monstersKilled ?? 0,
       dungeonsCleared: row.dungeonsCleared ?? 0,
       sessionsPlayed: row.sessionsPlayed ?? 0,
