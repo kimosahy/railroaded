@@ -12,9 +12,11 @@ import { ShareNetwork, Eye } from "@phosphor-icons/react";
 // ─── Shared types (exported for sub-components) ───────────────────────────────
 
 export interface Member {
+  id: string;
   name: string;
   race: string;
-  className: string;
+  // Backend `/spectator/parties` sends `class` (not `className`) on each member.
+  class: string;
   level: number;
   hpCurrent: number;
   hpMax: number;
@@ -26,6 +28,8 @@ export interface Party {
   id: string;
   name: string;
   status: string;
+  phase?: string;
+  currentRoom?: string | null;
   dungeonName?: string;
   members: Member[];
 }

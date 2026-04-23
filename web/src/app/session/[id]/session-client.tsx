@@ -20,8 +20,11 @@ import {
   Sword,
   Users,
 } from "@phosphor-icons/react";
-import Link from "next/link";
 import { API_BASE } from "@/lib/api";
+import {
+  useCharacterDrawer,
+  type SessionSnapshot,
+} from "@/components/character-drawer-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -425,39 +428,65 @@ function PlaybillCard({ sessionZero }: { sessionZero: SessionZero }) {
   );
 }
 
-function RosterStrip({ members }: { members: Member[] }) {
+function RosterStrip({
+  members,
+  sessionSnapshot,
+}: {
+  members: Member[];
+  sessionSnapshot: SessionSnapshot | null;
+}) {
+  const { openDrawer } = useCharacterDrawer();
   if (!members.length) return null;
   return (
     <div style={{ display: "flex", gap: "0.6rem", flexWrap: "wrap", margin: "1rem 0 1.5rem" }}>
       {members.map((m) => {
         const color = getClassColor(m.class || "");
         const initials = (m.name || "?").slice(0, 2).toUpperCase();
-        return (
-          <Link
-            key={m.id}
-            href={`/character/${m.id}`}
-            style={{ textDecoration: "none", color: "inherit" }}
-          >
-            <Card style={{ cursor: "pointer", transition: "border-color 0.15s" }}>
-              <Card.Content style={{ padding: "0.5rem 0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Avatar size="sm">
-                  {m.avatarUrl ? <Avatar.Image src={m.avatarUrl} alt={m.name} /> : null}
-                  <Avatar.Fallback style={{ background: color, color: "#0a0a0f", fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "0.6rem" }}>
-                    {initials}
-                  </Avatar.Fallback>
-                </Avatar>
-                <div>
-                  <div style={{ fontFamily: "var(--font-heading)", fontSize: "0.85rem", color: "var(--accent)", fontWeight: 600 }}>
-                    {m.name}
-                  </div>
-                  <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
-                    {m.race} {m.class} Lv{m.level || 1}
-                    {m.model?.name ? ` · ${m.model.name}` : ""}
-                  </div>
+        const cardNode = (
+          <Card style={{ cursor: "pointer", transition: "border-color 0.15s" }}>
+            <Card.Content style={{ padding: "0.5rem 0.75rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Avatar size="sm">
+                {m.avatarUrl ? <Avatar.Image src={m.avatarUrl} alt={m.name} /> : null}
+                <Avatar.Fallback style={{ background: color, color: "#0a0a0f", fontFamily: "var(--font-heading)", fontWeight: 700, fontSize: "0.6rem" }}>
+                  {initials}
+                </Avatar.Fallback>
+              </Avatar>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontFamily: "var(--font-heading)", fontSize: "0.85rem", color: "var(--accent)", fontWeight: 600 }}>
+                  {m.name}
                 </div>
-              </Card.Content>
-            </Card>
-          </Link>
+                <div style={{ fontSize: "0.72rem", color: "var(--muted)" }}>
+                  {m.race} {m.class} Lv{m.level || 1}
+                  {m.model?.name ? ` · ${m.model.name}` : ""}
+                </div>
+              </div>
+            </Card.Content>
+          </Card>
+        );
+
+        if (!m.id) {
+          return <div key={m.name}>{cardNode}</div>;
+        }
+
+        return (
+          <button
+            key={m.id}
+            type="button"
+            className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] focus:outline-none"
+            onClick={() => openDrawer(m.id, sessionSnapshot)}
+            style={{
+              border: "none",
+              background: "inherit",
+              padding: 0,
+              cursor: "pointer",
+              font: "inherit",
+              color: "inherit",
+              textAlign: "left",
+            }}
+            aria-label={`Open character details for ${m.name}`}
+          >
+            {cardNode}
+          </button>
         );
       })}
     </div>
@@ -936,7 +965,20 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
         {sessionZero && <PlaybillCard sessionZero={sessionZero} />}
 
         {/* Character roster strip */}
-        {!loadingSession && members.length > 0 && <RosterStrip members={members} />}
+        {!loadingSession && members.length > 0 && (
+          <RosterStrip
+            members={members}
+            sessionSnapshot={
+              session
+                ? {
+                    sessionId: session.id,
+                    phase: session.phase ?? (session.isActive ? "in session" : "ended"),
+                    room: null,
+                  }
+                : null
+            }
+          />
+        )}
 
         {/* Phase timeline */}
         {!loadingEvents && allEvents.length > 0 && <PhaseTimeline events={allEvents} />}
