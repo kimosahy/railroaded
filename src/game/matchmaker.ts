@@ -25,7 +25,7 @@ export interface MatchResult {
   balanceScore: number;
 }
 
-export const PARTY_SIZE_MIN = 2;
+export const PARTY_SIZE_MIN = 4;
 export const PARTY_SIZE_MAX = 20;
 
 // Keep PARTY_SIZE as alias for backward compat (used in queue messages)
@@ -147,6 +147,47 @@ export function calculateBalanceScore(players: QueueEntry[]): number {
   }
 
   return Math.max(0, score);
+}
+
+/**
+ * Fallback match: uses min=2 instead of PARTY_SIZE_MIN.
+ * Only called by the wait-window timer after 30s without a full-party match.
+ * Does NOT call findBestParty or greedyMatch (both check PARTY_SIZE_MIN=4).
+ * Instead inlines the role-priority ordering with a hard floor of 2 players.
+ */
+export function tryMatchPartyFallback(queue: QueueEntry[]): MatchResult | null {
+  const players = queue.filter((e) => e.role === "player");
+  const dms = queue.filter((e) => e.role === "dm");
+  if (dms.length === 0) return null;
+  if (players.length < 2) return null;  // Hard floor: never match with <2
+
+  // Role-priority ordering mirrors greedyMatch but without the PARTY_SIZE_MIN check.
+  const rolePriorities: { class: CharacterClass }[] = [
+    { class: "cleric" },
+    { class: "fighter" },
+    { class: "wizard" },
+    { class: "rogue" },
+  ];
+  const remaining = [...players];
+  const selected: QueueEntry[] = [];
+  for (const priority of rolePriorities) {
+    if (selected.length >= PARTY_SIZE_MAX) break;
+    const idx = remaining.findIndex((p) => p.characterClass === priority.class);
+    if (idx !== -1) {
+      selected.push(remaining[idx]!);
+      remaining.splice(idx, 1);
+    }
+  }
+  while (selected.length < PARTY_SIZE_MAX && remaining.length > 0) {
+    selected.push(remaining.shift()!);
+  }
+
+  if (selected.length < 2) return null;
+  return {
+    players: selected,
+    dm: dms[0]!,
+    balanceScore: calculateBalanceScore(selected),
+  };
 }
 
 /**

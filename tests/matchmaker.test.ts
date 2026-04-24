@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { tryMatchParty, calculateBalanceScore, getMatchedIds, type QueueEntry } from "../src/game/matchmaker.ts";
+import { tryMatchParty, tryMatchPartyFallback, calculateBalanceScore, getMatchedIds, type QueueEntry } from "../src/game/matchmaker.ts";
 
 function makePlayer(id: string, cls: "fighter" | "cleric" | "wizard" | "rogue" = "fighter"): QueueEntry {
   return { userId: id, characterId: `char-${id}`, characterClass: cls, characterName: `Name-${id}`, personality: "", playstyle: "", role: "player" };
@@ -18,12 +18,16 @@ describe("tryMatchParty", () => {
     expect(match!.dm.userId).toBe("dm1");
   });
 
-  test("3 players + 1 DM → match (meets 2-player minimum with DM)", () => {
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
+  test("3 players + 1 DM → no immediate match (below PARTY_SIZE_MIN=4); fallback matches after 30s wait-window", () => {
     const queue = [makePlayer("p1"), makePlayer("p2"), makePlayer("p3"), makeDM("dm1")];
-    const match = tryMatchParty(queue);
-    expect(match).not.toBeNull();
-    expect(match!.players).toHaveLength(3);
-    expect(match!.dm.userId).toBe("dm1");
+    // Immediate match requires >= PARTY_SIZE_MIN (4) players
+    expect(tryMatchParty(queue)).toBeNull();
+    // Fallback (called by wait-window timer at 30s) matches >=2 players + DM
+    const fallback = tryMatchPartyFallback(queue);
+    expect(fallback).not.toBeNull();
+    expect(fallback!.players).toHaveLength(3);
+    expect(fallback!.dm.userId).toBe("dm1");
   });
 
   test("4 players + no DM → no match (DM required)", () => {

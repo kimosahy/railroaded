@@ -47,7 +47,7 @@ import {
   type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
-import { tryMatchParty, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { tryMatchParty, tryMatchPartyFallback, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { getAutopilotAction } from "./autopilot.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
@@ -487,6 +487,15 @@ function cancelAllAutopilotTimersForParty(partyId: string): void {
       autopilotTimers.delete(key);
     }
   }
+}
+
+/** Clear the matchmaker wait-window timer and reset the first-queue anchor. */
+function clearMatchmakerWaitTimer(): void {
+  if (matchmakerWaitTimer) {
+    clearTimeout(matchmakerWaitTimer);
+    matchmakerWaitTimer = null;
+  }
+  matchmakerFirstQueueAt = null;
 }
 
 /**
@@ -3217,11 +3226,28 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 
   playerQueue.push(entry);
 
-  // Try to match
+  // Try immediate match at full party size (>=4 players + DM)
   const match = tryMatchParty([...playerQueue, ...dmQueue]);
   if (match) {
+    clearMatchmakerWaitTimer();
     formParty(match);
     return { success: true, data: { queued: false, matched: true, message: "Party formed!" } };
+  }
+
+  // Wait-window: anchor on FIRST queue entry; fire fallback after 30s if still <4.
+  if (matchmakerFirstQueueAt === null) {
+    matchmakerFirstQueueAt = Date.now();
+  }
+  if (playerQueue.length >= 2 && matchmakerWaitTimer === null) {
+    const elapsed = Date.now() - matchmakerFirstQueueAt;
+    const remaining = Math.max(0, 30_000 - elapsed);
+    matchmakerWaitTimer = setTimeout(() => {
+      const fallbackMatch = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
+      if (fallbackMatch) {
+        formParty(fallbackMatch);
+      }
+      clearMatchmakerWaitTimer();
+    }, remaining);
   }
 
   const playersInQueue = playerQueue.length;
@@ -3260,10 +3286,29 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
 
   dmQueue.push(entry);
 
+  // Try immediate match at full party size (>=4 players + DM)
   const match = tryMatchParty([...playerQueue, ...dmQueue]);
   if (match) {
+    clearMatchmakerWaitTimer();
     formParty(match);
     return { success: true, data: { queued: false, matched: true, message: "Party formed! You are the DM." } };
+  }
+
+  // Wait-window: if >=2 players already waiting and no timer yet, start one.
+  // DM joining can complete the wait condition.
+  if (matchmakerFirstQueueAt === null) {
+    matchmakerFirstQueueAt = Date.now();
+  }
+  if (playerQueue.length >= 2 && matchmakerWaitTimer === null) {
+    const elapsed = Date.now() - matchmakerFirstQueueAt;
+    const remaining = Math.max(0, 30_000 - elapsed);
+    matchmakerWaitTimer = setTimeout(() => {
+      const fallbackMatch = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
+      if (fallbackMatch) {
+        formParty(fallbackMatch);
+      }
+      clearMatchmakerWaitTimer();
+    }, remaining);
   }
 
   const playersWaiting = playerQueue.length;
@@ -3280,6 +3325,7 @@ export function handleLeaveQueue(userId: string): { success: boolean; data?: Rec
   const idx = playerQueue.findIndex((q) => q.userId === userId);
   if (idx === -1) return { success: false, error: "You are not in the queue." };
   playerQueue.splice(idx, 1);
+  if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
   return { success: true, data: { message: "Left the queue." } };
 }
 
@@ -3287,6 +3333,7 @@ export function handleDMLeaveQueue(userId: string): { success: boolean; data?: R
   const idx = dmQueue.findIndex((q) => q.userId === userId);
   if (idx === -1) return { success: false, error: "You are not in the DM queue." };
   dmQueue.splice(idx, 1);
+  if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
   return { success: true, data: { message: "Left the DM queue." } };
 }
 
