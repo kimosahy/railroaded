@@ -48,6 +48,7 @@ import {
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
 import { tryMatchParty, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { getAutopilotAction } from "./autopilot.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
@@ -109,6 +110,12 @@ interface GameCharacter extends CharacterSheet {
   timesKnockedOut: number;
   goldEarned: number;
   relentlessEnduranceUsed: boolean;
+  /** Timestamp of this character's last action. Used by autopilot disconnect detection.
+   *  Initialized to now() on character creation and on persistence rehydration.
+   *  Updated on every player action. Autopilot fires when (now - lastActionAt) >= 45s during the character's turn.
+   *  DISTINCT FROM SessionState.lastStateChangeAt (session.ts) — that field tracks party-level state changes
+   *  for the existing STALL_TIMEOUT_MS (5 min) safety net. Do not conflate them. */
+  lastActionAt: Date;
   // Behavioral metrics (Phase 1)
   flawOpportunities: number;
   flawActivations: number;
@@ -240,6 +247,18 @@ const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
 const requestModelIdentity = new Map<string, { provider: string; name: string }>(); // userId → model identity for current request
 
+/** Active autopilot timers. Key: `${partyId}:${entityId}:${currentTurn}` — the turn-number
+ *  suffix makes timers naturally idempotent across the three notifyTurnChange call sites.
+ *  If the same turn fires notifyTurnChange twice, the second call finds the key already
+ *  exists and skips. */
+const autopilotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const AUTOPILOT_TIMEOUT_MS = 45_000;
+
+/** Matchmaker wait-window. Set to Date.now() when the FIRST player enters the queue.
+ *  Cleared when a match fires or when the queue empties. */
+let matchmakerFirstQueueAt: number | null = null;
+let matchmakerWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** Store model identity for a user's current request — used to tag events. */
 export function setRequestModelIdentity(userId: string, identity: { provider: string; name: string }): void {
   requestModelIdentity.set(userId, identity);
@@ -367,6 +386,109 @@ function nextId(prefix: string): string {
   return `${prefix}-${idCounter++}`;
 }
 
+/**
+ * Start a 45-second autopilot timer for the current player combatant.
+ * If the character hasn't acted by expiry, fires `getAutopilotAction` and advances the turn.
+ * Idempotent: keyed by `${partyId}:${entityId}:${currentTurn}` — same turn only gets one timer.
+ */
+function startAutopilotTimer(party: GameParty): void {
+  if (!party.session) return;
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.type !== "player") return;
+
+  const timerKey = `${party.id}:${current.entityId}:${party.session.currentTurn}`;
+
+  // Idempotent: if this exact turn already has a timer, skip.
+  if (autopilotTimers.has(timerKey)) return;
+
+  const entityId = current.entityId;
+
+  const timer = setTimeout(() => {
+    autopilotTimers.delete(timerKey);
+
+    // Re-validate: session still active and still this character's turn?
+    if (!party.session || party.session.phase !== "combat") return;
+    const stillCurrent = getCurrentCombatant(party.session);
+    if (!stillCurrent || stillCurrent.entityId !== entityId) return;
+
+    const char = characters.get(entityId);
+    if (!char) return;
+
+    // Character may have acted since the timer was started — skip if fresh.
+    if (char.lastActionAt && (Date.now() - char.lastActionAt.getTime()) < AUTOPILOT_TIMEOUT_MS) return;
+
+    // Pass 1: conservative defaults. autopilot.ts always returns "dodge" in combat when
+    // isUnderAttack=false OR hpPercent<25. "attack" branch is reachable in Pass 2 only.
+    // isUnderAttack: false — MonsterInstance has no .target field; real targeting is Pass 2.
+    // hasWeapon: true — CharacterSheet.equipment field shape unverified; unreachable in Pass 1.
+    //   TODO Pass 2: wire hasWeapon to char.equipment.weapon != null once verified.
+    const action = getAutopilotAction({
+      phase: party.session.phase,
+      isUnderAttack: false,
+      hasWeapon: true,
+      hpPercent: char.hpMax > 0 ? (char.hpCurrent / char.hpMax) * 100 : 0,
+    });
+
+    logEvent(party, "autopilot_action", entityId, {
+      characterName: char.name,
+      action: action.type,
+      target: action.target ?? null,
+      description: action.description,
+      reason: "disconnect_timeout_45s",
+      lastActionAt: char.lastActionAt?.toISOString() ?? null,
+    });
+
+    // Attack branch (dead code in Pass 1 — kept wired for Pass 2).
+    if (action.type === "attack" && party.session.phase === "combat") {
+      const target = party.monsters.find((m) => m.isAlive);
+      if (target) {
+        try {
+          const attackResult = handleAttack(char.userId, { target_id: target.id });
+          if (attackResult.success) {
+            // handleAttack calls checkAutoAdvanceTurn -> advanceTurnSkipDead internally
+            // after a successful attack. Do NOT double-advance.
+            return;
+          }
+          // Validation failure — log and fall through to advanceTurnSkipDead below.
+          logEvent(party, "autopilot_action", entityId, {
+            fallback: "attack_failed_validation",
+            error: attackResult.error,
+          });
+        } catch (e) {
+          logEvent(party, "autopilot_action", entityId, {
+            fallback: "attack_threw",
+            error: String(e),
+          });
+        }
+      }
+    }
+    // Dodge / follow / silent / rest + attack-fallback paths: just advance the turn.
+    advanceTurnSkipDead(party);
+  }, AUTOPILOT_TIMEOUT_MS);
+
+  autopilotTimers.set(timerKey, timer);
+}
+
+/** Cancel any autopilot timer for this entity, regardless of turn number. */
+function cancelAutopilotTimer(partyId: string, entityId: string): void {
+  for (const [key, timer] of autopilotTimers.entries()) {
+    if (key.startsWith(`${partyId}:${entityId}:`)) {
+      clearTimeout(timer);
+      autopilotTimers.delete(key);
+    }
+  }
+}
+
+/** Cancel all autopilot timers for a party (e.g. on combat/session end). */
+function cancelAllAutopilotTimersForParty(partyId: string): void {
+  for (const [key, timer] of autopilotTimers.entries()) {
+    if (key.startsWith(`${partyId}:`)) {
+      clearTimeout(timer);
+      autopilotTimers.delete(key);
+    }
+  }
+}
+
 /** Push WebSocket notifications when the current combatant changes. */
 function notifyTurnChange(party: GameParty): void {
   if (!party.session || party.session.phase !== "combat") return;
@@ -398,6 +520,10 @@ function notifyTurnChange(party: GameParty): void {
       phase: party.session.phase,
     });
   }
+
+  // Start autopilot timer for the new current combatant (if player).
+  // Single wire-point covers all three call sites — timer is idempotent via timerKey.
+  startAutopilotTimer(party);
 }
 
 // --- Turn Resource Helpers ---
@@ -567,7 +693,7 @@ function checkCombatTimeout(party: GameParty): boolean {
     });
 
     if (party.session) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
     }
     stabilizeUnconsciousCharacters(party);
     snapshotCharacters(party);
@@ -767,6 +893,7 @@ export async function handleCreateCharacter(userId: string, params: {
     timesKnockedOut: 0,
     goldEarned: 0,
     relentlessEnduranceUsed: false,
+    lastActionAt: new Date(),
     flawOpportunities: 0,
     flawActivations: 0,
     totalActionWords: 0,
@@ -1360,7 +1487,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
             if (lu) levelUps.push({ name: m.name, ...lu });
           }
         }
-        party.session = exitCombat(party.session);
+        cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
         logEvent(party, "combat_end", null, { xpAwarded: xp });
         for (const lu of levelUps) {
           logEvent(party, "level_up", null, lu);
@@ -1630,7 +1757,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       if (isDead && party.session) {
         party.session = removeCombatant(party.session, target.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
             handleTPK(party);
@@ -1772,7 +1899,7 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
     broadcastToParty(party.id, { type: "monster_fled", monsterName: monster.name });
 
     if (shouldCombatEnd(party.session)) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
       stabilizeUnconsciousCharacters(party);
       snapshotCharacters(party);
@@ -1983,7 +2110,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
                   if (lu) levelUps.push({ name: m.name, ...lu });
                 }
               }
-              party.session = exitCombat(party.session);
+              cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
               logEvent(party, "combat_end", null, { xpAwarded: xp });
               for (const lu of levelUps) {
                 logEvent(party, "level_up", null, lu);
@@ -2863,7 +2990,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
                   if (lu) levelUps.push({ name: m.name, ...lu });
                 }
               }
-              party.session = exitCombat(party.session);
+              cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
               logEvent(party, "combat_end", null, { xpAwarded: xp });
               for (const lu of levelUps) {
                 logEvent(party, "level_up", null, lu);
@@ -2988,7 +3115,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
   if (result.dead && party.session) {
     party.session = removeCombatant(party.session, char.id);
     if (shouldCombatEnd(party.session)) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
       if (isTPK(party)) {
         handleTPK(party);
@@ -3708,7 +3835,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, monster.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { xpAwarded: 0 });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
@@ -3747,7 +3874,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, char.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
             handleTPK(party);
@@ -4447,6 +4574,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
     party.session = endSessionState(party.session);
   }
 
+  cancelAllAutopilotTimersForParty(party.id);
   logEvent(party, "session_end", null, { summary: cleanSummary, outcome: validOutcome });
 
   // Track lifetime stats for all party members
@@ -6166,6 +6294,7 @@ function isTPK(party: GameParty): boolean {
  * Called after combat_end with reason "all_players_dead".
  */
 function handleTPK(party: GameParty): void {
+  cancelAllAutopilotTimersForParty(party.id);
   logEvent(party, "session_end", null, {
     summary: "Total Party Kill — all adventurers have fallen.",
     tpk: true,
@@ -6502,6 +6631,7 @@ export async function loadPersistedState(): Promise<number> {
           timesKnockedOut: row.timesKnockedOut ?? 0,
           goldEarned: row.goldEarned ?? 0,
           relentlessEnduranceUsed: false,
+          lastActionAt: new Date(),
           // Behavioral metrics
           flawOpportunities: row.flawOpportunities ?? 0,
           flawActivations: row.flawActivations ?? 0,
@@ -6649,6 +6779,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         timesKnockedOut: row.timesKnockedOut ?? 0,
         goldEarned: row.goldEarned ?? 0,
         relentlessEnduranceUsed: false,
+        lastActionAt: new Date(),
       };
 
       characters.set(charId, char);
