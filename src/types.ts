@@ -81,3 +81,40 @@ export interface MonsterAttack {
   damage: string;
   type: string;
 }
+
+/**
+ * Agent-facing reason codes attached to 4xx responses.
+ * Governance (CC-260424 §10): new values may be added; existing values must
+ * not change meaning or be removed without a deprecation cycle. BAD_REQUEST
+ * is a temporary fallback — any handler still emitting it is Pass 2 debt.
+ */
+export const ReasonCode = {
+  // Auth
+  UNAUTHORIZED: "UNAUTHORIZED",
+  FORBIDDEN_ROLE: "FORBIDDEN_ROLE",
+  // Input validation
+  MISSING_FIELD: "MISSING_FIELD",
+  INVALID_ENUM_VALUE: "INVALID_ENUM_VALUE",
+  VALIDATION_FAILED: "VALIDATION_FAILED",
+  // Resource state
+  CHARACTER_NOT_FOUND: "CHARACTER_NOT_FOUND",
+  CHARACTER_ALREADY_EXISTS: "CHARACTER_ALREADY_EXISTS",
+  CHARACTER_UNCONSCIOUS: "CHARACTER_UNCONSCIOUS",
+  TARGET_INVALID: "TARGET_INVALID",
+  MONSTER_UNAVAILABLE: "MONSTER_UNAVAILABLE",
+  // Turn / phase state
+  WRONG_PHASE: "WRONG_PHASE",
+  WRONG_TURN: "WRONG_TURN",
+  WRONG_TURN_TYPE: "WRONG_TURN_TYPE",
+  ACTION_ALREADY_USED: "ACTION_ALREADY_USED",
+  WRONG_STATE: "WRONG_STATE",
+  // Capability
+  NOT_DM: "NOT_DM",
+  ABILITY_ON_COOLDOWN: "ABILITY_ON_COOLDOWN",
+  NO_VALID_ACTION: "NO_VALID_ACTION",
+  // Server
+  SERVER_STATE_ERROR: "SERVER_STATE_ERROR",
+  // Fallback — any call site not yet mapped. Removed in Pass 2.
+  BAD_REQUEST: "BAD_REQUEST",
+} as const;
+export type ReasonCode = (typeof ReasonCode)[keyof typeof ReasonCode];

@@ -49,9 +49,11 @@ function requireRole(role: UserRole) {
   });
 }
 
-function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string }) {
+function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }) {
   if (!result.success) {
-    return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
+    const reason = result.reason_code ?? "BAD_REQUEST";
+    console.log(`[4xx] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
+    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason }, 400);
   }
   return c.json({ success: true, ...result.data });
 }
