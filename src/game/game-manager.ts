@@ -489,6 +489,22 @@ function cancelAllAutopilotTimersForParty(partyId: string): void {
   }
 }
 
+/**
+ * Mark a character as having taken an action. Updates lastActionAt and cancels
+ * any pending autopilot timer for this character. Call from every player-action
+ * handler after character validation succeeds.
+ *
+ * Not called from resetStallCounter (monsters/DM fire that path too) nor from
+ * pure-read handlers (get_status, get_inventory, get_party, available_actions)
+ * nor from queue handlers (queue actions are not gameplay actions).
+ */
+function markCharacterAction(char: GameCharacter): void {
+  char.lastActionAt = new Date();
+  if (char.partyId) {
+    cancelAutopilotTimer(char.partyId, char.id);
+  }
+}
+
 /** Push WebSocket notifications when the current combatant changes. */
 function notifyTurnChange(party: GameParty): void {
   if (!party.session || party.session.phase !== "combat") return;
@@ -1070,6 +1086,7 @@ function describeMonsterCondition(m: MonsterInstance): string {
 export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found. Create one first." };
+  markCharacterAction(char);
 
   const party = char.partyId ? parties.get(char.partyId) : null;
   if (!party?.dungeonState) {
@@ -1384,6 +1401,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
 export function handleAttack(userId: string, params: { target_id: string; weapon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -1919,6 +1937,7 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
 export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const spell = findSpell(params.spell_name);
@@ -2181,6 +2200,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -2197,6 +2217,7 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
 export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -2213,6 +2234,7 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
 export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -2229,6 +2251,7 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
 export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -2245,6 +2268,7 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
 export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
@@ -2271,6 +2295,7 @@ export function handleMove(userId: string, params: { direction_or_target: string
   if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target." };
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -2321,6 +2346,7 @@ export function handleMove(userId: string, params: { direction_or_target: string
 export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   if (char.conditions.includes("dead")) return { success: false, error: "Your character is dead." };
   if (char.conditions.includes("unconscious")) return { success: false, error: "Your character is unconscious and cannot speak." };
@@ -2364,6 +2390,7 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
 
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   const party = getPartyForCharacter(char.id);
   if (!party) return { success: false, error: "Not in a party." };
@@ -2388,6 +2415,7 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
 export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -2424,6 +2452,7 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
 export function handleLongRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -2459,6 +2488,7 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
 export function handleUseItem(userId: string, params: { item_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -2612,6 +2642,7 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
   // Note: unconscious characters must be able to end turn (after death saves)
   // to avoid soft-locking initiative. Only dead characters are blocked.
   if (char.conditions.includes("dead")) return { success: false, error: "Dead characters cannot act." };
+  markCharacterAction(char);
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
@@ -2639,6 +2670,7 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
 export function handleBonusAction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -2833,6 +2865,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
 export function handleReaction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -3032,6 +3065,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
 export function handleDeathSave(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   if (!char.conditions.includes("unconscious")) {
     return { success: false, error: "You are not unconscious. Death saves are only made when at 0 HP." };
@@ -3139,6 +3173,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   // Behavioral metrics: journal entries track verbosity and safety
   char.totalActionWords += countWords(params.entry);
@@ -4258,6 +4293,7 @@ export function handleLootRoom(userId: string, params: { player_id: string }): {
 export function handlePickupItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
 
   const party = getPartyForCharacter(char.id);
@@ -4336,6 +4372,7 @@ export function handlePickupItem(userId: string, params: { item_name: string }):
 export function handleEquipItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   const itemIdx = char.inventory.indexOf(params.item_name);
   if (itemIdx === -1) {
@@ -4404,6 +4441,7 @@ export function handleEquipItem(userId: string, params: { item_name: string }): 
 export function handleUnequipItem(userId: string, params: { slot: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found." };
+  markCharacterAction(char);
 
   const slot = params.slot as "weapon" | "armor" | "shield";
   if (!["weapon", "armor", "shield"].includes(slot)) {
