@@ -386,7 +386,7 @@ dm.post("/skip-turn", async (c) => {
 
 // Convenience aliases for combat flow
 dm.post("/next-turn", (c) => {
-  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST" }, 400);
+  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST", reason_code: "WRONG_TURN_TYPE" }, 400);
 });
 
 // NPC management
