@@ -61,10 +61,11 @@ import { getRandomTemplate, type DungeonTemplate, type TemplateEncounter, type T
 import { summarizeSession, filterEventsForCharacter, type SessionEvent } from "./journal.ts";
 import { detectSafetyBleedThrough, detectFlawActivation, detectFlawOpportunity, detectTacticalChat, countWords } from "./metrics.ts";
 import { VALID_RACES, VALID_CLASSES } from "../types.ts";
-import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves, ReasonCode as _ReasonCode } from "../types.ts";
-// Re-export ReasonCode indirectly so the type is available to consumers of game-manager.
-// The handler returns use string literals rather than the enum directly (per CC-260424 §4 Task 4d).
-export type { _ReasonCode as ReasonCode };
+import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
+// ReasonCode is defined in ../types.ts; re-export so consumers of game-manager can
+// pick it up without an extra import. Handler returns use string literals rather than
+// the enum directly (per CC-260424 §4 Task 4d).
+export type { ReasonCode } from "../types.ts";
 import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
