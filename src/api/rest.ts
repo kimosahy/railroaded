@@ -20,7 +20,7 @@ type AuthEnv = { Variables: { user: AuthUser } };
 const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
-  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED" }, 401);
+  if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED", reason_code: "UNAUTHORIZED" }, 401);
 
   // X-Model-Identity header overrides stored model identity for this request and persists to DB
   const modelHeader = c.req.header("X-Model-Identity");
@@ -43,15 +43,17 @@ function requireRole(role: UserRole) {
   return createMiddleware<AuthEnv>(async (c, next) => {
     const user = c.get("user");
     if (user.role !== role) {
-      return c.json({ error: `Forbidden — requires '${role}' role, you are '${user.role}'`, code: "FORBIDDEN" }, 403);
+      return c.json({ error: `Forbidden — requires '${role}' role, you are '${user.role}'`, code: "FORBIDDEN", reason_code: "FORBIDDEN_ROLE" }, 403);
     }
     await next();
   });
 }
 
-function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string }) {
+function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }) {
   if (!result.success) {
-    return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
+    const reason = result.reason_code ?? "BAD_REQUEST";
+    console.log(`[4xx] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
+    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason }, 400);
   }
   return c.json({ success: true, ...result.data });
 }
@@ -70,7 +72,7 @@ player.use("/*", createMiddleware<AuthEnv>(async (c, next) => {
   }
   const user = c.get("user");
   if (user.role !== "player") {
-    return c.json({ error: `Forbidden — requires 'player' role, you are '${user.role}'`, code: "FORBIDDEN" }, 403);
+    return c.json({ error: `Forbidden — requires 'player' role, you are '${user.role}'`, code: "FORBIDDEN", reason_code: "FORBIDDEN_ROLE" }, 403);
   }
   await next();
 }));
@@ -85,7 +87,7 @@ player.post("/character", async (c) => {
     decisionTimeMs?: number;
   }>();
   const result = await gm.handleCreateCharacter(c.get("user").userId, body);
-  if (!result.success) return c.json({ error: result.error, code: "BAD_REQUEST" }, 400);
+  if (!result.success) return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: result.reason_code ?? "BAD_REQUEST" }, 400);
   const ch = result.character!;
   return c.json({
     character: {
@@ -132,14 +134,14 @@ player.post("/move", async (c) => {
 player.post("/attack", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const target_id = (body.target_id ?? body.target) as string | undefined;
-  if (!target_id) return c.json({ success: false, error: "Missing required field: target_id" }, 400);
+  if (!target_id) return respond(c, { success: false, error: "Missing required field: target_id", reason_code: "MISSING_FIELD" });
   return respond(c, gm.handleAttack(c.get("user").userId, { target_id, weapon: body.weapon as string | undefined }));
 });
 
 player.post("/cast", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const spell_name = (body.spell_name ?? body.spell) as string | undefined;
-  if (!spell_name) return c.json({ success: false, error: "Missing required field: spell_name" }, 400);
+  if (!spell_name) return respond(c, { success: false, error: "Missing required field: spell_name", reason_code: "MISSING_FIELD" });
   const target_id = (body.target_id ?? body.target) as string | undefined;
   return respond(c, gm.handleCast(c.get("user").userId, { spell_name, target_id }));
 });
@@ -147,7 +149,7 @@ player.post("/cast", async (c) => {
 player.post("/use-item", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const item_name = (body.item_name ?? body.item ?? body.item_id) as string | undefined;
-  if (!item_name) return c.json({ success: false, error: "Missing required field: item_name" }, 400);
+  if (!item_name) return respond(c, { success: false, error: "Missing required field: item_name", reason_code: "MISSING_FIELD" });
   return respond(c, gm.handleUseItem(c.get("user").userId, { item_name, target_id: body.target_id as string | undefined }));
 });
 
@@ -158,7 +160,7 @@ player.post("/disengage", (c) => respond(c, gm.handleDisengage(c.get("user").use
 player.post("/help", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const target_id = (body.target_id ?? body.target) as string | undefined;
-  if (!target_id) return c.json({ success: false, error: "Missing required field: target_id" }, 400);
+  if (!target_id) return respond(c, { success: false, error: "Missing required field: target_id", reason_code: "MISSING_FIELD" });
   return respond(c, gm.handleHelp(c.get("user").userId, { target_id }));
 });
 
@@ -200,7 +202,7 @@ player.post("/journal", async (c) => {
 player.post("/pickup", async (c) => {
   const body = await c.req.json<Record<string, unknown>>();
   const item_name = (body.item_name ?? body.item) as string | undefined;
-  if (!item_name) return c.json({ success: false, error: "Missing required field: item_name" }, 400);
+  if (!item_name) return respond(c, { success: false, error: "Missing required field: item_name", reason_code: "MISSING_FIELD" });
   return respond(c, gm.handlePickupItem(c.get("user").userId, { item_name }));
 });
 
@@ -384,7 +386,7 @@ dm.post("/skip-turn", async (c) => {
 
 // Convenience aliases for combat flow
 dm.post("/next-turn", (c) => {
-  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST" }, 400);
+  return c.json({ error: "Use monster-attack to resolve the current monster's turn (it auto-advances). Player turns advance when players act.", code: "BAD_REQUEST", reason_code: "WRONG_TURN_TYPE" }, 400);
 });
 
 // NPC management

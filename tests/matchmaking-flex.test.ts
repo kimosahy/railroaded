@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { tryMatchParty, type QueueEntry } from "../src/game/matchmaker.ts";
+import { tryMatchParty, tryMatchPartyFallback, type QueueEntry } from "../src/game/matchmaker.ts";
 
 function makePlayer(id: string, cls: "fighter" | "cleric" | "wizard" | "rogue" = "fighter"): QueueEntry {
   return { userId: id, characterId: `char-${id}`, characterClass: cls, characterName: `Name-${id}`, personality: "", playstyle: "", role: "player" };
@@ -10,13 +10,17 @@ function makeDM(id: string): QueueEntry {
 }
 
 describe("Flexible matchmaking", () => {
-  test("1 DM + 2 players → party forms (minimum)", () => {
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
+  test("1 DM + 2 players → no immediate match; fallback matches after 30s wait-window (minimum)", () => {
     const queue = [makeDM("dm1"), makePlayer("p1"), makePlayer("p2")];
-    const match = tryMatchParty(queue);
-    expect(match).not.toBeNull();
-    expect(match!.players).toHaveLength(2);
-    expect(match!.dm.userId).toBe("dm1");
-    expect(match!.dm.role).toBe("dm");
+    // Immediate match requires >= PARTY_SIZE_MIN (4) players
+    expect(tryMatchParty(queue)).toBeNull();
+    // Fallback floor is 2 players + DM
+    const fallback = tryMatchPartyFallback(queue);
+    expect(fallback).not.toBeNull();
+    expect(fallback!.players).toHaveLength(2);
+    expect(fallback!.dm.userId).toBe("dm1");
+    expect(fallback!.dm.role).toBe("dm");
   });
 
   test("1 DM + 1 player → party does NOT form", () => {

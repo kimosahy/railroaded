@@ -152,6 +152,7 @@ describe("Party formation", () => {
     expect(parties.has(partyId)).toBe(true);
   });
 
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
   test("player queue returns structured response with queue size and players needed", async () => {
     const userId = uid("u");
     await createChar(userId);
@@ -161,30 +162,32 @@ describe("Party formation", () => {
     expect(result.data!.matched).toBe(false);
     expect(result.data!.position).toBe(1);
     expect(result.data!.playersInQueue).toBe(1);
-    expect(result.data!.playersNeeded).toBe(1);
-    expect(result.data!.message).toBe("You've joined the matchmaking queue. 1 more player needed to form a party.");
+    expect(result.data!.playersNeeded).toBe(3);
+    expect(result.data!.message).toBe("You've joined the matchmaking queue. 3 more players needed to form a party.");
   });
 
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
   test("queue shows correct count as players join", async () => {
     const p1 = uid("u"); const p2 = uid("u"); const p3 = uid("u");
     await createChar(p1); await createChar(p2); await createChar(p3);
     handleQueueForParty(p1);
     const r2 = handleQueueForParty(p2);
     expect(r2.data!.playersInQueue).toBe(2);
-    expect(r2.data!.playersNeeded).toBe(0);
+    expect(r2.data!.playersNeeded).toBe(2);
     const r3 = handleQueueForParty(p3);
     expect(r3.data!.playersInQueue).toBe(3);
-    expect(r3.data!.playersNeeded).toBe(-1);
+    expect(r3.data!.playersNeeded).toBe(1);
   });
 
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
   test("DM queue response includes playersNeeded", async () => {
     const p1 = uid("u"); await createChar(p1);
     handleQueueForParty(p1);
     const dmId = uid("dm");
     const result = handleDMQueueForParty(dmId);
     expect(result.data!.playersWaiting).toBe(1);
-    expect(result.data!.playersNeeded).toBe(1);
-    expect(result.data!.message).toContain("1 more player");
+    expect(result.data!.playersNeeded).toBe(3);
+    expect(result.data!.message).toContain("3 more players");
   });
 
   test("party has correct members and DM", async () => {
@@ -224,10 +227,13 @@ describe("Party formation", () => {
 });
 
 describe("DM-party association (bug 1.2)", () => {
-  test("DM queues first, 2 players queue → party forms, DM can access party-state", async () => {
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
+  test("DM queues first, 4 players queue → party forms, DM can access party-state", async () => {
     const dmId = uid("dm");
     const p1 = uid("p");
     const p2 = uid("p");
+    const p3 = uid("p");
+    const p4 = uid("p");
 
     // DM queues first
     const dmQueueResult = handleDMQueueForParty(dmId);
@@ -238,17 +244,19 @@ describe("DM-party association (bug 1.2)", () => {
     const preMatch = handleGetPartyState(dmId);
     expect(preMatch.success).toBe(false);
 
-    // Player 1 queues
+    // Players 1-3 queue (still below PARTY_SIZE_MIN=4)
     await createChar(p1);
-    const p1Result = handleQueueForParty(p1);
-    expect(p1Result.success).toBe(true);
-    expect(p1Result.data!.matched).toBe(false); // only 1 player
-
-    // Player 2 queues → match triggers
     await createChar(p2);
-    const p2Result = handleQueueForParty(p2);
-    expect(p2Result.success).toBe(true);
-    expect(p2Result.data!.matched).toBe(true); // 2 players + 1 DM = party!
+    await createChar(p3);
+    expect(handleQueueForParty(p1).data!.matched).toBe(false);
+    expect(handleQueueForParty(p2).data!.matched).toBe(false);
+    expect(handleQueueForParty(p3).data!.matched).toBe(false);
+
+    // Player 4 queues → match triggers (4 players + 1 DM)
+    await createChar(p4);
+    const p4Result = handleQueueForParty(p4);
+    expect(p4Result.success).toBe(true);
+    expect(p4Result.data!.matched).toBe(true);
 
     // DM can now access party-state
     const partyState = handleGetPartyState(dmId);
@@ -268,11 +276,12 @@ describe("DM-party association (bug 1.2)", () => {
     }
   });
 
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
   test("DM cannot queue while already in active party", async () => {
     const dmId = uid("dm");
-    const p1 = uid("p"); const p2 = uid("p");
-    await createChar(p1); await createChar(p2);
-    handleQueueForParty(p1); handleQueueForParty(p2);
+    const p1 = uid("p"); const p2 = uid("p"); const p3 = uid("p"); const p4 = uid("p");
+    await createChar(p1); await createChar(p2); await createChar(p3); await createChar(p4);
+    handleQueueForParty(p1); handleQueueForParty(p2); handleQueueForParty(p3); handleQueueForParty(p4);
     handleDMQueueForParty(dmId);
     // Party should have formed
     const state = handleGetPartyState(dmId);
@@ -326,11 +335,12 @@ describe("Character delete (Task 1.4)", () => {
     expect(getCharacterForUser(p1)).toBeNull();
   });
 
+  // Updated for PARTY_SIZE_MIN=4 per CC-260424 §4 Task 3a (was min=2 pre-MF-016)
   test("cannot delete character in active session", async () => {
     const dmId = uid("dm");
-    const p1 = uid("p"); const p2 = uid("p");
-    await createChar(p1); await createChar(p2);
-    handleQueueForParty(p1); handleQueueForParty(p2);
+    const p1 = uid("p"); const p2 = uid("p"); const p3 = uid("p"); const p4 = uid("p");
+    await createChar(p1); await createChar(p2); await createChar(p3); await createChar(p4);
+    handleQueueForParty(p1); handleQueueForParty(p2); handleQueueForParty(p3); handleQueueForParty(p4);
     handleDMQueueForParty(dmId);
     const result = handleDeleteCharacter(p1);
     expect(result.success).toBe(false);

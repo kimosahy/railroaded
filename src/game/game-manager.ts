@@ -47,7 +47,8 @@ import {
   type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
-import { tryMatchParty, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { tryMatchParty, tryMatchPartyFallback, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { getAutopilotAction } from "./autopilot.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
@@ -61,6 +62,10 @@ import { summarizeSession, filterEventsForCharacter, type SessionEvent } from ".
 import { detectSafetyBleedThrough, detectFlawActivation, detectFlawOpportunity, detectTacticalChat, countWords } from "./metrics.ts";
 import { VALID_RACES, VALID_CLASSES } from "../types.ts";
 import type { Race, CharacterClass, AbilityScores, Condition, SessionPhase, DeathSaves } from "../types.ts";
+// ReasonCode is defined in ../types.ts; re-export so consumers of game-manager can
+// pick it up without an extra import. Handler returns use string literals rather than
+// the enum directly (per CC-260424 §4 Task 4d).
+export type { ReasonCode } from "../types.ts";
 import { parse as parseYAML } from "yaml";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
@@ -109,6 +114,12 @@ interface GameCharacter extends CharacterSheet {
   timesKnockedOut: number;
   goldEarned: number;
   relentlessEnduranceUsed: boolean;
+  /** Timestamp of this character's last action. Used by autopilot disconnect detection.
+   *  Initialized to now() on character creation and on persistence rehydration.
+   *  Updated on every player action. Autopilot fires when (now - lastActionAt) >= 45s during the character's turn.
+   *  DISTINCT FROM SessionState.lastStateChangeAt (session.ts) — that field tracks party-level state changes
+   *  for the existing STALL_TIMEOUT_MS (5 min) safety net. Do not conflate them. */
+  lastActionAt: Date;
   // Behavioral metrics (Phase 1)
   flawOpportunities: number;
   flawActivations: number;
@@ -240,6 +251,18 @@ const playerQueue: QueueEntry[] = [];
 const dmQueue: QueueEntry[] = [];
 const requestModelIdentity = new Map<string, { provider: string; name: string }>(); // userId → model identity for current request
 
+/** Active autopilot timers. Key: `${partyId}:${entityId}:${currentTurn}` — the turn-number
+ *  suffix makes timers naturally idempotent across the three notifyTurnChange call sites.
+ *  If the same turn fires notifyTurnChange twice, the second call finds the key already
+ *  exists and skips. */
+const autopilotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const AUTOPILOT_TIMEOUT_MS = 45_000;
+
+/** Matchmaker wait-window. Set to Date.now() when the FIRST player enters the queue.
+ *  Cleared when a match fires or when the queue empties. */
+let matchmakerFirstQueueAt: number | null = null;
+let matchmakerWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
 /** Store model identity for a user's current request — used to tag events. */
 export function setRequestModelIdentity(userId: string, identity: { provider: string; name: string }): void {
   requestModelIdentity.set(userId, identity);
@@ -367,6 +390,134 @@ function nextId(prefix: string): string {
   return `${prefix}-${idCounter++}`;
 }
 
+/**
+ * Start a 45-second autopilot timer for the current player combatant.
+ * If the character hasn't acted by expiry, fires `getAutopilotAction` and advances the turn.
+ * Idempotent: keyed by `${partyId}:${entityId}:${currentTurn}` — same turn only gets one timer.
+ */
+function startAutopilotTimer(party: GameParty): void {
+  if (!party.session) return;
+  const current = getCurrentCombatant(party.session);
+  if (!current || current.type !== "player") return;
+
+  const timerKey = `${party.id}:${current.entityId}:${party.session.currentTurn}`;
+
+  // Idempotent: if this exact turn already has a timer, skip.
+  if (autopilotTimers.has(timerKey)) return;
+
+  const entityId = current.entityId;
+
+  const timer = setTimeout(() => {
+    autopilotTimers.delete(timerKey);
+
+    // Re-validate: session still active and still this character's turn?
+    if (!party.session || party.session.phase !== "combat") return;
+    const stillCurrent = getCurrentCombatant(party.session);
+    if (!stillCurrent || stillCurrent.entityId !== entityId) return;
+
+    const char = characters.get(entityId);
+    if (!char) return;
+
+    // Character may have acted since the timer was started — skip if fresh.
+    if (char.lastActionAt && (Date.now() - char.lastActionAt.getTime()) < AUTOPILOT_TIMEOUT_MS) return;
+
+    // Pass 1: conservative defaults. autopilot.ts always returns "dodge" in combat when
+    // isUnderAttack=false OR hpPercent<25. "attack" branch is reachable in Pass 2 only.
+    // isUnderAttack: false — MonsterInstance has no .target field; real targeting is Pass 2.
+    // hasWeapon: true — CharacterSheet.equipment field shape unverified; unreachable in Pass 1.
+    //   TODO Pass 2: wire hasWeapon to char.equipment.weapon != null once verified.
+    const action = getAutopilotAction({
+      phase: party.session.phase,
+      isUnderAttack: false,
+      hasWeapon: true,
+      hpPercent: char.hpMax > 0 ? (char.hpCurrent / char.hpMax) * 100 : 0,
+    });
+
+    logEvent(party, "autopilot_action", entityId, {
+      characterName: char.name,
+      action: action.type,
+      target: action.target ?? null,
+      description: action.description,
+      reason: "disconnect_timeout_45s",
+      lastActionAt: char.lastActionAt?.toISOString() ?? null,
+    });
+
+    // Attack branch (dead code in Pass 1 — kept wired for Pass 2).
+    if (action.type === "attack" && party.session.phase === "combat") {
+      const target = party.monsters.find((m) => m.isAlive);
+      if (target) {
+        try {
+          const attackResult = handleAttack(char.userId, { target_id: target.id });
+          if (attackResult.success) {
+            // handleAttack calls checkAutoAdvanceTurn -> advanceTurnSkipDead internally
+            // after a successful attack. Do NOT double-advance.
+            return;
+          }
+          // Validation failure — log and fall through to advanceTurnSkipDead below.
+          logEvent(party, "autopilot_action", entityId, {
+            fallback: "attack_failed_validation",
+            error: attackResult.error,
+          });
+        } catch (e) {
+          logEvent(party, "autopilot_action", entityId, {
+            fallback: "attack_threw",
+            error: String(e),
+          });
+        }
+      }
+    }
+    // Dodge / follow / silent / rest + attack-fallback paths: just advance the turn.
+    advanceTurnSkipDead(party);
+  }, AUTOPILOT_TIMEOUT_MS);
+
+  autopilotTimers.set(timerKey, timer);
+}
+
+/** Cancel any autopilot timer for this entity, regardless of turn number. */
+function cancelAutopilotTimer(partyId: string, entityId: string): void {
+  for (const [key, timer] of autopilotTimers.entries()) {
+    if (key.startsWith(`${partyId}:${entityId}:`)) {
+      clearTimeout(timer);
+      autopilotTimers.delete(key);
+    }
+  }
+}
+
+/** Cancel all autopilot timers for a party (e.g. on combat/session end). */
+function cancelAllAutopilotTimersForParty(partyId: string): void {
+  for (const [key, timer] of autopilotTimers.entries()) {
+    if (key.startsWith(`${partyId}:`)) {
+      clearTimeout(timer);
+      autopilotTimers.delete(key);
+    }
+  }
+}
+
+/** Clear the matchmaker wait-window timer and reset the first-queue anchor. */
+function clearMatchmakerWaitTimer(): void {
+  if (matchmakerWaitTimer) {
+    clearTimeout(matchmakerWaitTimer);
+    matchmakerWaitTimer = null;
+  }
+  matchmakerFirstQueueAt = null;
+}
+
+/**
+ * Mark a character as having taken an action. Updates lastActionAt and cancels
+ * any pending autopilot timer for this character. Call from every player-action
+ * handler after character validation succeeds.
+ *
+ * Not called from resetStallCounter (monsters/DM fire that path too) nor from
+ * pure-read handlers (get_status, get_inventory, get_party, available_actions)
+ * nor from queue handlers (queue actions are not gameplay actions).
+ */
+function markCharacterAction(char: GameCharacter): void {
+  char.lastActionAt = new Date();
+  if (char.partyId) {
+    cancelAutopilotTimer(char.partyId, char.id);
+  }
+}
+
 /** Push WebSocket notifications when the current combatant changes. */
 function notifyTurnChange(party: GameParty): void {
   if (!party.session || party.session.phase !== "combat") return;
@@ -398,6 +549,10 @@ function notifyTurnChange(party: GameParty): void {
       phase: party.session.phase,
     });
   }
+
+  // Start autopilot timer for the new current combatant (if player).
+  // Single wire-point covers all three call sites — timer is idempotent via timerKey.
+  startAutopilotTimer(party);
 }
 
 // --- Turn Resource Helpers ---
@@ -567,7 +722,7 @@ function checkCombatTimeout(party: GameParty): boolean {
     });
 
     if (party.session) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
     }
     stabilizeUnconsciousCharacters(party);
     snapshotCharacters(party);
@@ -692,10 +847,10 @@ export async function handleCreateCharacter(userId: string, params: {
   ideal?: string;
   fear?: string;
   decisionTimeMs?: number;
-}): Promise<{ success: boolean; character?: GameCharacter; error?: string }> {
+}): Promise<{ success: boolean; character?: GameCharacter; error?: string; reason_code?: string }> {
   // Check if user already has a character
   if (charactersByUser.has(userId)) {
-    return { success: false, error: "You already have a character. One character per account." };
+    return { success: false, error: "You already have a character. One character per account.", reason_code: "CHARACTER_ALREADY_EXISTS" };
   }
 
   // Validate all required fields at once
@@ -705,15 +860,15 @@ export async function handleCreateCharacter(userId: string, params: {
     return val === undefined || val === null || val === "";
   });
   if (missing.length > 0) {
-    return { success: false, error: `Missing required fields: ${missing.join(", ")}` };
+    return { success: false, error: `Missing required fields: ${missing.join(", ")}`, reason_code: "MISSING_FIELD" };
   }
 
   // Validate race and class
   if (!VALID_RACES.includes(params.race as Race)) {
-    return { success: false, error: `Invalid race. Must be one of: ${VALID_RACES.join(", ")}` };
+    return { success: false, error: `Invalid race. Must be one of: ${VALID_RACES.join(", ")}`, reason_code: "INVALID_ENUM_VALUE" };
   }
   if (!VALID_CLASSES.includes(params.class as CharacterClass)) {
-    return { success: false, error: `Invalid class. Must be one of: ${VALID_CLASSES.join(", ")}` };
+    return { success: false, error: `Invalid class. Must be one of: ${VALID_CLASSES.join(", ")}`, reason_code: "INVALID_ENUM_VALUE" };
   }
 
   // Validate avatar URL if provided; generate fallback if not
@@ -721,7 +876,7 @@ export async function handleCreateCharacter(userId: string, params: {
   if (params.avatar_url) {
     const avatarCheck = await validateAvatarUrl(params.avatar_url);
     if (!avatarCheck.valid) {
-      return { success: false, error: avatarCheck.error };
+      return { success: false, error: avatarCheck.error, reason_code: "VALIDATION_FAILED" };
     }
     finalAvatarUrl = params.avatar_url;
   } else {
@@ -730,7 +885,7 @@ export async function handleCreateCharacter(userId: string, params: {
 
   const validation = validateAbilityScores(params.ability_scores);
   if (!validation.valid) {
-    return { success: false, error: validation.error };
+    return { success: false, error: validation.error, reason_code: "VALIDATION_FAILED" };
   }
 
   const sheet = buildCharacter({
@@ -767,6 +922,7 @@ export async function handleCreateCharacter(userId: string, params: {
     timesKnockedOut: 0,
     goldEarned: 0,
     relentlessEnduranceUsed: false,
+    lastActionAt: new Date(),
     flawOpportunities: 0,
     flawActivations: 0,
     totalActionWords: 0,
@@ -824,15 +980,15 @@ export async function handleCreateCharacter(userId: string, params: {
 export async function handleUpdateCharacter(userId: string, params: {
   avatar_url?: string;
   description?: string;
-}): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> {
+}): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }> {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found. Create one first." };
+  if (!char) return { success: false, error: "No character found. Create one first.", reason_code: "CHARACTER_NOT_FOUND" };
 
   // Validate avatar URL if provided
   if (params.avatar_url) {
     const avatarCheck = await validateAvatarUrl(params.avatar_url);
     if (!avatarCheck.valid) {
-      return { success: false, error: avatarCheck.error };
+      return { success: false, error: avatarCheck.error, reason_code: "VALIDATION_FAILED" };
     }
   }
 
@@ -865,15 +1021,15 @@ export async function handleUpdateCharacter(userId: string, params: {
   };
 }
 
-export function handleDeleteCharacter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDeleteCharacter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
 
   // Cannot delete if in an active session
   if (char.partyId) {
     const party = parties.get(char.partyId);
     if (party && party.session && party.session.phase !== "ended") {
-      return { success: false, error: "Cannot delete character while in an active session. Wait for the session to end." };
+      return { success: false, error: "Cannot delete character while in an active session. Wait for the session to end.", reason_code: "WRONG_STATE" };
     }
   }
 
@@ -940,9 +1096,10 @@ function describeMonsterCondition(m: MonsterInstance): string {
 
 // --- Player Tool Handlers ---
 
-export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleLook(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found. Create one first." };
+  if (!char) return { success: false, error: "No character found. Create one first.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   const party = char.partyId ? parties.get(char.partyId) : null;
   if (!party?.dungeonState) {
@@ -950,7 +1107,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
   }
 
   const room = getCurrentRoom(party.dungeonState);
-  if (!room) return { success: false, error: "Unable to determine current room." };
+  if (!room) return { success: false, error: "Unable to determine current room.", reason_code: "SERVER_STATE_ERROR" };
 
   const exits = getAvailableExits(party.dungeonState);
   const aliveMonsters = getAliveMonsters(party.monsters);
@@ -973,9 +1130,9 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
   };
 }
 
-export function handleGetStatus(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetStatus(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
 
   // Build available spells list for spellcasters, grouped by level
   const availableSpells: Record<string, { name: string; castingTime: string; effect: string; isConcentration: boolean; range: string }[]> = {};
@@ -1025,9 +1182,9 @@ export function handleGetStatus(userId: string): { success: boolean; data?: Reco
   };
 }
 
-export function handleGetParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
 
   const party = char.partyId ? parties.get(char.partyId) : null;
   if (!party) return { success: true, data: { party: null, message: "Not in a party." } };
@@ -1050,9 +1207,9 @@ export function handleGetParty(userId: string): { success: boolean; data?: Recor
   };
 }
 
-export function handleGetInventory(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetInventory(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
 
   const inventoryDetails = char.inventory.map((itemName) => {
     const def = itemDefs.get(itemName);
@@ -1185,7 +1342,7 @@ function buildActionRoutes(actions: string[], routeMap: Record<string, { method:
   return routes;
 }
 
-export function handleGetAvailableActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetAvailableActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
   if (!char) {
     const actions = ["create_character"];
@@ -1254,31 +1411,32 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
   };
 }
 
-export function handleAttack(userId: string, params: { target_id: string; weapon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAttack(userId: string, params: { target_id: string; weapon?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
-    return { success: false, error: "You can only attack during combat." };
+    return { success: false, error: "You can only attack during combat.", reason_code: "WRONG_PHASE" };
   }
 
   // Check turn order
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== char.id) {
-    return { success: false, error: "It's not your turn." };
+    return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
   // Check action resource
   const resources = getTurnResources(party, char.id);
   if (resources.actionUsed) {
-    return { success: false, error: "You've already used your action this turn." };
+    return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
   }
 
   // Find target monster
   const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
-  if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
+  if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.`, reason_code: "TARGET_INVALID" };
 
   // Consume action resource
   setTurnResources(party, char.id, { ...resources, actionUsed: true });
@@ -1360,7 +1518,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
             if (lu) levelUps.push({ name: m.name, ...lu });
           }
         }
-        party.session = exitCombat(party.session);
+        cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
         logEvent(party, "combat_end", null, { xpAwarded: xp });
         for (const lu of levelUps) {
           logEvent(party, "level_up", null, lu);
@@ -1397,27 +1555,28 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
   };
 }
 
-export function handleMonsterAttack(userId: string, params: { monster_id: string; target_id?: string; target?: string; target_name?: string; attack_name?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleMonsterAttack(userId: string, params: { monster_id: string; target_id?: string; target?: string; target_name?: string; attack_name?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Resolve target from target_id, target, or target_name (supports IDs and character names)
   const targetIdentifier = params.target_id ?? params.target ?? params.target_name;
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   if (!party.session || party.session.phase !== "combat") {
-    return { success: false, error: "Not in combat." };
+    return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
   }
 
   // Verify it's this monster's turn
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== params.monster_id || current.type !== "monster") {
-    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}` };
+    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}`, reason_code: "WRONG_TURN" };
   }
 
   const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
-  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.`, reason_code: "BAD_REQUEST" };
 
   // Sleeping monsters cannot attack (unconscious from Sleep spell)
   if (monster.conditions.includes("asleep")) {
-    return { success: false, error: `${monster.name} is asleep and cannot attack. End its turn.` };
+    return { success: false, error: `${monster.name} is asleep and cannot attack. End its turn.`, reason_code: "MONSTER_UNAVAILABLE" };
   }
 
   // Recharge check at start of monster's turn — roll d6 for each spent ability
@@ -1435,11 +1594,11 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   const attack = params.attack_name
     ? monster.attacks.find((a) => a.name.toLowerCase() === params.attack_name!.toLowerCase())
     : monster.attacks[0];
-  if (!attack) return { success: false, error: "No valid attack found for this monster." };
+  if (!attack) return { success: false, error: "No valid attack found for this monster.", reason_code: "NO_VALID_ACTION" };
 
   // Check recharge availability
   if (attack.recharge && monster.rechargeTracker[attack.name] === false) {
-    return { success: false, error: `${attack.name} has not recharged yet. Use a different attack.`, data: { rechargeResults } as Record<string, unknown> };
+    return { success: false, error: `${attack.name} has not recharged yet. Use a different attack.`, data: { rechargeResults } as Record<string, unknown>, reason_code: "ABILITY_ON_COOLDOWN" };
   }
 
   // Mark rechargeable attack as spent
@@ -1508,10 +1667,12 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
   // --- Save-based single-target attack (not AoE) ---
   if (attack.save_dc && attack.save_ability) {
-    if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
+    if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks.", reason_code: "MISSING_FIELD" };
     const target = resolveCharacter(targetIdentifier);
-    if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
-    if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.` };
+    // TODO Pass 2: assign specific reason_code
+    if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.`, reason_code: "BAD_REQUEST" };
+    // TODO Pass 2: assign specific reason_code
+    if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.`, reason_code: "BAD_REQUEST" };
 
     const ability = attack.save_ability as "str" | "dex" | "con" | "int" | "wis" | "cha";
     const save = savingThrow({
@@ -1564,10 +1725,12 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   }
 
   // --- Standard attack roll path ---
-  if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks." };
+  if (!targetIdentifier) return { success: false, error: "target_id is required for single-target attacks.", reason_code: "MISSING_FIELD" };
   const target = resolveCharacter(targetIdentifier);
-  if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.` };
-  if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!target || !party.members.includes(target.id)) return { success: false, error: `Target ${targetIdentifier} not found in party.`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (target.conditions.includes("dead")) return { success: false, error: `${target.name} is dead.`, reason_code: "BAD_REQUEST" };
 
   // D&D 5e: attacks against unconscious/sleeping/paralyzed targets have advantage, and melee hits auto-crit
   const targetIsIncapacitated = target.conditions.includes("unconscious") || target.conditions.includes("asleep") || target.conditions.includes("paralyzed");
@@ -1630,7 +1793,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       if (isDead && party.session) {
         party.session = removeCombatant(party.session, target.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
             handleTPK(party);
@@ -1742,26 +1905,27 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   };
 }
 
-export function handleMonsterAction(userId: string, params: { monster_id: string; action: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleMonsterAction(userId: string, params: { monster_id: string; action: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   if (!party.session || party.session.phase !== "combat") {
-    return { success: false, error: "Not in combat." };
+    return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
   }
 
   // Verify it's this monster's turn
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== params.monster_id || current.type !== "monster") {
-    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}` };
+    return { success: false, error: `It is not ${params.monster_id}'s turn. Current turn: ${current?.entityId ?? "none"}`, reason_code: "WRONG_TURN" };
   }
 
   const monster = party.monsters.find((m) => m.id === params.monster_id && m.isAlive);
-  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!monster) return { success: false, error: `Monster ${params.monster_id} not found or dead.`, reason_code: "BAD_REQUEST" };
 
   const validActions = ["dodge", "dash", "disengage", "flee", "hold"];
   const action = (params.action ?? "").toLowerCase();
   if (!validActions.includes(action)) {
-    return { success: false, error: `Invalid action "${params.action}". Valid actions: ${validActions.join(", ")}` };
+    return { success: false, error: `Invalid action "${params.action}". Valid actions: ${validActions.join(", ")}`, reason_code: "INVALID_ENUM_VALUE" };
   }
 
   if (action === "flee") {
@@ -1772,7 +1936,7 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
     broadcastToParty(party.id, { type: "monster_fled", monsterName: monster.name });
 
     if (shouldCombatEnd(party.session)) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
       stabilizeUnconsciousCharacters(party);
       snapshotCharacters(party);
@@ -1789,25 +1953,30 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
   };
 }
 
-export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleCast(userId: string, params: { spell_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const spell = findSpell(params.spell_name);
-  if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+  // TODO Pass 2: assign specific reason_code
+  if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}`, reason_code: "BAD_REQUEST" };
 
   // Validate casting time — bonus_action/reaction spells must use those tools
   if (spell.castingTime === "bonus_action") {
-    return { success: false, error: `${spell.name} is a bonus action spell. Use the bonus_action tool instead.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `${spell.name} is a bonus action spell. Use the bonus_action tool instead.`, reason_code: "BAD_REQUEST" };
   }
   if (spell.castingTime === "reaction") {
-    return { success: false, error: `${spell.name} is a reaction spell. Use the reaction tool instead.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `${spell.name} is a reaction spell. Use the reaction tool instead.`, reason_code: "BAD_REQUEST" };
   }
 
   // Healing spells require a target
   if (spell.isHealing && !params.target_id) {
-    return { success: false, error: `${spell.name} requires a target. Specify target_id.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `${spell.name} requires a target. Specify target_id.`, reason_code: "BAD_REQUEST" };
   }
 
   // Check turn order and action resource in combat
@@ -1815,11 +1984,11 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
     if (!current || current.entityId !== char.id) {
-      return { success: false, error: "It's not your turn." };
+      return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     }
     const resources = getTurnResources(party, char.id);
     if (resources.actionUsed) {
-      return { success: false, error: "You've already used your action this turn." };
+      return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     }
   }
 
@@ -1831,7 +2000,8 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   });
 
   if (!result.success) {
-    return { success: false, error: result.error };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: result.error, reason_code: "BAD_REQUEST" };
   }
 
   // Consume action resource after successful cast
@@ -1983,7 +2153,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
                   if (lu) levelUps.push({ name: m.name, ...lu });
                 }
               }
-              party.session = exitCombat(party.session);
+              cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
               logEvent(party, "combat_end", null, { xpAwarded: xp });
               for (const lu of levelUps) {
                 logEvent(party, "level_up", null, lu);
@@ -2051,80 +2221,85 @@ export function handleCast(userId: string, params: { spell_name: string; target_
   };
 }
 
-export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDodge(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
-    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
   if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
 }
 
-export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
-    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
   if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
 }
 
-export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
-    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
   if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
 }
 
-export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
-    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
   if (party) checkAutoAdvanceTurn(party, char.id);
   return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
 }
 
-export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const current = getCurrentCombatant(party.session);
-    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn." };
+    if (!current || current.entityId !== char.id) return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
   const result = abilityCheck({
@@ -2140,15 +2315,18 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
   };
 }
 
-export function handleMove(userId: string, params: { direction_or_target: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target." };
+export function handleMove(userId: string, params: { direction_or_target: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  // TODO Pass 2: assign specific reason_code
+  if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target.", reason_code: "BAD_REQUEST" };
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.dungeonState) {
-    return { success: false, error: "Not in a dungeon." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Not in a dungeon.", reason_code: "BAD_REQUEST" };
   }
 
   // Check if already in the target room
@@ -2167,12 +2345,14 @@ export function handleMove(userId: string, params: { direction_or_target: string
   );
 
   if (!target) {
-    return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}`, reason_code: "BAD_REQUEST" };
   }
 
   const moveResult = moveToRoom(party.dungeonState, target.roomId);
   if (!moveResult.ok) {
-    return { success: false, error: moveResult.reason };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: moveResult.reason, reason_code: "BAD_REQUEST" };
   }
 
   party.dungeonState = moveResult.state;
@@ -2191,15 +2371,19 @@ export function handleMove(userId: string, params: { direction_or_target: string
   };
 }
 
-export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
-  if (char.conditions.includes("dead")) return { success: false, error: "Your character is dead." };
-  if (char.conditions.includes("unconscious")) return { success: false, error: "Your character is unconscious and cannot speak." };
+  // TODO Pass 2: assign specific reason_code
+  if (char.conditions.includes("dead")) return { success: false, error: "Your character is dead.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (char.conditions.includes("unconscious")) return { success: false, error: "Your character is unconscious and cannot speak.", reason_code: "BAD_REQUEST" };
 
   const party = getPartyForCharacter(char.id);
-  if (!party) return { success: false, error: "Not in a party." };
+  // TODO Pass 2: assign specific reason_code
+  if (!party) return { success: false, error: "Not in a party.", reason_code: "BAD_REQUEST" };
   const chatEventData: Record<string, unknown> = { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message };
 
   // Tag with active conversation (Task 1d)
@@ -2231,20 +2415,26 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
 }
 
-export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
-  if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character." };
-  if (!params.message) return { success: false, error: "Missing message." };
+export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  // TODO Pass 2: assign specific reason_code
+  if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.message) return { success: false, error: "Missing message.", reason_code: "BAD_REQUEST" };
 
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   const party = getPartyForCharacter(char.id);
-  if (!party) return { success: false, error: "Not in a party." };
+  // TODO Pass 2: assign specific reason_code
+  if (!party) return { success: false, error: "Not in a party.", reason_code: "BAD_REQUEST" };
 
   const target = resolveCharacter(params.player_id);
-  if (!target || target.partyId !== party.id) return { success: false, error: "Target not in your party." };
+  // TODO Pass 2: assign specific reason_code
+  if (!target || target.partyId !== party.id) return { success: false, error: "Target not in your party.", reason_code: "BAD_REQUEST" };
 
-  if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself." };
+  // TODO Pass 2: assign specific reason_code
+  if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself.", reason_code: "BAD_REQUEST" };
 
   logEvent(party, "whisper", char.id, { from: char.name, to: target.name, message: params.message });
 
@@ -2258,14 +2448,16 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
   return { success: true, data: { from: char.name, to: target.name, message: params.message } };
 }
 
-export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
-  if (!party?.session) return { success: false, error: "Not in an active session." };
-  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat." };
+  if (!party?.session) return { success: false, error: "Not in an active session.", reason_code: "WRONG_STATE" };
+  // TODO Pass 2: assign specific reason_code
+  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat.", reason_code: "BAD_REQUEST" };
 
   const conMod = abilityModifier(char.abilityScores.con);
   const result = doShortRest({
@@ -2294,14 +2486,16 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   };
 }
 
-export function handleLongRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleLongRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
-  if (!party?.session) return { success: false, error: "Not in an active session." };
-  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat." };
+  if (!party?.session) return { success: false, error: "Not in an active session.", reason_code: "WRONG_STATE" };
+  // TODO Pass 2: assign specific reason_code
+  if (party.session.phase === "combat") return { success: false, error: "Cannot rest during combat.", reason_code: "BAD_REQUEST" };
 
   const result = doLongRest({
     hp: { current: char.hpCurrent, max: char.hpMax, temp: 0 },
@@ -2329,21 +2523,23 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   };
 }
 
-export function handleUseItem(userId: string, params: { item_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleUseItem(userId: string, params: { item_name: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
   if (party?.session?.phase === "combat") {
     const resources = getTurnResources(party, char.id);
-    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn." };
+    if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
 
   const itemIdx = char.inventory.indexOf(params.item_name);
   if (itemIdx === -1) {
-    return { success: false, error: `Item "${params.item_name}" not found in inventory.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Item "${params.item_name}" not found in inventory.`, reason_code: "BAD_REQUEST" };
   }
 
   const itemDef = itemDefs.get(params.item_name);
@@ -2368,7 +2564,8 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
   // Data-driven scroll handling
   if (itemDef?.category === "scroll" && itemDef.spellName) {
     const spell = findSpell(itemDef.spellName);
-    if (!spell) return { success: false, error: `Scroll references unknown spell: ${itemDef.spellName}` };
+    // TODO Pass 2: assign specific reason_code
+    if (!spell) return { success: false, error: `Scroll references unknown spell: ${itemDef.spellName}`, reason_code: "BAD_REQUEST" };
 
     // Cast the spell without consuming spell slots
     const result = castSpell({
@@ -2378,7 +2575,8 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
       spellSlots: char.spellSlots,
       freecast: true,
     });
-    if (!result.success) return { success: false, error: result.error };
+    // TODO Pass 2: assign specific reason_code
+    if (!result.success) return { success: false, error: result.error, reason_code: "BAD_REQUEST" };
 
     // Track saving throw result for save-based scroll spells
     let scrollSaved: boolean | undefined;
@@ -2455,19 +2653,19 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
 // --- End Turn / Bonus Action / Reaction ---
 
-export function handleEndTurn(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleEndTurn(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
 
   // DM path: DMs can end monster turns (they control monsters in combat)
   if (!char) {
     const dmParty = findDMParty(userId);
-    if (!dmParty) return { success: false, error: "No character found." };
+    if (!dmParty) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
     if (!dmParty.session || dmParty.session.phase !== "combat") {
-      return { success: false, error: "Not in combat." };
+      return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
     }
     const current = getCurrentCombatant(dmParty.session);
     if (!current || current.type !== "monster") {
-      return { success: false, error: "It's not a monster's turn." };
+      return { success: false, error: "It's not a monster's turn.", reason_code: "WRONG_TURN" };
     }
     advanceTurnSkipDead(dmParty);
     const nextCombatant = getCurrentCombatant(dmParty.session);
@@ -2484,16 +2682,18 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
   // Player path: players can end their own turn
   // Note: unconscious characters must be able to end turn (after death saves)
   // to avoid soft-locking initiative. Only dead characters are blocked.
-  if (char.conditions.includes("dead")) return { success: false, error: "Dead characters cannot act." };
+  // TODO Pass 2: assign specific reason_code
+  if (char.conditions.includes("dead")) return { success: false, error: "Dead characters cannot act.", reason_code: "BAD_REQUEST" };
+  markCharacterAction(char);
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
-    return { success: false, error: "Not in combat." };
+    return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
   }
 
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== char.id) {
-    return { success: false, error: "It's not your turn." };
+    return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
   advanceTurnSkipDead(party);
@@ -2509,20 +2709,23 @@ export function handleEndTurn(userId: string): { success: boolean; data?: Record
   };
 }
 
-export function handleBonusAction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleBonusAction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
 
   // Second Wind can be used outside combat (exploration/town)
   if (params.action === "second_wind" && party?.session && party.session.phase !== "combat") {
     if (!char.features.includes("Second Wind")) {
-      return { success: false, error: "Only Fighters with Second Wind can use this ability." };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: "Only Fighters with Second Wind can use this ability.", reason_code: "BAD_REQUEST" };
     }
     if (char.hpCurrent >= char.hpMax) {
-      return { success: false, error: "Already at full HP." };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: "Already at full HP.", reason_code: "BAD_REQUEST" };
     }
     const healRoll = roll(`1d10+${char.level}`);
     const hp = applyHealing({ current: char.hpCurrent, max: char.hpMax, temp: 0 }, healRoll.total);
@@ -2535,26 +2738,30 @@ export function handleBonusAction(userId: string, params: { action: string; spel
   }
 
   if (!party?.session || party.session.phase !== "combat") {
-    return { success: false, error: "Not in combat." };
+    return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
   }
 
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== char.id) {
-    return { success: false, error: "It's not your turn." };
+    return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
   const resources = getTurnResources(party, char.id);
   if (resources.bonusUsed) {
-    return { success: false, error: "You've already used your bonus action this turn." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You've already used your bonus action this turn.", reason_code: "BAD_REQUEST" };
   }
 
   switch (params.action) {
     case "cast": {
-      if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
+      // TODO Pass 2: assign specific reason_code
+      if (!params.spell_name) return { success: false, error: "spell_name is required for casting.", reason_code: "BAD_REQUEST" };
       const spell = findSpell(params.spell_name);
-      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+      // TODO Pass 2: assign specific reason_code
+      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}`, reason_code: "BAD_REQUEST" };
       if (spell.castingTime !== "bonus_action") {
-        return { success: false, error: `${spell.name} is not a bonus action spell.` };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: `${spell.name} is not a bonus action spell.`, reason_code: "BAD_REQUEST" };
       }
 
       const result = castSpell({
@@ -2563,7 +2770,8 @@ export function handleBonusAction(userId: string, params: { action: string; spel
         casterClass: char.class,
         spellSlots: char.spellSlots,
       });
-      if (!result.success) return { success: false, error: result.error };
+      // TODO Pass 2: assign specific reason_code
+      if (!result.success) return { success: false, error: result.error, reason_code: "BAD_REQUEST" };
 
       char.spellSlots = result.remainingSlots;
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
@@ -2647,7 +2855,8 @@ export function handleBonusAction(userId: string, params: { action: string; spel
     case "dash":
     case "disengage": {
       if (!char.features.includes("Cunning Action")) {
-        return { success: false, error: `Only Rogues with Cunning Action can ${params.action} as a bonus action.` };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: `Only Rogues with Cunning Action can ${params.action} as a bonus action.`, reason_code: "BAD_REQUEST" };
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: params.action, cunningAction: true });
@@ -2660,7 +2869,8 @@ export function handleBonusAction(userId: string, params: { action: string; spel
 
     case "hide": {
       if (!char.features.includes("Cunning Action")) {
-        return { success: false, error: `Only Rogues with Cunning Action can hide as a bonus action.` };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: `Only Rogues with Cunning Action can hide as a bonus action.`, reason_code: "BAD_REQUEST" };
       }
       const hideResult = abilityCheck({
         abilityScores: char.abilityScores,
@@ -2679,7 +2889,8 @@ export function handleBonusAction(userId: string, params: { action: string; spel
 
     case "second_wind": {
       if (!char.features.includes("Second Wind")) {
-        return { success: false, error: "Only Fighters with Second Wind can use this ability." };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: "Only Fighters with Second Wind can use this ability.", reason_code: "BAD_REQUEST" };
       }
       const wasDying = char.hpCurrent === 0;
       const healRoll = roll(`1d10+${char.level}`);
@@ -2699,37 +2910,44 @@ export function handleBonusAction(userId: string, params: { action: string; spel
     }
 
     default:
-      return { success: false, error: `Unknown bonus action: ${params.action}. Use cast, dash, disengage, hide, or second_wind.` };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: `Unknown bonus action: ${params.action}. Use cast, dash, disengage, hide, or second_wind.`, reason_code: "BAD_REQUEST" };
   }
 }
 
-export function handleReaction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleReaction(userId: string, params: { action: string; spell_name?: string; target_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
-    return { success: false, error: "Not in combat." };
+    return { success: false, error: "Not in combat.", reason_code: "WRONG_PHASE" };
   }
 
   const current = getCurrentCombatant(party.session);
   if (current?.entityId === char.id) {
-    return { success: false, error: "You can't use a reaction on your own turn. Reactions are for other combatants' turns." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You can't use a reaction on your own turn. Reactions are for other combatants' turns.", reason_code: "BAD_REQUEST" };
   }
 
   const resources = getTurnResources(party, char.id);
   if (resources.reactionUsed) {
-    return { success: false, error: "You've already used your reaction this round." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You've already used your reaction this round.", reason_code: "BAD_REQUEST" };
   }
 
   switch (params.action) {
     case "cast": {
-      if (!params.spell_name) return { success: false, error: "spell_name is required for casting." };
+      // TODO Pass 2: assign specific reason_code
+      if (!params.spell_name) return { success: false, error: "spell_name is required for casting.", reason_code: "BAD_REQUEST" };
       const spell = findSpell(params.spell_name);
-      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}` };
+      // TODO Pass 2: assign specific reason_code
+      if (!spell) return { success: false, error: `Unknown spell: ${params.spell_name}`, reason_code: "BAD_REQUEST" };
       if (spell.castingTime !== "reaction") {
-        return { success: false, error: `${spell.name} is not a reaction spell.` };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: `${spell.name} is not a reaction spell.`, reason_code: "BAD_REQUEST" };
       }
 
       const result = castSpell({
@@ -2738,7 +2956,8 @@ export function handleReaction(userId: string, params: { action: string; spell_n
         casterClass: char.class,
         spellSlots: char.spellSlots,
       });
-      if (!result.success) return { success: false, error: result.error };
+      // TODO Pass 2: assign specific reason_code
+      if (!result.success) return { success: false, error: result.error, reason_code: "BAD_REQUEST" };
 
       char.spellSlots = result.remainingSlots;
       setTurnResources(party, char.id, { ...resources, reactionUsed: true });
@@ -2813,10 +3032,10 @@ export function handleReaction(userId: string, params: { action: string; spell_n
     }
 
     case "opportunity_attack": {
-      if (!params.target_id) return { success: false, error: "target_id is required for opportunity attacks." };
+      if (!params.target_id) return { success: false, error: "target_id is required for opportunity attacks.", reason_code: "MISSING_FIELD" };
 
       const target = party.monsters.find((m) => m.id === params.target_id && m.isAlive);
-      if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.` };
+      if (!target) return { success: false, error: `Target ${params.target_id} not found or already dead.`, reason_code: "TARGET_INVALID" };
 
       const weaponDamage = getWeaponDamage(char.equipment.weapon);
       const profBonus = proficiencyBonus(char.level);
@@ -2863,7 +3082,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
                   if (lu) levelUps.push({ name: m.name, ...lu });
                 }
               }
-              party.session = exitCombat(party.session);
+              cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
               logEvent(party, "combat_end", null, { xpAwarded: xp });
               for (const lu of levelUps) {
                 logEvent(party, "level_up", null, lu);
@@ -2896,34 +3115,40 @@ export function handleReaction(userId: string, params: { action: string; spell_n
     }
 
     default:
-      return { success: false, error: `Unknown reaction: ${params.action}. Use cast or opportunity_attack.` };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: `Unknown reaction: ${params.action}. Use cast or opportunity_attack.`, reason_code: "BAD_REQUEST" };
   }
 }
 
 // --- Death Saves ---
 
-export function handleDeathSave(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDeathSave(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   if (!char.conditions.includes("unconscious")) {
-    return { success: false, error: "You are not unconscious. Death saves are only made when at 0 HP." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You are not unconscious. Death saves are only made when at 0 HP.", reason_code: "BAD_REQUEST" };
   }
   if (char.conditions.includes("stable")) {
-    return { success: false, error: "You are already stabilized." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You are already stabilized.", reason_code: "BAD_REQUEST" };
   }
   if (char.conditions.includes("dead")) {
-    return { success: false, error: "You are dead." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "You are dead.", reason_code: "BAD_REQUEST" };
   }
 
   const party = getPartyForCharacter(char.id);
   if (!party?.session || party.session.phase !== "combat") {
-    return { success: false, error: "Death saves are only made during combat." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Death saves are only made during combat.", reason_code: "BAD_REQUEST" };
   }
 
   const current = getCurrentCombatant(party.session);
   if (!current || current.entityId !== char.id) {
-    return { success: false, error: "It's not your turn." };
+    return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
   const result = deathSave(char.deathSaves);
@@ -2988,7 +3213,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
   if (result.dead && party.session) {
     party.session = removeCombatant(party.session, char.id);
     if (shouldCombatEnd(party.session)) {
-      party.session = exitCombat(party.session);
+      cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
       if (isTPK(party)) {
         handleTPK(party);
@@ -3009,9 +3234,10 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
   };
 }
 
-export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   // Behavioral metrics: journal entries track verbosity and safety
   char.totalActionWords += countWords(params.entry);
@@ -3024,9 +3250,9 @@ export function handleJournalAdd(userId: string, params: { entry: string }): { s
   return { success: true, data: { entry: params.entry, character: char.name } };
 }
 
-export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found. Create one first." };
+  if (!char) return { success: false, error: "No character found. Create one first.", reason_code: "CHARACTER_NOT_FOUND" };
   if (char.partyId) {
     const existingParty = parties.get(char.partyId);
     // If the party doesn't exist or its session already ended, clear the stale reference
@@ -3034,13 +3260,13 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
       char.partyId = null;
       char.status = "idle";
     } else {
-      return { success: false, error: "Already in a party." };
+      return { success: false, error: "Already in a party.", reason_code: "WRONG_STATE" };
     }
   }
 
   // Prevent duplicate queue entries
   if (playerQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the queue." };
+    return { success: false, error: "Already in the queue.", reason_code: "WRONG_STATE" };
   }
 
   const entry: QueueEntry = {
@@ -3055,11 +3281,28 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 
   playerQueue.push(entry);
 
-  // Try to match
+  // Try immediate match at full party size (>=4 players + DM)
   const match = tryMatchParty([...playerQueue, ...dmQueue]);
   if (match) {
+    clearMatchmakerWaitTimer();
     formParty(match);
     return { success: true, data: { queued: false, matched: true, message: "Party formed!" } };
+  }
+
+  // Wait-window: anchor on FIRST queue entry; fire fallback after 30s if still <4.
+  if (matchmakerFirstQueueAt === null) {
+    matchmakerFirstQueueAt = Date.now();
+  }
+  if (playerQueue.length >= 2 && matchmakerWaitTimer === null) {
+    const elapsed = Date.now() - matchmakerFirstQueueAt;
+    const remaining = Math.max(0, 30_000 - elapsed);
+    matchmakerWaitTimer = setTimeout(() => {
+      const fallbackMatch = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
+      if (fallbackMatch) {
+        formParty(fallbackMatch);
+      }
+      clearMatchmakerWaitTimer();
+    }, remaining);
   }
 
   const playersInQueue = playerQueue.length;
@@ -3074,16 +3317,16 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 
 // --- DM Tool Handlers ---
 
-export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Prevent re-queuing if DM already has an active party
   const existingParty = findDMParty(userId);
   if (existingParty && existingParty.session && existingParty.session.phase !== "ended") {
-    return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it." };
+    return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
   }
 
   // Prevent duplicate queue entries
   if (dmQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the DM queue." };
+    return { success: false, error: "Already in the DM queue.", reason_code: "WRONG_STATE" };
   }
 
   const entry: QueueEntry = {
@@ -3098,10 +3341,29 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
 
   dmQueue.push(entry);
 
+  // Try immediate match at full party size (>=4 players + DM)
   const match = tryMatchParty([...playerQueue, ...dmQueue]);
   if (match) {
+    clearMatchmakerWaitTimer();
     formParty(match);
     return { success: true, data: { queued: false, matched: true, message: "Party formed! You are the DM." } };
+  }
+
+  // Wait-window: if >=2 players already waiting and no timer yet, start one.
+  // DM joining can complete the wait condition.
+  if (matchmakerFirstQueueAt === null) {
+    matchmakerFirstQueueAt = Date.now();
+  }
+  if (playerQueue.length >= 2 && matchmakerWaitTimer === null) {
+    const elapsed = Date.now() - matchmakerFirstQueueAt;
+    const remaining = Math.max(0, 30_000 - elapsed);
+    matchmakerWaitTimer = setTimeout(() => {
+      const fallbackMatch = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
+      if (fallbackMatch) {
+        formParty(fallbackMatch);
+      }
+      clearMatchmakerWaitTimer();
+    }, remaining);
   }
 
   const playersWaiting = playerQueue.length;
@@ -3114,26 +3376,30 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
   return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, queuePosition, totalInQueue, estimatedWaitSeconds: null, message } };
 }
 
-export function handleLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const idx = playerQueue.findIndex((q) => q.userId === userId);
-  if (idx === -1) return { success: false, error: "You are not in the queue." };
+  // TODO Pass 2: assign specific reason_code
+  if (idx === -1) return { success: false, error: "You are not in the queue.", reason_code: "BAD_REQUEST" };
   playerQueue.splice(idx, 1);
+  if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
   return { success: true, data: { message: "Left the queue." } };
 }
 
-export function handleDMLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDMLeaveQueue(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const idx = dmQueue.findIndex((q) => q.userId === userId);
-  if (idx === -1) return { success: false, error: "You are not in the DM queue." };
+  // TODO Pass 2: assign specific reason_code
+  if (idx === -1) return { success: false, error: "You are not in the DM queue.", reason_code: "BAD_REQUEST" };
   dmQueue.splice(idx, 1);
+  if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
   return { success: true, data: { message: "Left the DM queue." } };
 }
 
-export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) {
     const inQueue = dmQueue.some((q) => q.userId === userId);
     const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
-    return { success: false, error: `Not a DM for any active party.${hint}` };
+    return { success: false, error: `Not a DM for any active party.${hint}`, reason_code: "NOT_DM" };
   }
 
   const phase = party.session?.phase ?? "exploration";
@@ -3159,15 +3425,17 @@ export function handleGetDmActions(userId: string): { success: boolean; data?: R
 
 // --- Task 0.1: DM Force-Skip Turn ---
 
-export function handleForceSkipTurn(userId: string, params: { reason?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleForceSkipTurn(userId: string, params: { reason?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   if (!party.session || party.session.phase !== "combat") {
-    return { success: false, error: "Can only skip turns during combat." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Can only skip turns during combat.", reason_code: "BAD_REQUEST" };
   }
 
   const current = getCurrentCombatant(party.session);
-  if (!current) return { success: false, error: "No current combatant." };
+  // TODO Pass 2: assign specific reason_code
+  if (!current) return { success: false, error: "No current combatant.", reason_code: "BAD_REQUEST" };
 
   const skippedName = current.type === "player"
     ? (characters.get(current.entityId)?.name ?? current.entityId)
@@ -3201,9 +3469,10 @@ export function handleNarrate(userId: string, params: {
   type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
   npcId?: string; metadata?: Record<string, unknown>;
   meta?: { intent?: string; reasoning?: string; references?: string[] };
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "You are not a DM for any active party." };
+  // TODO Pass 2: assign specific reason_code
+  if (!party) return { success: false, error: "You are not a DM for any active party.", reason_code: "BAD_REQUEST" };
 
   // Sprint M Task 3: duplicate narration suppression during combat stalls
   if (party.session) {
@@ -3212,7 +3481,8 @@ export function handleNarrate(userId: string, params: {
 
     // Reject exact duplicate narration
     if (recentHashes.includes(hash)) {
-      return { success: false, error: "Duplicate narration suppressed." };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: "Duplicate narration suppressed.", reason_code: "BAD_REQUEST" };
     }
 
     // During combat stall, reject narration when no events have occurred since last narration
@@ -3221,7 +3491,8 @@ export function handleNarrate(userId: string, params: {
       (party.session.combatStallCount ?? 0) > 0 &&
       party.events.length === (party.session.lastEventCountAtNarration ?? 0)
     ) {
-      return { success: false, error: "No state change since last narration." };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: "No state change since last narration.", reason_code: "BAD_REQUEST" };
     }
 
     // Track this narration
@@ -3261,26 +3532,27 @@ export function handleNarrate(userId: string, params: {
   };
 }
 
-export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   return { success: true, data: { narrated: true, to: params.player_id, text: params.text } };
 }
 
-export function handleDMJournal(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDMJournal(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!params.entry || params.entry.trim().length === 0) return { success: false, error: "Journal entry cannot be empty." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.entry || params.entry.trim().length === 0) return { success: false, error: "Journal entry cannot be empty.", reason_code: "BAD_REQUEST" };
 
   logEvent(party, "dm_journal", null, { entry: params.entry.trim() });
   return { success: true, data: { entry: params.entry.trim() } };
 }
 
-export function handleSpawnEncounter(userId: string, params: { monsters: { template_name: string; count: number }[] }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleSpawnEncounter(userId: string, params: { monsters: { template_name: string; count: number }[] }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   try {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.session) return { success: false, error: "No active session." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
 
   // Normalize flat format to array format
   let monsterList = params.monsters;
@@ -3288,7 +3560,8 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
     monsterList = [{ template_name: (params as any).monster_type, count: (params as any).count ?? 1 }];
   }
   if (!monsterList || !Array.isArray(monsterList) || monsterList.length === 0) {
-    return { success: false, error: "Expected 'monsters' array (e.g., [{template_name: 'goblin', count: 2}]) or flat format {monster_type: 'goblin', count: 2}" };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Expected 'monsters' array (e.g., [{template_name: 'goblin', count: 2}]) or flat format {monster_type: 'goblin', count: 2}", reason_code: "BAD_REQUEST" };
   }
 
   // Look up monster templates (case-insensitive, fall back to "name" field from agents)
@@ -3365,22 +3638,27 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   };
   } catch (err) {
     console.error("[spawn-encounter] Unexpected error:", err);
-    return { success: false, error: `Internal error spawning encounter: ${(err as Error).message}` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Internal error spawning encounter: ${(err as Error).message}`, reason_code: "BAD_REQUEST" };
   }
 }
 
-export function handleTriggerEncounter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleTriggerEncounter(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.session) return { success: false, error: "No active session." };
-  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
+  // TODO Pass 2: assign specific reason_code
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded.", reason_code: "BAD_REQUEST" };
 
   const room = getCurrentRoom(party.dungeonState);
-  if (!room) return { success: false, error: "No current room." };
+  // TODO Pass 2: assign specific reason_code
+  if (!room) return { success: false, error: "No current room.", reason_code: "BAD_REQUEST" };
 
   const enc = party.templateEncounters.get(room.id);
-  if (!enc) return { success: false, error: `No pre-placed encounter in room "${room.name}". Use spawn_encounter to create a custom one.` };
-  if (party.triggeredEncounters.has(room.id)) return { success: false, error: `Encounter "${enc.name}" in room "${room.name}" has already been triggered.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!enc) return { success: false, error: `No pre-placed encounter in room "${room.name}". Use spawn_encounter to create a custom one.`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (party.triggeredEncounters.has(room.id)) return { success: false, error: `Encounter "${enc.name}" in room "${room.name}" has already been triggered.`, reason_code: "BAD_REQUEST" };
 
   // Mark as triggered before spawning
   party.triggeredEncounters.add(room.id);
@@ -3390,17 +3668,20 @@ export function handleTriggerEncounter(userId: string): { success: boolean; data
   return handleSpawnEncounter(userId, { monsters });
 }
 
-export function handleInteractWithFeature(userId: string, params: { feature_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleInteractWithFeature(userId: string, params: { feature_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   if (!params.feature_name || typeof params.feature_name !== "string") {
-    return { success: false, error: "Missing required parameter: feature_name" };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Missing required parameter: feature_name", reason_code: "BAD_REQUEST" };
   }
 
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded.", reason_code: "BAD_REQUEST" };
 
   const room = getCurrentRoom(party.dungeonState);
-  if (!room) return { success: false, error: "No current room." };
+  // TODO Pass 2: assign specific reason_code
+  if (!room) return { success: false, error: "No current room.", reason_code: "BAD_REQUEST" };
 
   const features = room.features ?? [];
   const feature = features.find((f) => f.toLowerCase().includes(params.feature_name.toLowerCase()));
@@ -3416,13 +3697,15 @@ export function handleInteractWithFeature(userId: string, params: { feature_name
   return { success: true, data: { room: room.name, feature } };
 }
 
-export function handleOverrideRoomDescription(userId: string, params: { description: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleOverrideRoomDescription(userId: string, params: { description: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded.", reason_code: "BAD_REQUEST" };
 
   const room = getCurrentRoom(party.dungeonState);
-  if (!room) return { success: false, error: "No current room." };
+  // TODO Pass 2: assign specific reason_code
+  if (!room) return { success: false, error: "No current room.", reason_code: "BAD_REQUEST" };
 
   const oldDescription = room.description;
   room.description = params.description;
@@ -3432,16 +3715,18 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
   return { success: true, data: { room: room.name, description: params.description } };
 }
 
-export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?: string; dialogue?: string; message?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?: string; dialogue?: string; message?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Accept npc_id or name as identifier; accept dialogue or message as text
   const npcIdentifier = params.npc_id ?? params.name;
   const dialogue = params.dialogue ?? params.message;
 
-  if (!npcIdentifier) return { success: false, error: "npc_id or name is required." };
-  if (!dialogue) return { success: false, error: "dialogue or message is required." };
+  // TODO Pass 2: assign specific reason_code
+  if (!npcIdentifier) return { success: false, error: "npc_id or name is required.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (!dialogue) return { success: false, error: "dialogue or message is required.", reason_code: "BAD_REQUEST" };
 
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   // Check if this references a persistent NPC
   const npc = npcsMap.get(npcIdentifier);
@@ -3475,17 +3760,20 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
   return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue } };
 }
 
-export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const char = resolveCharacter(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
 
-  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
+  // TODO Pass 2: assign specific reason_code
+  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.`, reason_code: "BAD_REQUEST" };
 
   const ability = normalizeAbility(params.ability);
-  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.`, reason_code: "BAD_REQUEST" };
   const profBonus = params.skill && char.proficiencies.some((p) => p.toLowerCase().includes(params.skill!.toLowerCase()))
     ? proficiencyBonus(char.level) : 0;
 
@@ -3518,17 +3806,20 @@ export function handleRequestCheck(userId: string, params: { player_id: string; 
   };
 }
 
-export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestSave(userId: string, params: { player_id: string; ability: string; dc: number; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const char = resolveCharacter(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
 
-  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.` };
+  // TODO Pass 2: assign specific reason_code
+  if (char.partyId !== party.id) return { success: false, error: `Character ${params.player_id} is not in your party.`, reason_code: "BAD_REQUEST" };
 
   const ability = normalizeAbility(params.ability);
-  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.`, reason_code: "BAD_REQUEST" };
   const result = savingThrow({
     abilityScores: char.abilityScores,
     ability,
@@ -3550,13 +3841,14 @@ export function handleRequestSave(userId: string, params: { player_id: string; a
   };
 }
 
-export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleRequestGroupCheck(userId: string, params: { ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const charList = party.members.map((mid) => characters.get(mid)).filter(Boolean) as GameCharacter[];
   const ability = normalizeAbility(params.ability);
-  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!ability) return { success: false, error: `Invalid ability '${params.ability}'. Use: str, dex, con, int, wis, cha.`, reason_code: "BAD_REQUEST" };
 
   // Roll individually so we can pass advantage/disadvantage per character
   const results = charList.map((c) => {
@@ -3606,22 +3898,28 @@ export function handleRequestGroupCheck(userId: string, params: { ability: strin
 export function handleRequestContestedCheck(userId: string, params: {
   player_id_1: string; ability_1: string; skill_1?: string; advantage_1?: boolean; disadvantage_1?: boolean;
   player_id_2: string; ability_2: string; skill_2?: string; advantage_2?: boolean; disadvantage_2?: boolean;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const char1 = resolveCharacter(params.player_id_1);
-  if (!char1) return { success: false, error: `Player ${params.player_id_1} not found. Use character IDs from get_party_state (e.g. char-1).` };
-  if (char1.partyId !== party.id) return { success: false, error: `Character ${params.player_id_1} is not in your party.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char1) return { success: false, error: `Player ${params.player_id_1} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (char1.partyId !== party.id) return { success: false, error: `Character ${params.player_id_1} is not in your party.`, reason_code: "BAD_REQUEST" };
 
   const char2 = resolveCharacter(params.player_id_2);
-  if (!char2) return { success: false, error: `Player ${params.player_id_2} not found. Use character IDs from get_party_state (e.g. char-1).` };
-  if (char2.partyId !== party.id) return { success: false, error: `Character ${params.player_id_2} is not in your party.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char2) return { success: false, error: `Player ${params.player_id_2} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (char2.partyId !== party.id) return { success: false, error: `Character ${params.player_id_2} is not in your party.`, reason_code: "BAD_REQUEST" };
 
   const ability1 = normalizeAbility(params.ability_1);
-  if (!ability1) return { success: false, error: `Invalid ability '${params.ability_1}'. Use: str, dex, con, int, wis, cha.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!ability1) return { success: false, error: `Invalid ability '${params.ability_1}'. Use: str, dex, con, int, wis, cha.`, reason_code: "BAD_REQUEST" };
   const ability2 = normalizeAbility(params.ability_2);
-  if (!ability2) return { success: false, error: `Invalid ability '${params.ability_2}'. Use: str, dex, con, int, wis, cha.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!ability2) return { success: false, error: `Invalid ability '${params.ability_2}'. Use: str, dex, con, int, wis, cha.`, reason_code: "BAD_REQUEST" };
 
   const profBonus1 = params.skill_1 && char1.proficiencies.some((p) => p.toLowerCase().includes(params.skill_1!.toLowerCase()))
     ? proficiencyBonus(char1.level) : 0;
@@ -3674,23 +3972,25 @@ export function handleRequestContestedCheck(userId: string, params: {
   };
 }
 
-export function handleDealEnvironmentDamage(userId: string, params: { player_id?: string; target_id?: string; notation?: string; damage?: number | string; type?: string; damage_type?: string; description?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleDealEnvironmentDamage(userId: string, params: { player_id?: string; target_id?: string; notation?: string; damage?: number | string; type?: string; damage_type?: string; description?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Accept both param styles: {player_id, notation, type} and {target_id, damage, damage_type}
   const playerId = params.player_id ?? params.target_id;
   const damageNotation = params.notation ?? (typeof params.damage === "number" ? `${params.damage}d1` : params.damage) ?? "1d6";
   const damageType = params.type ?? params.damage_type ?? "untyped";
 
-  if (!playerId) return { success: false, error: "player_id or target_id is required." };
+  if (!playerId) return { success: false, error: "player_id or target_id is required.", reason_code: "MISSING_FIELD" };
 
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const char = resolveCharacter(playerId);
   if (!char) {
     // Try monster lookup
     const monster = party.monsters.find((m) => m.id === playerId || m.name.toLowerCase() === playerId.toLowerCase());
-    if (!monster) return { success: false, error: `Target ${playerId} not found. Use character IDs or monster IDs from get_party_state.` };
-    if (!monster.isAlive) return { success: false, error: `${monster.name} is already dead.` };
+    // TODO Pass 2: assign specific reason_code
+    if (!monster) return { success: false, error: `Target ${playerId} not found. Use character IDs or monster IDs from get_party_state.`, reason_code: "BAD_REQUEST" };
+    // TODO Pass 2: assign specific reason_code
+    if (!monster.isAlive) return { success: false, error: `${monster.name} is already dead.`, reason_code: "BAD_REQUEST" };
 
     const dmgRoll = roll(damageNotation);
     monster.hpCurrent = Math.max(0, monster.hpCurrent - dmgRoll.total);
@@ -3708,7 +4008,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, monster.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { xpAwarded: 0 });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
@@ -3721,7 +4021,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
     };
   }
 
-  if (char.partyId !== party.id) return { success: false, error: `Character ${playerId} is not in your party.` };
+  // TODO Pass 2: assign specific reason_code
+  if (char.partyId !== party.id) return { success: false, error: `Character ${playerId} is not in your party.`, reason_code: "BAD_REQUEST" };
 
   const dmgRoll = roll(damageNotation);
 
@@ -3747,7 +4048,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, char.id);
         if (shouldCombatEnd(party.session)) {
-          party.session = exitCombat(party.session);
+          cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
             handleTPK(party);
@@ -3823,16 +4124,17 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
   };
 }
 
-export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string; room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string; room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   // Accept next_room_id, exit_id, or room_id (agents send any of these)
   const nextRoom = params.next_room_id ?? params.exit_id ?? params.room_id;
 
   // Block advancing scene during active combat — DM must end the encounter first
   if (party.session && party.session.phase === "combat") {
-    return { success: false, error: "Cannot advance scene during combat. End the encounter first (all monsters must be defeated or use end-session)." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Cannot advance scene during combat. End the encounter first (all monsters must be defeated or use end-session).", reason_code: "BAD_REQUEST" };
   }
 
   if (nextRoom && party.dungeonState) {
@@ -3846,9 +4148,11 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
     }
     if (moveResult.reason === "no_exit") {
       const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
-      return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}` };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: `Cannot move to room ${nextRoom} — not connected or not found. Available exits: ${validExits.join(", ") || "none"}`, reason_code: "BAD_REQUEST" };
     }
-    return { success: false, error: moveResult.reason };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: moveResult.reason, reason_code: "BAD_REQUEST" };
   }
 
   // No room specified — return available exits so DM can choose
@@ -3857,18 +4161,22 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   return { success: true, data: { advanced: false, room: currentRoom?.name, phase: party.session?.phase, exits, message: "No next_room_id provided. Call advance_scene with a next_room_id from the exits list to move the party." } };
 }
 
-export function handleUnlockExit(userId: string, params: { target_room_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleUnlockExit(userId: string, params: { target_room_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded.", reason_code: "BAD_REQUEST" };
 
   const currentRoomId = party.dungeonState.currentRoomId;
-  if (!params.target_room_id) return { success: false, error: "target_room_id is required." };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.target_room_id) return { success: false, error: "target_room_id is required.", reason_code: "BAD_REQUEST" };
 
   const exits = getAvailableExits(party.dungeonState);
   const exit = exits.find((e) => e.roomId === params.target_room_id);
-  if (!exit) return { success: false, error: `No exit to room ${params.target_room_id} from current room.` };
-  if (exit.connectionType !== "locked") return { success: false, error: `Exit to ${exit.roomName} is already unlocked (type: ${exit.connectionType}).` };
+  // TODO Pass 2: assign specific reason_code
+  if (!exit) return { success: false, error: `No exit to room ${params.target_room_id} from current room.`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (exit.connectionType !== "locked") return { success: false, error: `Exit to ${exit.roomName} is already unlocked (type: ${exit.connectionType}).`, reason_code: "BAD_REQUEST" };
 
   party.dungeonState = unlockConnection(party.dungeonState, currentRoomId, params.target_room_id);
   logEvent(party, "exit_unlocked", null, { fromRoom: currentRoomId, toRoom: params.target_room_id, roomName: exit.roomName });
@@ -3876,12 +4184,12 @@ export function handleUnlockExit(userId: string, params: { target_room_id: strin
   return { success: true, data: { unlocked: true, roomName: exit.roomName, targetRoomId: params.target_room_id } };
 }
 
-export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetPartyState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) {
     const inQueue = dmQueue.some((q) => q.userId === userId);
     const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
-    return { success: false, error: `Not a DM for any party.${hint}` };
+    return { success: false, error: `Not a DM for any party.${hint}`, reason_code: "NOT_DM" };
   }
 
   const members = party.members.map((mid) => {
@@ -3918,9 +4226,9 @@ export function handleGetPartyState(userId: string): { success: boolean; data?: 
   return { success: true, data };
 }
 
-export function handleGetRoomState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetRoomState(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!party.dungeonState) {
     return { success: true, data: { room: null, message: "No dungeon loaded." } };
@@ -3970,10 +4278,11 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
   };
 }
 
-export function handleAwardXp(userId: string, params: { amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAwardXp(userId: string, params: { amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!Number.isFinite(params.amount) || params.amount < 0) return { success: false, error: "XP amount must be a non-negative number." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!Number.isFinite(params.amount) || params.amount < 0) return { success: false, error: "XP amount must be a non-negative number.", reason_code: "BAD_REQUEST" };
 
   const xpEach = Math.floor(params.amount / party.members.length);
   const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
@@ -3994,16 +4303,18 @@ export function handleAwardXp(userId: string, params: { amount: number }): { suc
   return { success: true, data: { totalXP: params.amount, xpEach, members: party.members.length, levelUps: levelUps.length > 0 ? levelUps : undefined } };
 }
 
-export function handleAwardGold(userId: string, params: { player_id?: string; amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAwardGold(userId: string, params: { player_id?: string; amount: number }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
-  if (params.amount === 0) return { success: false, error: "Amount must be non-zero." };
+  // TODO Pass 2: assign specific reason_code
+  if (params.amount === 0) return { success: false, error: "Amount must be non-zero.", reason_code: "BAD_REQUEST" };
 
   if (params.player_id) {
     // Award to specific player
     const char = resolveCharacter(params.player_id);
-    if (!char) return { success: false, error: `Player ${params.player_id} not found.` };
+    // TODO Pass 2: assign specific reason_code
+    if (!char) return { success: false, error: `Player ${params.player_id} not found.`, reason_code: "BAD_REQUEST" };
     char.gold = Math.max(0, char.gold + params.amount);
     if (params.amount > 0) char.goldEarned += params.amount;
     logEvent(party, "gold_award", null, { characterName: char.name, amount: params.amount, newTotal: char.gold });
@@ -4025,14 +4336,16 @@ export function handleAwardGold(userId: string, params: { player_id?: string; am
   return { success: true, data: { total_amount: params.amount, gold_each: goldEach, results } };
 }
 
-export function handleAwardLoot(userId: string, params: { player_id?: string; item_name?: string; gold?: number }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleAwardLoot(userId: string, params: { player_id?: string; item_name?: string; gold?: number }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   if (!params.item_name && !params.gold) {
-    return { success: false, error: "Must provide item_name, gold, or both." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Must provide item_name, gold, or both.", reason_code: "BAD_REQUEST" };
   }
 
   // Items require a specific player_id
   if (params.item_name && !params.player_id) {
-    return { success: false, error: "player_id is required when awarding items. Use character IDs from get_party_state (e.g. char-1)." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "player_id is required when awarding items. Use character IDs from get_party_state (e.g. char-1).", reason_code: "BAD_REQUEST" };
   }
 
   // Gold-only without player_id: split among party
@@ -4041,7 +4354,8 @@ export function handleAwardLoot(userId: string, params: { player_id?: string; it
   }
 
   const char = resolveCharacter(params.player_id!);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
 
   const result: Record<string, unknown> = { player: char.name };
 
@@ -4053,7 +4367,8 @@ export function handleAwardLoot(userId: string, params: { player_id?: string; it
         const items = getItemsByCategory(cat);
         return items.length > 0 ? `${cat}: ${items.map((i) => i.name).join(", ")}` : null;
       }).filter(Boolean).join("; ");
-      return { success: false, error: `Unknown item: "${params.item_name}". Available items — ${suggestions}` };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: `Unknown item: "${params.item_name}". Available items — ${suggestions}`, reason_code: "BAD_REQUEST" };
     }
     char.inventory.push(params.item_name);
     result.item = params.item_name;
@@ -4073,20 +4388,25 @@ export function handleAwardLoot(userId: string, params: { player_id?: string; it
   return { success: true, data: result };
 }
 
-export function handleLootRoom(userId: string, params: { player_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleLootRoom(userId: string, params: { player_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.dungeonState) return { success: false, error: "No dungeon loaded." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // TODO Pass 2: assign specific reason_code
+  if (!party.dungeonState) return { success: false, error: "No dungeon loaded.", reason_code: "BAD_REQUEST" };
 
   const room = getCurrentRoom(party.dungeonState);
-  if (!room) return { success: false, error: "No current room." };
+  // TODO Pass 2: assign specific reason_code
+  if (!room) return { success: false, error: "No current room.", reason_code: "BAD_REQUEST" };
 
   const lt = party.templateLootTables.get(room.id);
-  if (!lt) return { success: false, error: `No loot table in room "${room.name}". Use award_loot to give items manually.` };
-  if (party.lootedRooms.has(room.id)) return { success: false, error: `Room "${room.name}" has already been looted.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!lt) return { success: false, error: `No loot table in room "${room.name}". Use award_loot to give items manually.`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (party.lootedRooms.has(room.id)) return { success: false, error: `Room "${room.name}" has already been looted.`, reason_code: "BAD_REQUEST" };
 
   const char = resolveCharacter(params.player_id);
-  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).` };
+  // TODO Pass 2: assign specific reason_code
+  if (!char) return { success: false, error: `Player ${params.player_id} not found. Use character IDs from get_party_state (e.g. char-1).`, reason_code: "BAD_REQUEST" };
 
   // Mark as looted
   party.lootedRooms.add(room.id);
@@ -4128,18 +4448,21 @@ export function handleLootRoom(userId: string, params: { player_id: string }): {
   };
 }
 
-export function handlePickupItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handlePickupItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
-  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
   const party = getPartyForCharacter(char.id);
-  if (!party) return { success: false, error: "Not in a party." };
+  // TODO Pass 2: assign specific reason_code
+  if (!party) return { success: false, error: "Not in a party.", reason_code: "BAD_REQUEST" };
 
   const groundIdx = party.groundItems.findIndex((g) => g.itemName.toLowerCase() === params.item_name.toLowerCase());
   if (groundIdx === -1) {
     const available = party.groundItems.map((g) => `${g.itemName}${g.quantity > 1 ? ` x${g.quantity}` : ""}`).join(", ");
-    return { success: false, error: `Item "${params.item_name}" not found on the ground.${available ? ` Available: ${available}` : " Nothing on the ground to pick up."}` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Item "${params.item_name}" not found on the ground.${available ? ` Available: ${available}` : " Nothing on the ground to pick up."}`, reason_code: "BAD_REQUEST" };
   }
 
   const ground = party.groundItems[groundIdx]!;
@@ -4206,18 +4529,21 @@ export function handlePickupItem(userId: string, params: { item_name: string }):
   };
 }
 
-export function handleEquipItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleEquipItem(userId: string, params: { item_name: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   const itemIdx = char.inventory.indexOf(params.item_name);
   if (itemIdx === -1) {
-    return { success: false, error: `Item "${params.item_name}" not found in inventory.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Item "${params.item_name}" not found in inventory.`, reason_code: "BAD_REQUEST" };
   }
 
   const itemDef = itemDefs.get(params.item_name);
   if (!itemDef) {
-    return { success: false, error: `Unknown item: "${params.item_name}".` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Unknown item: "${params.item_name}".`, reason_code: "BAD_REQUEST" };
   }
 
   const dexMod = abilityModifier(char.abilityScores.dex);
@@ -4271,21 +4597,25 @@ export function handleEquipItem(userId: string, params: { item_name: string }): 
     return { success: true, data: { equipped: params.item_name, ac: char.ac } };
   }
 
-  return { success: false, error: `"${params.item_name}" cannot be equipped (category: ${itemDef.category}).` };
+  // TODO Pass 2: assign specific reason_code
+  return { success: false, error: `"${params.item_name}" cannot be equipped (category: ${itemDef.category}).`, reason_code: "BAD_REQUEST" };
 }
 
-export function handleUnequipItem(userId: string, params: { slot: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleUnequipItem(userId: string, params: { slot: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
-  if (!char) return { success: false, error: "No character found." };
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  markCharacterAction(char);
 
   const slot = params.slot as "weapon" | "armor" | "shield";
   if (!["weapon", "armor", "shield"].includes(slot)) {
-    return { success: false, error: `Invalid slot: "${params.slot}". Use weapon, armor, or shield.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Invalid slot: "${params.slot}". Use weapon, armor, or shield.`, reason_code: "BAD_REQUEST" };
   }
 
   const currentItem = char.equipment[slot];
   if (!currentItem) {
-    return { success: false, error: `Nothing equipped in ${slot} slot.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Nothing equipped in ${slot} slot.`, reason_code: "BAD_REQUEST" };
   }
 
   // Move item to inventory
@@ -4305,7 +4635,7 @@ export function handleUnequipItem(userId: string, params: { slot: string }): { s
   return { success: true, data: { unequipped: currentItem, slot, ac: char.ac, equipment: char.equipment } };
 }
 
-export function handleListItems(_userId: string, params: { category?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListItems(_userId: string, params: { category?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const items = params.category ? getItemsByCategory(params.category) : getAllItems();
   return {
     success: true,
@@ -4399,9 +4729,9 @@ export function filterSummary(summary: string): string {
 export function handleSetSessionMetadata(userId: string, params: {
   worldDescription?: string; style?: string; tone?: string; setting?: string; decisionTimeMs?: number;
   title?: string; description?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const metadata = {
     ...(params.worldDescription !== undefined ? { worldDescription: params.worldDescription } : {}),
@@ -4428,13 +4758,13 @@ export function handleSetSessionMetadata(userId: string, params: {
   return { success: true, data: { dmMetadata: metadata } };
 }
 
-export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string; outcome?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleEndSession(userId: string, params: { summary: string; completed_dungeon?: string; outcome?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   if (!params.summary || typeof params.summary !== "string" || params.summary.trim() === "") {
-    return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session." };
+    return { success: false, error: "Missing required field: summary. Provide a summary of what happened this session.", reason_code: "MISSING_FIELD" };
   }
 
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   // Strip any QA/debug markers before storing or surfacing the summary
   const cleanSummary = filterSummary(params.summary);
@@ -4447,6 +4777,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
     party.session = endSessionState(party.session);
   }
 
+  cancelAllAutopilotTimersForParty(party.id);
   logEvent(party, "session_end", null, { summary: cleanSummary, outcome: validOutcome });
 
   // Track lifetime stats for all party members
@@ -4554,16 +4885,18 @@ export function handleEndSession(userId: string, params: { summary: string; comp
 export function handleCreateCampaign(userId: string, params: {
   name: string;
   description?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!params.name || params.name.trim().length === 0) {
-    return { success: false, error: "Campaign name is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Campaign name is required.", reason_code: "BAD_REQUEST" };
   }
 
   if (party.campaignId) {
-    return { success: false, error: "This party already has an active campaign. End it before creating a new one." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "This party already has an active campaign. End it before creating a new one.", reason_code: "BAD_REQUEST" };
   }
 
   const campaignId = nextId("campaign");
@@ -4619,17 +4952,19 @@ export function handleCreateCampaign(userId: string, params: {
   };
 }
 
-export function handleGetCampaign(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetCampaign(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!party.campaignId) {
-    return { success: false, error: "No active campaign for this party." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "No active campaign for this party.", reason_code: "BAD_REQUEST" };
   }
 
   const campaign = campaignsMap.get(party.campaignId);
   if (!campaign) {
-    return { success: false, error: "Campaign not found." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Campaign not found.", reason_code: "BAD_REQUEST" };
   }
 
   // Gather full party member info for briefing
@@ -4692,21 +5027,24 @@ export function handleGetCampaign(userId: string): { success: boolean; data?: Re
   };
 }
 
-export function handleStartCampaignSession(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleStartCampaignSession(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!party.campaignId) {
-    return { success: false, error: "No active campaign for this party. Use create_campaign first." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "No active campaign for this party. Use create_campaign first.", reason_code: "BAD_REQUEST" };
   }
 
   // Check session state — must not have an active session
   if (party.session && !party.session.endedAt) {
-    return { success: false, error: "Session already active. End the current session before starting a new one." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Session already active. End the current session before starting a new one.", reason_code: "BAD_REQUEST" };
   }
 
   const campaign = campaignsMap.get(party.campaignId);
-  if (!campaign) return { success: false, error: "Campaign not found." };
+  // TODO Pass 2: assign specific reason_code
+  if (!campaign) return { success: false, error: "Campaign not found.", reason_code: "BAD_REQUEST" };
 
   // Reset party state for new session
   party.monsters = [];
@@ -4772,25 +5110,29 @@ export function handleStartCampaignSession(userId: string): { success: boolean; 
 export function handleSetStoryFlag(userId: string, params: {
   key: string;
   value: unknown;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!party.campaignId) {
-    return { success: false, error: "No active campaign for this party." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "No active campaign for this party.", reason_code: "BAD_REQUEST" };
   }
 
   const campaign = campaignsMap.get(party.campaignId);
-  if (!campaign) return { success: false, error: "Campaign not found." };
+  // TODO Pass 2: assign specific reason_code
+  if (!campaign) return { success: false, error: "Campaign not found.", reason_code: "BAD_REQUEST" };
 
   if (!params.key || params.key.trim().length === 0) {
-    return { success: false, error: "Story flag key is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Story flag key is required.", reason_code: "BAD_REQUEST" };
   }
 
   // Reject reserved keys
   const trimmedKey = params.key.trim();
   if (trimmedKey.startsWith("__")) {
-    return { success: false, error: "Keys starting with '__' are reserved." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Keys starting with '__' are reserved.", reason_code: "BAD_REQUEST" };
   }
 
   campaign.storyFlags[trimmedKey] = params.value;
@@ -4810,12 +5152,14 @@ export function handleAddQuest(userId: string, params: {
   title: string;
   description: string;
   giver_npc_id?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign.", reason_code: "BAD_REQUEST" };
 
   if (!params.title || params.title.trim().length === 0) {
-    return { success: false, error: "Quest title is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Quest title is required.", reason_code: "BAD_REQUEST" };
   }
 
   const quest: CampaignQuest = {
@@ -4847,12 +5191,14 @@ export function handleUpdateQuest(userId: string, params: {
   quest_id: string;
   status?: "active" | "completed" | "failed";
   description?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign.", reason_code: "BAD_REQUEST" };
 
   const quest = ctx.campaign.quests.find((q) => q.id === params.quest_id);
-  if (!quest) return { success: false, error: `Quest "${params.quest_id}" not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!quest) return { success: false, error: `Quest "${params.quest_id}" not found.`, reason_code: "BAD_REQUEST" };
 
   if (params.status) quest.status = params.status;
   if (params.description !== undefined) quest.description = params.description.trim();
@@ -4873,9 +5219,10 @@ export function handleUpdateQuest(userId: string, params: {
   };
 }
 
-export function handleListQuests(userId: string, params: { status?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListQuests(userId: string, params: { status?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign.", reason_code: "BAD_REQUEST" };
 
   let quests = ctx.campaign.quests;
   if (params.status) quests = quests.filter((q) => q.status === params.status);
@@ -4943,12 +5290,14 @@ export function handleCreateNpc(userId: string, params: {
   goals?: string[];
   relationships?: Record<string, string>;
   standingOrders?: string | string[];
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign. Create a campaign first.", reason_code: "BAD_REQUEST" };
 
   if (!params.name || params.name.trim().length === 0) {
-    return { success: false, error: "NPC name is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "NPC name is required.", reason_code: "BAD_REQUEST" };
   }
 
   // Coerce string dispositions to numbers
@@ -5024,12 +5373,13 @@ export function handleCreateNpc(userId: string, params: {
   };
 }
 
-export function handleGetNpc(userId: string, params: { npc_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleGetNpc(userId: string, params: { npc_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const npc = npcsMap.get(params.npc_id);
-  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found. Use list_npcs to see available NPCs.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found. Use list_npcs to see available NPCs.`, reason_code: "BAD_REQUEST" };
 
   return {
     success: true,
@@ -5052,9 +5402,10 @@ export function handleGetNpc(userId: string, params: { npc_id: string }): { succ
   };
 }
 
-export function handleListNpcs(userId: string, params: { tag?: string; location?: string }): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListNpcs(userId: string, params: { tag?: string; location?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign.", reason_code: "BAD_REQUEST" };
 
   let npcs = [...npcsMap.values()].filter((n) => n.campaignId === ctx.campaign.id);
 
@@ -5088,12 +5439,13 @@ export function handleUpdateNpc(userId: string, params: {
   goals?: string[];
   relationships?: Record<string, string>;
   standingOrders?: string | string[];
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const npc = npcsMap.get(params.npc_id);
-  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.`, reason_code: "BAD_REQUEST" };
 
   if (params.description !== undefined) npc.description = params.description.trim();
   if (params.personality !== undefined) npc.personality = params.personality.trim();
@@ -5149,15 +5501,18 @@ export function handleUpdateNpcDisposition(userId: string, params: {
   npc_id: string;
   change: number;
   reason: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const ctx = findCampaignForDM(userId);
-  if (!ctx) return { success: false, error: "Not a DM with an active campaign." };
+  // TODO Pass 2: assign specific reason_code
+  if (!ctx) return { success: false, error: "Not a DM with an active campaign.", reason_code: "BAD_REQUEST" };
 
   const npc = npcsMap.get(params.npc_id);
-  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!npc) return { success: false, error: `NPC "${params.npc_id}" not found.`, reason_code: "BAD_REQUEST" };
 
   if (typeof params.change !== "number" || !isFinite(params.change)) {
-    return { success: false, error: "Parameter 'change' must be a finite number (e.g., +10 or -5). It represents the delta, not the target value." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Parameter 'change' must be a finite number (e.g., +10 or -5). It represents the delta, not the target value.", reason_code: "BAD_REQUEST" };
   }
 
   const oldDisp = npc.disposition;
@@ -5226,11 +5581,12 @@ export function handleStartConversation(userId: string, params: {
   participants: { type: "player" | "npc"; id: string; name: string }[];
   context: string;
   geometry?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.session) return { success: false, error: "No active session." };
-  if (party.session.phase === "combat") return { success: false, error: "Cannot start conversation during combat." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
+  // TODO Pass 2: assign specific reason_code
+  if (party.session.phase === "combat") return { success: false, error: "Cannot start conversation during combat.", reason_code: "BAD_REQUEST" };
 
   const convId = nextId("conv");
   const conversation = {
@@ -5252,7 +5608,8 @@ export function handleStartConversation(userId: string, params: {
     if (idx !== -1) party.session.conversations.splice(idx, 1);
     party.session.activeConversationId = null;
     party.session.phase = "exploration";
-    return { success: false, error: `Failed to start conversation: ${(err as Error).message}` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Failed to start conversation: ${(err as Error).message}`, reason_code: "BAD_REQUEST" };
   }
 
   logEvent(party, "conversation_start", null, {
@@ -5276,10 +5633,10 @@ export function handleEndConversation(userId: string, params: {
   conversationId: string;
   outcome: string;
   relationshipDelta?: Record<string, number>;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
-  if (!party.session) return { success: false, error: "No active session." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
 
   const conv = party.session.conversations.find(c => c.id === params.conversationId);
   if (!conv) {
@@ -5289,7 +5646,8 @@ export function handleEndConversation(userId: string, params: {
       party.session.activeConversationId = null;
       return { success: true, data: { recovered: true, message: "Orphaned conversation phase reset to exploration." } };
     }
-    return { success: false, error: `Conversation ${params.conversationId} not found.` };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: `Conversation ${params.conversationId} not found.`, reason_code: "BAD_REQUEST" };
   }
 
   conv.outcome = params.outcome;
@@ -5339,9 +5697,9 @@ export function handleCreateInfoItem(userId: string, params: {
   visibility?: "hidden" | "available" | "discovered";
   discoveredBy?: string[];
   freshnessTurns?: number;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const infoId = nextId("info");
   const item: InfoItem = {
@@ -5371,15 +5729,17 @@ export function handleRevealInfo(userId: string, params: {
   infoId: string;
   toCharacters: string[];
   method: "told" | "found" | "overheard" | "deduced";
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const item = infoItems.get(params.infoId);
-  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.`, reason_code: "BAD_REQUEST" };
 
   if (!params.toCharacters || !Array.isArray(params.toCharacters) || params.toCharacters.length === 0) {
-    return { success: false, error: "to_characters must be a non-empty array of character IDs." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "to_characters must be a non-empty array of character IDs.", reason_code: "BAD_REQUEST" };
   }
 
   item.visibility = "discovered";
@@ -5418,12 +5778,13 @@ export function handleUpdateInfoItem(userId: string, params: {
   content?: string;
   visibility?: "hidden" | "available" | "discovered";
   freshnessTurns?: number;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const item = infoItems.get(params.infoId);
-  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!item || item.partyId !== party.id) return { success: false, error: `Info item ${params.infoId} not found.`, reason_code: "BAD_REQUEST" };
 
   if (params.content !== undefined) item.content = params.content.trim();
   if (params.visibility !== undefined) item.visibility = params.visibility;
@@ -5436,9 +5797,9 @@ export function handleUpdateInfoItem(userId: string, params: {
   return { success: true, data: { infoId: item.id, title: item.title, visibility: item.visibility, isStale: item.isStale } };
 }
 
-export function handleListInfoItems(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListInfoItems(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const items = [...infoItems.values()]
     .filter(i => i.partyId === party.id)
@@ -5468,12 +5829,13 @@ export function handleCreateClock(userId: string, params: {
   turnsRemaining: number;
   visibility?: "hidden" | "public";
   consequence?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!params.turnsRemaining || typeof params.turnsRemaining !== "number" || params.turnsRemaining < 1) {
-    return { success: false, error: "turns_remaining is required and must be a positive integer." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "turns_remaining is required and must be a positive integer.", reason_code: "BAD_REQUEST" };
   }
 
   const clockId = nextId("clock");
@@ -5504,13 +5866,15 @@ export function handleCreateClock(userId: string, params: {
 export function handleAdvanceClock(userId: string, params: {
   clockId: string;
   turns?: number;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const clock = clocks.get(params.clockId);
-  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.` };
-  if (clock.isResolved) return { success: false, error: "Clock is already resolved." };
+  // TODO Pass 2: assign specific reason_code
+  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.`, reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (clock.isResolved) return { success: false, error: "Clock is already resolved.", reason_code: "BAD_REQUEST" };
 
   const ticks = params.turns ?? 1;
   clock.turnsRemaining = Math.max(0, clock.turnsRemaining - ticks);
@@ -5535,12 +5899,13 @@ export function handleAdvanceClock(userId: string, params: {
 export function handleResolveClock(userId: string, params: {
   clockId: string;
   outcome: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const clock = clocks.get(params.clockId);
-  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.` };
+  // TODO Pass 2: assign specific reason_code
+  if (!clock || clock.partyId !== party.id) return { success: false, error: `Clock ${params.clockId} not found.`, reason_code: "BAD_REQUEST" };
 
   clock.isResolved = true;
   clock.outcome = params.outcome;
@@ -5556,9 +5921,9 @@ export function handleResolveClock(userId: string, params: {
   };
 }
 
-export function handleListClocks(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListClocks(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   const partyClocks = [...clocks.values()]
     .filter(c => c.partyId === party.id)
@@ -5580,9 +5945,9 @@ export function handleAdvanceTime(userId: string, params: {
   amount: number;
   unit: "minutes" | "hours" | "days" | "weeks";
   narrative: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   // 1:1 mapping — amount maps directly to abstract ticks
   const turnEquivalent = params.amount;
@@ -5641,17 +6006,21 @@ export function handleCreateCustomMonster(userId: string, params: {
   loot_table?: { item_name: string; weight: number; quantity: number }[];
   avatar_url?: string;
   lore?: string;
-}): { success: boolean; data?: Record<string, unknown>; error?: string } {
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   if (!params.name || params.name.trim().length === 0) {
-    return { success: false, error: "Monster name is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "Monster name is required.", reason_code: "BAD_REQUEST" };
   }
-  if (!params.hp_max || params.hp_max < 1) return { success: false, error: "hp_max must be at least 1." };
-  if (!params.ac || params.ac < 1) return { success: false, error: "ac must be at least 1." };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.hp_max || params.hp_max < 1) return { success: false, error: "hp_max must be at least 1.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.ac || params.ac < 1) return { success: false, error: "ac must be at least 1.", reason_code: "BAD_REQUEST" };
   if (!params.attacks || params.attacks.length === 0) {
-    return { success: false, error: "At least one attack is required." };
+    // TODO Pass 2: assign specific reason_code
+    return { success: false, error: "At least one attack is required.", reason_code: "BAD_REQUEST" };
   }
 
   // Validate avatar_url — reject DiceBear URLs
@@ -5659,10 +6028,12 @@ export function handleCreateCustomMonster(userId: string, params: {
     try {
       const parsed = new URL(params.avatar_url);
       if (parsed.hostname.includes("dicebear.com")) {
-        return { success: false, error: "DiceBear avatar URLs are not allowed. Use actual monster artwork." };
+        // TODO Pass 2: assign specific reason_code
+        return { success: false, error: "DiceBear avatar URLs are not allowed. Use actual monster artwork.", reason_code: "BAD_REQUEST" };
       }
     } catch {
-      return { success: false, error: "Invalid avatar_url format." };
+      // TODO Pass 2: assign specific reason_code
+      return { success: false, error: "Invalid avatar_url format.", reason_code: "BAD_REQUEST" };
     }
   }
 
@@ -5728,9 +6099,9 @@ export function handleCreateCustomMonster(userId: string, params: {
 /**
  * List custom (non-YAML) monster templates. DM-only.
  */
-export function handleListCustomMonsters(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string } {
+export function handleListCustomMonsters(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
-  if (!party) return { success: false, error: "Not a DM for any party." };
+  if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
 
   // Custom monsters are those NOT in the YAML seed set.
   // We track this by checking if they were loaded from YAML during initGameData.
@@ -6166,6 +6537,7 @@ function isTPK(party: GameParty): boolean {
  * Called after combat_end with reason "all_players_dead".
  */
 function handleTPK(party: GameParty): void {
+  cancelAllAutopilotTimersForParty(party.id);
   logEvent(party, "session_end", null, {
     summary: "Total Party Kill — all adventurers have fallen.",
     tpk: true,
@@ -6502,6 +6874,7 @@ export async function loadPersistedState(): Promise<number> {
           timesKnockedOut: row.timesKnockedOut ?? 0,
           goldEarned: row.goldEarned ?? 0,
           relentlessEnduranceUsed: false,
+          lastActionAt: new Date(),
           // Behavioral metrics
           flawOpportunities: row.flawOpportunities ?? 0,
           flawActivations: row.flawActivations ?? 0,
@@ -6649,6 +7022,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         timesKnockedOut: row.timesKnockedOut ?? 0,
         goldEarned: row.goldEarned ?? 0,
         relentlessEnduranceUsed: false,
+        lastActionAt: new Date(),
       };
 
       characters.set(charId, char);
