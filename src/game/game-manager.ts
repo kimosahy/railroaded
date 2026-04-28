@@ -258,6 +258,11 @@ const requestModelIdentity = new Map<string, { provider: string; name: string }>
 const autopilotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const AUTOPILOT_TIMEOUT_MS = 45_000;
 
+/** Post-action grace period. When a player uses their action but has bonus/movement remaining,
+ *  the autopilot timer reschedules to this shorter window instead of the full 45s.
+ *  Tunable: RAILROADED_POST_ACTION_GRACE_SECONDS env var. */
+const POST_ACTION_GRACE_MS = parseInt(process.env.RAILROADED_POST_ACTION_GRACE_SECONDS ?? "10", 10) * 1000;
+
 /** Matchmaker wait-window. Set to Date.now() when the FIRST player enters the queue.
  *  Cleared when a match fires or when the queue empties. */
 let matchmakerFirstQueueAt: number | null = null;
@@ -561,6 +566,12 @@ function getTurnResources(party: GameParty, entityId: string): TurnResources {
   return party.session?.turnResources[entityId] ?? freshTurnResources();
 }
 
+/** Build the turnStatus block included in player-action responses (P0-3). */
+function makeTurnStatus(party: GameParty, entityId: string): { actionUsed: boolean; bonusAvailable: boolean; canEndTurn: boolean } {
+  const r = getTurnResources(party, entityId);
+  return { actionUsed: r.actionUsed, bonusAvailable: !r.bonusUsed, canEndTurn: true };
+}
+
 function setTurnResources(party: GameParty, entityId: string, resources: TurnResources): void {
   if (party.session) {
     party.session.turnResources[entityId] = resources;
@@ -634,13 +645,35 @@ function checkAutoAdvanceTurn(party: GameParty, characterId: string): void {
   if (!current || current.entityId !== characterId) return;
 
   const resources = getTurnResources(party, characterId);
-  // Auto-advance when action is used. Bonus action is optional — most low-level characters
-  // have no bonus action, and gating on it causes turn deadlocks (Sprint M, Task 1).
-  // Characters with bonus actions should use them BEFORE their main action.
-  if (resources.actionUsed) {
-    logEvent(party, "turn_auto_advanced", characterId, { reason: "action_used" });
-    // advanceTurnSkipDead calls nextTurn internally, resets resources, and notifies
+
+  // Auto-advance immediately only when ALL combat resources are used.
+  if (resources.actionUsed && resources.bonusUsed) {
+    logEvent(party, "turn_auto_advanced", characterId, { reason: "all_resources_used" });
     advanceTurnSkipDead(party);
+    return;
+  }
+
+  // If action is used but bonus remains, reschedule autopilot to short grace window.
+  // Agent has POST_ACTION_GRACE_MS (default 10s) to use bonus action, move, or call end_turn.
+  // If nothing happens, the rescheduled autopilot fires and advances the turn.
+  if (resources.actionUsed && !resources.bonusUsed) {
+    // Cancel existing 45s timer and start a 10s timer.
+    cancelAutopilotTimer(party.id, characterId);
+    const timerKey = `${party.id}:${characterId}:${party.session.currentTurn}:grace`;
+    if (autopilotTimers.has(timerKey)) return; // already rescheduled
+
+    const timer = setTimeout(() => {
+      autopilotTimers.delete(timerKey);
+      // Re-validate: still this character's turn?
+      if (!party.session || party.session.phase !== "combat") return;
+      const stillCurrent = getCurrentCombatant(party.session);
+      if (!stillCurrent || stillCurrent.entityId !== characterId) return;
+
+      logEvent(party, "turn_auto_advanced", characterId, { reason: "post_action_grace_expired" });
+      advanceTurnSkipDead(party);
+    }, POST_ACTION_GRACE_MS);
+
+    autopilotTimers.set(timerKey, timer);
   }
 }
 
@@ -1529,6 +1562,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
       }
     }
 
+    const turnStatus = makeTurnStatus(party, char.id);
     checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
@@ -1537,6 +1571,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         damageType: result.damageType, targetHP: monster.hpCurrent,
         killed, naturalRoll: result.naturalRoll,
         sneakAttack: sneakAttackBonus > 0, sneakAttackDamage: sneakAttackBonus,
+        turnStatus,
       },
     };
   }
@@ -1546,11 +1581,13 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     hit: false, fumble: result.fumble,
   });
 
+  const turnStatus = makeTurnStatus(party, char.id);
   checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
     data: {
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
+      turnStatus,
     },
   };
 }
@@ -2034,6 +2071,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
       hpPool: result.totalEffect, affectedMonsters,
     });
 
+    const turnStatus = makeTurnStatus(party, char.id);
     checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
@@ -2042,6 +2080,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
         hpPool: result.totalEffect,
         affectedMonsters,
         remainingSlots: result.remainingSlots,
+        turnStatus,
       },
     };
   }
@@ -2214,7 +2253,10 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     responseData.killed = targetKilled;
   }
 
-  if (party) checkAutoAdvanceTurn(party, char.id);
+  if (party) {
+    responseData.turnStatus = makeTurnStatus(party, char.id);
+    checkAutoAdvanceTurn(party, char.id);
+  }
   return {
     success: true,
     data: responseData,
@@ -2234,8 +2276,9 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const dodgeTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
+  return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.`, ...(dodgeTurnStatus && { turnStatus: dodgeTurnStatus }) } };
 }
 
 export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2251,8 +2294,9 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const dashTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
+  return { success: true, data: { action: "dash", message: `${char.name} dashes.`, ...(dashTurnStatus && { turnStatus: dashTurnStatus }) } };
 }
 
 export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2268,8 +2312,9 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const disengageTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
+  return { success: true, data: { action: "disengage", message: `${char.name} disengages.`, ...(disengageTurnStatus && { turnStatus: disengageTurnStatus }) } };
 }
 
 export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2285,8 +2330,9 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const helpTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
+  return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.`, ...(helpTurnStatus && { turnStatus: helpTurnStatus }) } };
 }
 
 export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2308,10 +2354,11 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
     dc: 10,
     proficiencyBonus: char.proficiencies.includes("Stealth") ? proficiencyBonus(char.level) : 0,
   });
+  const hideTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
-    data: { action: "hide", roll: result.roll.total, hidden: result.success },
+    data: { action: "hide", roll: result.roll.total, hidden: result.success, ...(hideTurnStatus && { turnStatus: hideTurnStatus }) },
   };
 }
 
@@ -2848,6 +2895,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
         bonusData.damageHalved = bonusSaved && spell.level > 0;
       }
 
+      bonusData.turnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return { success: true, data: bonusData };
     }
@@ -2860,10 +2908,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: params.action, cunningAction: true });
+      const dashTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.` },
+        data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.`, turnStatus: dashTurnStatus },
       };
     }
 
@@ -2880,10 +2929,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       });
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "hide", cunningAction: true, roll: hideResult.roll.total, hidden: hideResult.success });
+      const hideTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10 },
+        data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10, turnStatus: hideTurnStatus },
       };
     }
 
@@ -2902,10 +2952,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total });
+      const swTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax },
+        data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax, turnStatus: swTurnStatus },
       };
     }
 
