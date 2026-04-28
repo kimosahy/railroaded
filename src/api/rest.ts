@@ -18,6 +18,15 @@ interface AuthUser {
 type AuthEnv = { Variables: { user: AuthUser } };
 
 const requireAuth = createMiddleware<AuthEnv>(async (c, next) => {
+  // CC-260428 Task 3: admin endpoints authenticate via ADMIN_SECRET in their
+  // own sub-router middleware, not the user-token flow. Let those paths through
+  // so the admin router can run its own auth check. Without this skip, the
+  // admin Bearer token would be rejected here as a non-user token.
+  if (c.req.path.startsWith("/api/v1/admin/") || c.req.path === "/api/v1/admin") {
+    await next();
+    return;
+  }
+
   const header = c.req.header("Authorization");
   const user = await getAuthUser(header);
   if (!user) return c.json({ error: "Unauthorized — provide a valid Bearer token", code: "UNAUTHORIZED", reason_code: "UNAUTHORIZED" }, 401);
@@ -49,11 +58,18 @@ function requireRole(role: UserRole) {
   });
 }
 
-function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }) {
+/**
+ * Respond to client. On success, spreads result.data into JSON body.
+ * On failure, spreads result.data into the 4xx body for structured error context
+ * (e.g., queue_status on 409). Do NOT include sensitive or large data in result.data
+ * on failure paths — it will appear in the error response.
+ */
+function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }, statusCode?: number) {
   if (!result.success) {
     const reason = result.reason_code ?? "BAD_REQUEST";
-    console.log(`[4xx] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
-    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason }, 400);
+    const status = (statusCode ?? 400) as 400 | 409;
+    console.log(`[${status}] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
+    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason, ...(result.data ?? {}) }, status);
   }
   return c.json({ success: true, ...result.data });
 }
@@ -67,6 +83,13 @@ const player = new Hono<AuthEnv>();
 // this middleware leaks to /dm/* paths. Skip role check for DM routes.
 player.use("/*", createMiddleware<AuthEnv>(async (c, next) => {
   if (c.req.path.includes("/dm/") || c.req.path.endsWith("/dm")) {
+    await next();
+    return;
+  }
+  // CC-260428 Task 3: same exception for admin paths — admin sub-router has
+  // its own ADMIN_SECRET auth and no `user` is set in context for admin
+  // requests, so the role check below would crash on c.get("user").
+  if (c.req.path.includes("/admin/") || c.req.path.endsWith("/admin")) {
     await next();
     return;
   }
@@ -222,7 +245,10 @@ player.post("/unequip", async (c) => {
   return respond(c, gm.handleUnequipItem(c.get("user").userId, body));
 });
 
-player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").userId)));
+player.post("/queue", (c) => {
+  const result = gm.handleQueueForParty(c.get("user").userId);
+  return respond(c, result, result.reason_code === "ALREADY_QUEUED" ? 409 : undefined);
+});
 player.delete("/queue", (c) => respond(c, gm.handleLeaveQueue(c.get("user").userId)));
 
 // === DM routes ===
@@ -436,7 +462,10 @@ dm.get("/quests", (c) => {
 });
 
 // Also allow DM to queue
-dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
+dm.post("/queue", (c) => {
+  const result = gm.handleDMQueueForParty(c.get("user").userId);
+  return respond(c, result, result.reason_code === "ALREADY_QUEUED" ? 409 : undefined);
+});
 dm.delete("/queue", (c) => respond(c, gm.handleDMLeaveQueue(c.get("user").userId)));
 
 // DM journal — session notes
@@ -505,6 +534,24 @@ dm.post("/advance-time", async (c) => {
   const body = await c.req.json<{ amount: number; unit: "minutes" | "hours" | "days" | "weeks"; narrative: string }>();
   return respond(c, gm.handleAdvanceTime(c.get("user").userId, body));
 });
+
+// === Admin routes (ADMIN_SECRET auth) ===
+// CC-260428 Task 3: diagnostic snapshot of queue + active sessions for operators.
+// Reuses the existing ADMIN_SECRET pattern from /admin/login-as in src/api/auth.ts.
+const admin = new Hono<AuthEnv>();
+admin.use("/*", async (c, next) => {
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret) return c.json({ error: "Admin endpoint not configured" }, 503);
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  await next();
+});
+
+admin.get("/queue-state", (c) => c.json(gm.getQueueState()));
+
+rest.route("/admin", admin);
 
 rest.route("/dm", dm);
 rest.route("/", player);

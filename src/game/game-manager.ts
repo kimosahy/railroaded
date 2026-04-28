@@ -47,7 +47,7 @@ import {
   type TurnResources,
 } from "./session.ts";
 import { getAllowedActions, getAllowedDMActions } from "./turns.ts";
-import { tryMatchParty, tryMatchPartyFallback, PARTY_SIZE, type QueueEntry, type MatchResult } from "./matchmaker.ts";
+import { tryMatchParty, tryMatchPartyFallback, PARTY_SIZE, SYSTEM_DM_ID, type QueueEntry, type MatchResult } from "./matchmaker.ts";
 import { getAutopilotAction } from "./autopilot.ts";
 import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice } from "../engine/combat.ts";
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
@@ -271,6 +271,47 @@ const lastAllPcsDownState = new Map<string, boolean>();
  *  Cleared when a match fires or when the queue empties. */
 let matchmakerFirstQueueAt: number | null = null;
 let matchmakerWaitTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Wallclock of last successful party formation. Exposed via admin queue-state. */
+let lastMatchAt: number | null = null;
+
+/** Auto-DM trigger state (CC-260428 Task 4). When 3+ players have been queued
+ *  for AUTO_DM_DELAY_MS with 0 DMs, fire provisionConductor(). Tunable via
+ *  RAILROADED_AUTO_DM_DELAY_SECONDS / RAILROADED_AUTO_DM_MIN_PLAYERS. The actual
+ *  conductor queue entry is gated by RAILROADED_AUTO_DM_PROVISION (default off
+ *  — telemetry-only) so the trigger fires for observability before CoS picks a
+ *  provisioning path. */
+let autoDmTimer: ReturnType<typeof setTimeout> | null = null;
+let autoDmFirstEligibleAt: number | null = null;
+const AUTO_DM_DELAY_MS = parseInt(process.env.RAILROADED_AUTO_DM_DELAY_SECONDS ?? "60", 10) * 1000;
+const AUTO_DM_MIN_PLAYERS = parseInt(process.env.RAILROADED_AUTO_DM_MIN_PLAYERS ?? "3", 10);
+/** Read AUTO_DM_PROVISION_ENABLED at call time (not module-load time) so tests
+ *  can toggle the env var to exercise both Step 4g (a) provisioned and
+ *  (b) skipped paths without spawning a fresh module instance. */
+function isAutoDmProvisionEnabled(): boolean {
+  return process.env.RAILROADED_AUTO_DM_PROVISION === "true";
+}
+
+/** Auto-DM telemetry log (B-telemetry). Capped ring buffer of recent trigger
+ *  events. Surfaced in getQueueState() as `recent_auto_dm_events` for CoS to
+ *  size The Conductor provisioning. Three event types:
+ *    - "fired"      → timer expired and re-check passed (about to call provisionConductor)
+ *    - "skipped"    → provisionConductor returned without pushing — `reason`
+ *                     distinguishes "provision_disabled" (flag off) from
+ *                     "duplicate" (Conductor already in queue)
+ *    - "provisioned"→ conductor pushed to dmQueue */
+interface AutoDmLogEntry {
+  type: "fired" | "skipped" | "provisioned";
+  timestamp: string;
+  players_queued: number;
+  reason?: string;
+}
+const autoDmLog: AutoDmLogEntry[] = [];
+const AUTO_DM_LOG_MAX = 100;
+function pushAutoDmLog(entry: AutoDmLogEntry): void {
+  autoDmLog.push(entry);
+  if (autoDmLog.length > AUTO_DM_LOG_MAX) autoDmLog.shift();
+}
 
 /** Store model identity for a user's current request — used to tag events. */
 export function setRequestModelIdentity(userId: string, identity: { provider: string; name: string }): void {
@@ -504,6 +545,60 @@ function cancelAllAutopilotTimersForParty(partyId: string): void {
   }
 }
 
+/**
+ * Admin diagnostic snapshot — full state of the matchmaker for operators.
+ * Surfaced via GET /api/v1/admin/queue-state (CC-260428 Task 3).
+ *
+ * Includes:
+ *  - playerQueue + dmQueue with userId / character / queuedAt
+ *  - active sessions (party id, name, phase, dmUserId, member count)
+ *  - matchmaker wait-window state and auto-DM ETA
+ *  - lastMatchAt timestamp
+ *  - recent_auto_dm_events: last 20 entries from autoDmLog (the ring buffer
+ *    holds 100; we trim to 20 in the response so admins get a digestible
+ *    signal without dumping the full buffer)
+ */
+export function getQueueState(): Record<string, unknown> {
+  // SessionPhase doesn't include "ended" in the type, but the runtime does emit
+  // it. Other call sites in this file use the same `(phase as string) !== "ended"`
+  // shape (e.g. findDMParty) — match that to avoid a NEW tsc error vs baseline.
+  const activeParties = [...parties.values()].filter(
+    (p) => p.session && (p.session.phase as string) !== "ended"
+  );
+
+  return {
+    timestamp: new Date().toISOString(),
+    player_queue: playerQueue.map((q) => ({
+      userId: q.userId,
+      characterName: q.characterName,
+      characterClass: q.characterClass,
+      queuedAt: q.queuedAt?.toISOString() ?? null,
+    })),
+    dm_queue: dmQueue.map((q) => ({
+      userId: q.userId,
+      queuedAt: q.queuedAt?.toISOString() ?? null,
+    })),
+    active_sessions: activeParties.map((p) => ({
+      partyId: p.id,
+      partyName: p.name,
+      phase: p.session!.phase,
+      memberCount: p.members.length,
+      dmUserId: p.dmUserId,
+    })),
+    matchmaker: {
+      firstQueueAt: matchmakerFirstQueueAt ? new Date(matchmakerFirstQueueAt).toISOString() : null,
+      waitTimerActive: matchmakerWaitTimer !== null,
+      autoDmTimerActive: autoDmTimer !== null,
+      autoDmEtaSeconds: autoDmFirstEligibleAt
+        ? Math.max(0, Math.ceil((AUTO_DM_DELAY_MS - (Date.now() - autoDmFirstEligibleAt)) / 1000))
+        : null,
+      autoDmProvisionEnabled: isAutoDmProvisionEnabled(),
+    },
+    last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
+    recent_auto_dm_events: autoDmLog.slice(-20),
+  };
+}
+
 /** Clear the matchmaker wait-window timer and reset the first-queue anchor. */
 function clearMatchmakerWaitTimer(): void {
   if (matchmakerWaitTimer) {
@@ -511,6 +606,134 @@ function clearMatchmakerWaitTimer(): void {
     matchmakerWaitTimer = null;
   }
   matchmakerFirstQueueAt = null;
+}
+
+/** Clear the auto-DM trigger timer and reset its eligibility anchor. */
+function clearAutoDmTimer(): void {
+  if (autoDmTimer) {
+    clearTimeout(autoDmTimer);
+    autoDmTimer = null;
+  }
+  autoDmFirstEligibleAt = null;
+}
+
+/**
+ * Provision The Conductor — pluggable auto-DM execution (CC-260428 Task 4 Step 4b).
+ *
+ * FEATURE-FLAGGED: Only creates the queue entry when RAILROADED_AUTO_DM_PROVISION=true.
+ * When false, logs an autoDmLog "skipped" entry so CoS can see how often sessions
+ * would have started, informing provisioning urgency. The trigger always fires
+ * (telemetry); only the action is gated.
+ *
+ * Architecture: Path B (Eon recommendation) — Mercury-style spawn-on-demand.
+ * Default: create queue entry. When CoS provides a spawn mechanism, swap the
+ * implementation here; the trigger infrastructure does not change.
+ *
+ * Uses SYSTEM_DM_ID exported from matchmaker.ts — never define a parallel sentinel.
+ *
+ * Exported for tests: the duplicate-guard branch is unreachable via the timer
+ * because checkAutoDmTrigger's re-check returns early whenever dmQueue is
+ * non-empty. Direct invocation is the only way to exercise the guard's
+ * autoDmLog "skipped" reason="duplicate" telemetry.
+ */
+export function provisionConductor(): void {
+  if (!isAutoDmProvisionEnabled()) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "provision_disabled",
+    });
+    console.log(`[AUTO-DM] Trigger fired but RAILROADED_AUTO_DM_PROVISION=false — skipping. Players waiting: ${playerQueue.length}`);
+    return;
+  }
+
+  // Duplicate guard: trigger can fire after a previous Conductor was already
+  // queued (e.g. timer race during a queue churn). Don't push twice.
+  // Reuse the "skipped" type with reason="duplicate" so admins querying
+  // /api/v1/admin/queue-state see the prevented duplicate (vs the existing
+  // "provision_disabled" reason). No schema change.
+  if (dmQueue.some((q) => q.userId === SYSTEM_DM_ID)) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "duplicate",
+    });
+    console.log(`[AUTO-DM] Conductor already in queue — skipping duplicate provision`);
+    return;
+  }
+
+  const conductorEntry: QueueEntry = {
+    userId: SYSTEM_DM_ID,
+    characterId: "",
+    characterClass: "fighter", // placeholder — DM has no character
+    characterName: "The Conductor",
+    personality: "",
+    playstyle: "",
+    role: "dm",
+    queuedAt: new Date(),
+  };
+
+  dmQueue.push(conductorEntry);
+  pushAutoDmLog({
+    type: "provisioned",
+    timestamp: new Date().toISOString(),
+    players_queued: playerQueue.length,
+  });
+  console.log(`[AUTO-DM] The Conductor queued (${SYSTEM_DM_ID}). Players waiting: ${playerQueue.length}`);
+
+  // Use tryMatchPartyFallback (floor=2 players + DM), NOT tryMatchParty
+  // (which requires PARTY_SIZE_MIN=4). Auto-DM fires at 3 players, so the
+  // standard matcher would refuse to form a party.
+  clearMatchmakerWaitTimer();
+  const match = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
+  if (match) {
+    formParty(match);
+    console.log(`[AUTO-DM] Party formed with The Conductor.`);
+  }
+}
+
+/**
+ * Check if auto-DM should be triggered: ≥AUTO_DM_MIN_PLAYERS queued, 0 DMs,
+ * for AUTO_DM_DELAY_MS continuously (CC-260428 Task 4 Step 4c).
+ *
+ * Wired into queue join/leave handlers. When eligibility transitions from
+ * not-eligible → eligible, starts the timer. When the inverse transition
+ * happens (DM joins, players drop, etc.), the timer is cleared.
+ *
+ * Disable entirely with RAILROADED_AUTO_DM_DELAY_SECONDS=0.
+ */
+function checkAutoDmTrigger(): void {
+  if (AUTO_DM_DELAY_MS === 0) return; // disabled
+
+  const eligible = playerQueue.length >= AUTO_DM_MIN_PLAYERS && dmQueue.length === 0;
+
+  if (!eligible) {
+    clearAutoDmTimer();
+    return;
+  }
+
+  if (autoDmTimer) return; // already counting down
+
+  autoDmFirstEligibleAt = Date.now();
+  autoDmTimer = setTimeout(() => {
+    autoDmTimer = null;
+    pushAutoDmLog({
+      type: "fired",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+    });
+
+    // Re-check conditions — a real DM may have joined, players may have left.
+    if (dmQueue.length > 0 || playerQueue.length < AUTO_DM_MIN_PLAYERS) {
+      autoDmFirstEligibleAt = null;
+      return;
+    }
+
+    provisionConductor();
+    autoDmFirstEligibleAt = null;
+  }, AUTO_DM_DELAY_MS);
 }
 
 /**
@@ -1332,6 +1555,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   skill_check:           { method: "POST", path: "/api/v1/skill-check" },
   queue:                 { method: "POST", path: "/api/v1/queue" },
   queue_for_party:       { method: "POST", path: "/api/v1/queue" },
+  leave_queue:           { method: "DELETE", path: "/api/v1/queue" },
 };
 
 const dmActionRoutes: Record<string, { method: string; path: string }> = {
@@ -1397,6 +1621,8 @@ const dmActionRoutes: Record<string, { method: string; path: string }> = {
   list_clocks:                { method: "GET",  path: "/api/v1/dm/clocks" },
   // ENA: Time
   advance_time:               { method: "POST", path: "/api/v1/dm/advance-time" },
+  // Lifecycle
+  leave_queue:                { method: "DELETE", path: "/api/v1/dm/queue" },
 };
 
 function buildActionRoutes(actions: string[], routeMap: Record<string, { method: string; path: string }>): Record<string, { method: string; path: string }> {
@@ -1425,6 +1651,24 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
   const party = char.partyId ? parties.get(char.partyId) : null;
 
   if (!party?.session) {
+    // CC-260428 Task 2: if the player is currently in the matchmaking queue,
+    // surface queue_status so agents can see what's blocking instead of seeing
+    // "phase: idle" and assuming nothing is happening.
+    if (playerQueue.some((q) => q.userId === userId)) {
+      const queueStatus = buildPlayerQueueStatus(userId);
+      const actions = ["leave_queue", "get_status", "get_inventory"];
+      return {
+        success: true,
+        data: {
+          phase: queueStatus.phase,
+          isYourTurn: false,
+          availableActions: actions,
+          actionRoutes: buildActionRoutes(actions, playerActionRoutes),
+          queue_status: queueStatus,
+        },
+      };
+    }
+
     const actions = ["queue", "get_status", "get_inventory"];
     return {
       success: true,
@@ -3444,6 +3688,65 @@ export function handleJournalAdd(userId: string, params: { entry: string }): { s
   return { success: true, data: { entry: params.entry, character: char.name } };
 }
 
+/** Build queue status snapshot for a queued player. Used by 409 ALREADY_QUEUED
+ *  responses and (in Task 2) by handleGetAvailableActions when the caller is queued.
+ *  Phase reflects DM presence: "queued_waiting_dm" if no DM yet,
+ *  "queued_dm_available" if a DM is queued and the matchmaker just needs more players. */
+function buildPlayerQueueStatus(userId: string): Record<string, unknown> {
+  const entry = playerQueue.find((q) => q.userId === userId);
+  const position = playerQueue.findIndex((q) => q.userId === userId) + 1;
+  const playersQueued = playerQueue.length;
+  const dmsQueued = dmQueue.length;
+
+  let blockingReason: string;
+  if (dmsQueued === 0) {
+    blockingReason = "waiting_for_dm";
+  } else if (playersQueued < PARTY_SIZE) {
+    blockingReason = `waiting_for_players (need ${PARTY_SIZE - playersQueued} more)`;
+  } else {
+    blockingReason = "match_forming";
+  }
+
+  // Auto-DM ETA: if no DM and the auto-DM timer is armed, surface remaining seconds
+  let fallbackDmEtaSeconds: number | null = null;
+  if (dmsQueued === 0 && autoDmFirstEligibleAt !== null) {
+    const elapsed = Date.now() - autoDmFirstEligibleAt;
+    const remaining = Math.max(0, AUTO_DM_DELAY_MS - elapsed);
+    fallbackDmEtaSeconds = Math.ceil(remaining / 1000);
+  }
+
+  return {
+    phase: dmsQueued === 0 ? "queued_waiting_dm" : "queued_dm_available",
+    players_queued: playersQueued,
+    dms_queued: dmsQueued,
+    blocking_reason: blockingReason,
+    queued_at: entry?.queuedAt?.toISOString() ?? null,
+    position,
+    total_in_queue: playersQueued + dmsQueued,
+    fallback_dm_eta_seconds: fallbackDmEtaSeconds,
+  };
+}
+
+/** Build queue status snapshot for a queued DM. Position is in dmQueue, blocking
+ *  reason reflects player count vs PARTY_SIZE. */
+function buildDmQueueStatus(userId: string): Record<string, unknown> {
+  const entry = dmQueue.find((q) => q.userId === userId);
+  const position = dmQueue.findIndex((q) => q.userId === userId) + 1;
+  const playersQueued = playerQueue.length;
+  const playersNeeded = Math.max(0, PARTY_SIZE - playersQueued);
+
+  return {
+    phase: playersQueued >= 2 ? "queued_players_available" : "queued_waiting_players",
+    players_queued: playersQueued,
+    dms_queued: dmQueue.length,
+    blocking_reason: playersNeeded > 0 ? `waiting_for_players (need ${playersNeeded} more)` : "match_forming",
+    queued_at: entry?.queuedAt?.toISOString() ?? null,
+    position,
+    players_needed: playersNeeded,
+    total_in_queue: playersQueued + dmQueue.length,
+  };
+}
+
 export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found. Create one first.", reason_code: "CHARACTER_NOT_FOUND" };
@@ -3458,9 +3761,16 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     }
   }
 
-  // Prevent duplicate queue entries
+  // Prevent duplicate queue entries — return 409 ALREADY_QUEUED with current
+  // queue state so the agent can distinguish "I'm already queued" from a true
+  // bad request and know whether to keep polling.
   if (playerQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the queue.", reason_code: "WRONG_STATE" };
+    return {
+      success: false,
+      error: "Already in the queue.",
+      reason_code: "ALREADY_QUEUED",
+      data: { queue_status: buildPlayerQueueStatus(userId) },
+    };
   }
 
   const entry: QueueEntry = {
@@ -3471,6 +3781,7 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     personality: char.personality,
     playstyle: char.playstyle,
     role: "player",
+    queuedAt: new Date(),
   };
 
   playerQueue.push(entry);
@@ -3506,21 +3817,47 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
   const message = playersNeeded > 0
     ? `You've joined the matchmaking queue. ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"} needed to form a party.`
     : "You've joined the matchmaking queue. Waiting for party...";
+
+  // CC-260428 Task 4 Step 4d: re-evaluate the auto-DM trigger every time the
+  // queue changes. checkAutoDmTrigger handles start / clear internally.
+  checkAutoDmTrigger();
+
   return { success: true, data: { queued: true, matched: false, position: playersInQueue, playersInQueue, playersNeeded, queuePosition, totalInQueue, estimatedWaitSeconds: null, message } };
 }
 
 // --- DM Tool Handlers ---
 
 export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
-  // Prevent re-queuing if DM already has an active party
+  // Prevent re-queuing if DM already has an active party.
+  // CC-260428 Task 7c (P2-9): if the party hasn't had an event in 5+ minutes,
+  // it's effectively orphaned (no narration, combat, chat — likely all PCs
+  // disconnected). Allow re-queue in that case. The 5-minute threshold is a
+  // pragmatic workaround; the real fix is proper session cleanup on disconnect
+  // (CC Doc 1's autopilot timer covers part of that).
+  // Empty events array is impossible for a real party as of this commit —
+  // formParty now logs `party_formed` so lastEvent is always set on a fresh
+  // party. No empty-events fallback needed.
   const existingParty = findDMParty(userId);
   if (existingParty && existingParty.session && existingParty.session.phase !== "ended") {
-    return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
+    const lastEvent = existingParty.events[existingParty.events.length - 1];
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+    if (lastEvent && (Date.now() - lastEvent.timestamp.getTime()) > STALE_THRESHOLD_MS) {
+      console.log(`[P2-9] DM ${userId} stale party ${existingParty.id} (last event ${lastEvent.timestamp.toISOString()}) — allowing re-queue`);
+      // Fall through to the queue-entry construction below.
+    } else {
+      return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
+    }
   }
 
-  // Prevent duplicate queue entries
+  // Prevent duplicate queue entries — same 409 ALREADY_QUEUED contract as the
+  // player handler.
   if (dmQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the DM queue.", reason_code: "WRONG_STATE" };
+    return {
+      success: false,
+      error: "Already in the DM queue.",
+      reason_code: "ALREADY_QUEUED",
+      data: { queue_status: buildDmQueueStatus(userId) },
+    };
   }
 
   const entry: QueueEntry = {
@@ -3531,6 +3868,7 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
     personality: "",
     playstyle: "",
     role: "dm",
+    queuedAt: new Date(),
   };
 
   dmQueue.push(entry);
@@ -3567,6 +3905,11 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
   const message = playersNeeded > 0
     ? `Queued as DM. Waiting for ${playersNeeded} more player${playersNeeded === 1 ? "" : "s"}.`
     : "Queued as DM. Enough players waiting — match should form soon.";
+
+  // CC-260428 Task 4 Step 4d: a real DM joining clears auto-DM eligibility,
+  // which checkAutoDmTrigger will detect and use to clear the timer.
+  checkAutoDmTrigger();
+
   return { success: true, data: { queued: true, matched: false, playersWaiting, playersNeeded, queuePosition, totalInQueue, estimatedWaitSeconds: null, message } };
 }
 
@@ -3576,6 +3919,9 @@ export function handleLeaveQueue(userId: string): { success: boolean; data?: Rec
   if (idx === -1) return { success: false, error: "You are not in the queue.", reason_code: "BAD_REQUEST" };
   playerQueue.splice(idx, 1);
   if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
+  // CC-260428 Task 4 Step 4d: a player leaving may drop us below the auto-DM
+  // threshold. checkAutoDmTrigger clears the timer if so.
+  checkAutoDmTrigger();
   return { success: true, data: { message: "Left the queue." } };
 }
 
@@ -3585,15 +3931,32 @@ export function handleDMLeaveQueue(userId: string): { success: boolean; data?: R
   if (idx === -1) return { success: false, error: "You are not in the DM queue.", reason_code: "BAD_REQUEST" };
   dmQueue.splice(idx, 1);
   if (playerQueue.length === 0 && dmQueue.length === 0) clearMatchmakerWaitTimer();
+  // CC-260428 Task 4 Step 4d: real DM leaving the queue may re-eligibilize
+  // auto-DM if there are still 3+ players waiting.
+  checkAutoDmTrigger();
   return { success: true, data: { message: "Left the DM queue." } };
 }
 
 export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) {
+    // CC-260428 Task 2 Step 2d: queued DMs get success:true with phase="queued"
+    // (not the NOT_DM error). availableTools is intentionally just leave_queue
+    // so existing DM agents that switch on phase don't try to narrate before
+    // the party forms — see DM skill doc §2 QUEUED warning (Task 6 Step 6d).
     const inQueue = dmQueue.some((q) => q.userId === userId);
-    const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
-    return { success: false, error: `Not a DM for any active party.${hint}`, reason_code: "NOT_DM" };
+    if (inQueue) {
+      return {
+        success: true,
+        data: {
+          phase: "queued",
+          availableTools: ["leave_queue"],
+          actionRoutes: buildActionRoutes(["leave_queue"], dmActionRoutes),
+          queue_status: buildDmQueueStatus(userId),
+        },
+      };
+    }
+    return { success: false, error: "Not a DM for any active party. Queue via POST /api/v1/dm/queue first.", reason_code: "NOT_DM" };
   }
 
   const phase = party.session?.phase ?? "exploration";
@@ -6473,6 +6836,12 @@ function fallbackConnections() {
 }
 
 function formParty(match: MatchResult): void {
+  // CC-260428 Task 3: timestamp every successful match for the admin endpoint.
+  lastMatchAt = Date.now();
+  // CC-260428 Task 4 Step 4e: a successful match means we no longer need the
+  // auto-DM trigger to fire — clear any pending timer.
+  clearAutoDmTimer();
+
   const partyId = nextId("party");
 
   const memberIds = match.players.map((p) => p.characterId);
@@ -6555,6 +6924,19 @@ function formParty(match: MatchResult): void {
   })();
 
   parties.set(partyId, party);
+
+  // CC-260428 Task 7c: log party_formed so the events array is non-empty for
+  // any real party. Without this, the P2-9 stale-party check below couldn't
+  // distinguish a brand-new party (events: []) from an orphaned one (also
+  // events: []) — either both block re-queue or both allow it. Logging on
+  // form gives a real timestamp for the staleness comparison and a signal
+  // for spectators that a session started.
+  logEvent(party, "party_formed", null, {
+    partyName,
+    memberCount: party.members.length,
+    dmUserId: match.dm.userId,
+    template: template?.name ?? null,
+  });
 
   // Track DM stats
   if (match.dm.userId) {

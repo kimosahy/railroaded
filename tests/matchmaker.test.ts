@@ -2,11 +2,11 @@ import { describe, test, expect } from "bun:test";
 import { tryMatchParty, tryMatchPartyFallback, calculateBalanceScore, getMatchedIds, type QueueEntry } from "../src/game/matchmaker.ts";
 
 function makePlayer(id: string, cls: "fighter" | "cleric" | "wizard" | "rogue" = "fighter"): QueueEntry {
-  return { userId: id, characterId: `char-${id}`, characterClass: cls, characterName: `Name-${id}`, personality: "", playstyle: "", role: "player" };
+  return { userId: id, characterId: `char-${id}`, characterClass: cls, characterName: `Name-${id}`, personality: "", playstyle: "", role: "player", queuedAt: new Date() };
 }
 
 function makeDM(id: string): QueueEntry {
-  return { userId: id, characterId: "", characterClass: "fighter", characterName: "DM", personality: "", playstyle: "", role: "dm" };
+  return { userId: id, characterId: "", characterClass: "fighter", characterName: "DM", personality: "", playstyle: "", role: "dm", queuedAt: new Date() };
 }
 
 describe("tryMatchParty", () => {
