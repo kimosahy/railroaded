@@ -258,6 +258,15 @@ const requestModelIdentity = new Map<string, { provider: string; name: string }>
 const autopilotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const AUTOPILOT_TIMEOUT_MS = 45_000;
 
+/** Post-action grace period. When a player uses their action but has bonus/movement remaining,
+ *  the autopilot timer reschedules to this shorter window instead of the full 45s.
+ *  Tunable: RAILROADED_POST_ACTION_GRACE_SECONDS env var. */
+const POST_ACTION_GRACE_MS = parseInt(process.env.RAILROADED_POST_ACTION_GRACE_SECONDS ?? "10", 10) * 1000;
+
+/** P1-7 observability: per-party flag tracking last emitted all-PCs-down-with-hostiles state.
+ *  Only logs on transition INTO the state (edge-triggered debounce). */
+const lastAllPcsDownState = new Map<string, boolean>();
+
 /** Matchmaker wait-window. Set to Date.now() when the FIRST player enters the queue.
  *  Cleared when a match fires or when the queue empties. */
 let matchmakerFirstQueueAt: number | null = null;
@@ -483,8 +492,10 @@ function cancelAutopilotTimer(partyId: string, entityId: string): void {
   }
 }
 
-/** Cancel all autopilot timers for a party (e.g. on combat/session end). */
+/** Cancel all autopilot timers for a party (e.g. on combat/session end).
+ *  Also clears the P1-7 all-PCs-down debounce flag so a fresh combat starts in a known state. */
 function cancelAllAutopilotTimersForParty(partyId: string): void {
+  lastAllPcsDownState.delete(partyId);
   for (const [key, timer] of autopilotTimers.entries()) {
     if (key.startsWith(`${partyId}:`)) {
       clearTimeout(timer);
@@ -515,6 +526,30 @@ function markCharacterAction(char: GameCharacter): void {
   char.lastActionAt = new Date();
   if (char.partyId) {
     cancelAutopilotTimer(char.partyId, char.id);
+  }
+}
+
+/**
+ * P1-7: Edge-triggered observability log for all-PCs-down-with-hostiles state.
+ * Call after any PC HP-zero / removal event. Only logs on TRANSITION into the
+ * down state (lastAllPcsDownState debounce). Flag clears when PCs come back up
+ * via the next call where !allPCsDown is observed, or via combat/session end.
+ */
+function checkAllPcsDownObservability(party: GameParty): void {
+  const allPCsDown = party.members.every((mid) => {
+    const m = characters.get(mid);
+    return !m || m.hpCurrent <= 0 || m.conditions.includes("unconscious") || m.conditions.includes("dead");
+  });
+  const hasHostiles = party.session?.initiativeOrder.some((s) => s.type === "monster") ?? false;
+  const wasDown = lastAllPcsDownState.get(party.id) ?? false;
+
+  if (allPCsDown && hasHostiles && !wasDown) {
+    lastAllPcsDownState.set(party.id, true);
+    logEvent(party, "all_pcs_down_hostiles_remain", null, {
+      monstersRemaining: party.session!.initiativeOrder.filter((s) => s.type === "monster").length,
+    });
+  } else if (!allPCsDown && wasDown) {
+    lastAllPcsDownState.set(party.id, false);
   }
 }
 
@@ -559,6 +594,12 @@ function notifyTurnChange(party: GameParty): void {
 
 function getTurnResources(party: GameParty, entityId: string): TurnResources {
   return party.session?.turnResources[entityId] ?? freshTurnResources();
+}
+
+/** Build the turnStatus block included in player-action responses (P0-3). */
+function makeTurnStatus(party: GameParty, entityId: string): { actionUsed: boolean; bonusAvailable: boolean; canEndTurn: boolean } {
+  const r = getTurnResources(party, entityId);
+  return { actionUsed: r.actionUsed, bonusAvailable: !r.bonusUsed, canEndTurn: true };
 }
 
 function setTurnResources(party: GameParty, entityId: string, resources: TurnResources): void {
@@ -634,13 +675,35 @@ function checkAutoAdvanceTurn(party: GameParty, characterId: string): void {
   if (!current || current.entityId !== characterId) return;
 
   const resources = getTurnResources(party, characterId);
-  // Auto-advance when action is used. Bonus action is optional — most low-level characters
-  // have no bonus action, and gating on it causes turn deadlocks (Sprint M, Task 1).
-  // Characters with bonus actions should use them BEFORE their main action.
-  if (resources.actionUsed) {
-    logEvent(party, "turn_auto_advanced", characterId, { reason: "action_used" });
-    // advanceTurnSkipDead calls nextTurn internally, resets resources, and notifies
+
+  // Auto-advance immediately only when ALL combat resources are used.
+  if (resources.actionUsed && resources.bonusUsed) {
+    logEvent(party, "turn_auto_advanced", characterId, { reason: "all_resources_used" });
     advanceTurnSkipDead(party);
+    return;
+  }
+
+  // If action is used but bonus remains, reschedule autopilot to short grace window.
+  // Agent has POST_ACTION_GRACE_MS (default 10s) to use bonus action, move, or call end_turn.
+  // If nothing happens, the rescheduled autopilot fires and advances the turn.
+  if (resources.actionUsed && !resources.bonusUsed) {
+    // Cancel existing 45s timer and start a 10s timer.
+    cancelAutopilotTimer(party.id, characterId);
+    const timerKey = `${party.id}:${characterId}:${party.session.currentTurn}:grace`;
+    if (autopilotTimers.has(timerKey)) return; // already rescheduled
+
+    const timer = setTimeout(() => {
+      autopilotTimers.delete(timerKey);
+      // Re-validate: still this character's turn?
+      if (!party.session || party.session.phase !== "combat") return;
+      const stillCurrent = getCurrentCombatant(party.session);
+      if (!stillCurrent || stillCurrent.entityId !== characterId) return;
+
+      logEvent(party, "turn_auto_advanced", characterId, { reason: "post_action_grace_expired" });
+      advanceTurnSkipDead(party);
+    }, POST_ACTION_GRACE_MS);
+
+    autopilotTimers.set(timerKey, timer);
   }
 }
 
@@ -726,6 +789,7 @@ function checkCombatTimeout(party: GameParty): boolean {
     }
     stabilizeUnconsciousCharacters(party);
     snapshotCharacters(party);
+    checkSoftlockRecovery(party);
     return true;
   }
   return false;
@@ -1265,6 +1329,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   pickup_item:           { method: "POST", path: "/api/v1/pickup" },
   equip_item:            { method: "POST", path: "/api/v1/equip" },
   unequip_item:          { method: "POST", path: "/api/v1/unequip" },
+  skill_check:           { method: "POST", path: "/api/v1/skill-check" },
   queue:                 { method: "POST", path: "/api/v1/queue" },
   queue_for_party:       { method: "POST", path: "/api/v1/queue" },
 };
@@ -1526,9 +1591,11 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         }
         stabilizeUnconsciousCharacters(party);
         snapshotCharacters(party);
+        checkSoftlockRecovery(party);
       }
     }
 
+    const turnStatus = makeTurnStatus(party, char.id);
     checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
@@ -1537,6 +1604,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         damageType: result.damageType, targetHP: monster.hpCurrent,
         killed, naturalRoll: result.naturalRoll,
         sneakAttack: sneakAttackBonus > 0, sneakAttackDamage: sneakAttackBonus,
+        turnStatus,
       },
     };
   }
@@ -1546,11 +1614,13 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
     hit: false, fumble: result.fumble,
   });
 
+  const turnStatus = makeTurnStatus(party, char.id);
   checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
     data: {
       hit: false, fumble: result.fumble, naturalRoll: result.naturalRoll,
+      turnStatus,
     },
   };
 }
@@ -1641,6 +1711,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
           attackerName: monster.name,
           message: `${t.name} has fallen unconscious!`,
         });
+        checkAllPcsDownObservability(party);
       }
       results.push({ name: t.name, saved: save.success, saveRoll: save.roll.total, damage: dmg, droppedToZero: actuallyDropped });
     }
@@ -1700,6 +1771,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         attackerName: monster.name,
         message: `${target.name} has fallen unconscious!`,
       });
+      checkAllPcsDownObservability(party);
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -1862,6 +1934,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
           message: `${target.name} has dropped to 0 HP from ${monster.name}'s ${attack.name}!`,
         });
       }
+
+      checkAllPcsDownObservability(party);
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -1940,6 +2014,7 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
       logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
       stabilizeUnconsciousCharacters(party);
       snapshotCharacters(party);
+      checkSoftlockRecovery(party);
     }
   } else {
     logEvent(party, "monster_action", monster.id, { monsterName: monster.name, action, outcome: `${monster.name} uses ${action}.` });
@@ -2034,6 +2109,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
       hpPool: result.totalEffect, affectedMonsters,
     });
 
+    const turnStatus = makeTurnStatus(party, char.id);
     checkAutoAdvanceTurn(party, char.id);
     return {
       success: true,
@@ -2042,6 +2118,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
         hpPool: result.totalEffect,
         affectedMonsters,
         remainingSlots: result.remainingSlots,
+        turnStatus,
       },
     };
   }
@@ -2161,6 +2238,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
               }
               stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
+              checkSoftlockRecovery(party);
             }
           }
         } else {
@@ -2214,7 +2292,10 @@ export function handleCast(userId: string, params: { spell_name: string; target_
     responseData.killed = targetKilled;
   }
 
-  if (party) checkAutoAdvanceTurn(party, char.id);
+  if (party) {
+    responseData.turnStatus = makeTurnStatus(party, char.id);
+    checkAutoAdvanceTurn(party, char.id);
+  }
   return {
     success: true,
     data: responseData,
@@ -2234,8 +2315,9 @@ export function handleDodge(userId: string): { success: boolean; data?: Record<s
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const dodgeTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.` } };
+  return { success: true, data: { action: "dodge", message: `${char.name} takes the Dodge action.`, ...(dodgeTurnStatus && { turnStatus: dodgeTurnStatus }) } };
 }
 
 export function handleDash(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2251,8 +2333,9 @@ export function handleDash(userId: string): { success: boolean; data?: Record<st
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const dashTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "dash", message: `${char.name} dashes.` } };
+  return { success: true, data: { action: "dash", message: `${char.name} dashes.`, ...(dashTurnStatus && { turnStatus: dashTurnStatus }) } };
 }
 
 export function handleDisengage(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2268,8 +2351,9 @@ export function handleDisengage(userId: string): { success: boolean; data?: Reco
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const disengageTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "disengage", message: `${char.name} disengages.` } };
+  return { success: true, data: { action: "disengage", message: `${char.name} disengages.`, ...(disengageTurnStatus && { turnStatus: disengageTurnStatus }) } };
 }
 
 export function handleHelp(userId: string, params: { target_id: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2285,8 +2369,9 @@ export function handleHelp(userId: string, params: { target_id: string }): { suc
     if (resources.actionUsed) return { success: false, error: "You've already used your action this turn.", reason_code: "ACTION_ALREADY_USED" };
     setTurnResources(party, char.id, { ...resources, actionUsed: true });
   }
+  const helpTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
-  return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.` } };
+  return { success: true, data: { action: "help", target: params.target_id, message: `${char.name} helps an ally.`, ...(helpTurnStatus && { turnStatus: helpTurnStatus }) } };
 }
 
 export function handleHide(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -2308,10 +2393,11 @@ export function handleHide(userId: string): { success: boolean; data?: Record<st
     dc: 10,
     proficiencyBonus: char.proficiencies.includes("Stealth") ? proficiencyBonus(char.level) : 0,
   });
+  const hideTurnStatus = party ? makeTurnStatus(party, char.id) : undefined;
   if (party) checkAutoAdvanceTurn(party, char.id);
   return {
     success: true,
-    data: { action: "hide", roll: result.roll.total, hidden: result.success },
+    data: { action: "hide", roll: result.roll.total, hidden: result.success, ...(hideTurnStatus && { turnStatus: hideTurnStatus }) },
   };
 }
 
@@ -2320,6 +2406,14 @@ export function handleMove(userId: string, params: { direction_or_target: string
   if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target.", reason_code: "BAD_REQUEST" };
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+
+  // F-5: Block room transitions during combat. Must run BEFORE markCharacterAction
+  // so a rejected move doesn't update lastActionAt or cancel the autopilot timer.
+  const partyForPhaseCheck = getPartyForCharacter(char.id);
+  if (partyForPhaseCheck?.session?.phase === "combat") {
+    return { success: false, error: "Cannot move to another room during combat. Finish the encounter first.", reason_code: "WRONG_PHASE" };
+  }
+
   markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
@@ -2367,6 +2461,100 @@ export function handleMove(userId: string, params: { direction_or_target: string
       room: room?.name,
       description: room?.description,
       type: room?.type,
+    },
+  };
+}
+
+// P1-5: generalizable skill-check contract. Greenfield handler — agents
+// previously had no way to perform lockpicking, perception, athletics, etc.
+// and got back nothing useful. dc is optional (default 15, 5e DMG "medium").
+// PRESERVATION: do not restrict DM narrative tools per MF SPEC §3 — this is
+// a player-side handler, but kept open for use mid-combat (perception to
+// spot hidden, athletics to grapple, etc. — DC + DM context handle gating).
+export function handleSkillCheck(userId: string, params: {
+  skill: string;
+  target_id?: string;
+  tool_proficiency?: string;
+  dc?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session) return { success: false, error: "Not in an active session.", reason_code: "WRONG_STATE" };
+
+  // No combat-phase block — see header comment.
+
+  const skillAbilityMap: Record<string, keyof AbilityScores> = {
+    athletics: "str",
+    acrobatics: "dex", sleight_of_hand: "dex", stealth: "dex",
+    lockpicking: "dex", disarm_trap: "dex",
+    arcana: "int", history: "int", investigation: "int",
+    nature: "int", religion: "int",
+    animal_handling: "wis", insight: "wis", medicine: "wis",
+    perception: "wis", survival: "wis",
+    deception: "cha", intimidation: "cha", performance: "cha",
+    persuasion: "cha",
+  };
+
+  const normalizedSkill = params.skill.toLowerCase().replace(/\s+/g, "_");
+  const ability = skillAbilityMap[normalizedSkill];
+  if (!ability) {
+    const validSkills = Object.keys(skillAbilityMap).join(", ");
+    return { success: false, error: `Unknown skill: ${params.skill}. Valid skills: ${validSkills}`, reason_code: "INVALID_ENUM_VALUE" };
+  }
+
+  const d20 = roll("1d20");
+  const mod = abilityModifier(char.abilityScores[ability]);
+  const profBonus = proficiencyBonus(char.level);
+
+  // char.proficiencies (string[]) is the source of truth — no class→skill table.
+  const skillName = normalizedSkill.replace(/_/g, " ");
+  const isProficient = char.proficiencies.some(
+    (p) => p.toLowerCase().includes(skillName)
+  ) || (
+    // Tool proficiency fallback for thieves' tools (lockpicking / disarm_trap).
+    (normalizedSkill === "lockpicking" || normalizedSkill === "disarm_trap")
+    && (char.class.toLowerCase() === "rogue" || char.inventory?.some((i) => i.toLowerCase().includes("thieves")))
+  );
+
+  const totalMod = mod + (isProficient ? profBonus : 0);
+  const total = d20.total + totalMod;
+  const dc = params.dc ?? 15;
+  const success = total >= dc;
+
+  const narrative = success
+    ? `${char.name} succeeds at ${params.skill} (rolled ${d20.total} + ${totalMod} = ${total} vs DC ${dc}).`
+    : `${char.name} fails at ${params.skill} (rolled ${d20.total} + ${totalMod} = ${total} vs DC ${dc}).`;
+
+  logEvent(party, "skill_check", char.id, {
+    characterName: char.name,
+    skill: normalizedSkill,
+    ability,
+    roll: d20.total,
+    modifier: totalMod,
+    total,
+    dc,
+    success,
+    proficient: isProficient,
+    toolProficiency: params.tool_proficiency ?? null,
+  });
+
+  markCharacterAction(char);
+
+  return {
+    success: true,
+    data: {
+      skill: normalizedSkill,
+      ability,
+      roll: d20.total,
+      modifier: totalMod,
+      total,
+      dc,
+      success,
+      proficient: isProficient,
+      narrative,
     },
   };
 }
@@ -2848,6 +3036,7 @@ export function handleBonusAction(userId: string, params: { action: string; spel
         bonusData.damageHalved = bonusSaved && spell.level > 0;
       }
 
+      bonusData.turnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return { success: true, data: bonusData };
     }
@@ -2860,10 +3049,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: params.action, cunningAction: true });
+      const dashTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.` },
+        data: { action: params.action, message: `${char.name} uses Cunning Action to ${params.action}.`, turnStatus: dashTurnStatus },
       };
     }
 
@@ -2880,10 +3070,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       });
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "hide", cunningAction: true, roll: hideResult.roll.total, hidden: hideResult.success });
+      const hideTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10 },
+        data: { action: "hide", hidden: hideResult.success, stealthRoll: hideResult.roll.total, dc: 10, turnStatus: hideTurnStatus },
       };
     }
 
@@ -2902,10 +3093,11 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       }
       setTurnResources(party, char.id, { ...resources, bonusUsed: true });
       logEvent(party, "bonus_action", char.id, { action: "second_wind", healed: healRoll.total });
+      const swTurnStatus = makeTurnStatus(party, char.id);
       checkAutoAdvanceTurn(party, char.id);
       return {
         success: true,
-        data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax },
+        data: { action: "second_wind", healed: healRoll.total, hpCurrent: char.hpCurrent, hpMax: char.hpMax, turnStatus: swTurnStatus },
       };
     }
 
@@ -3090,6 +3282,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
               }
               stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
+              checkSoftlockRecovery(party);
             }
           }
         }
@@ -3212,6 +3405,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
   // If dead, remove from initiative
   if (result.dead && party.session) {
     party.session = removeCombatant(party.session, char.id);
+    checkAllPcsDownObservability(party);
     if (shouldCombatEnd(party.session)) {
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
@@ -3473,6 +3667,8 @@ export function handleNarrate(userId: string, params: {
   const party = findDMParty(userId);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "You are not a DM for any active party.", reason_code: "BAD_REQUEST" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Sprint M Task 3: duplicate narration suppression during combat stalls
   if (party.session) {
@@ -3553,6 +3749,8 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Normalize flat format to array format
   let monsterList = params.monsters;
@@ -3727,6 +3925,8 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
 
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Check if this references a persistent NPC
   const npc = npcsMap.get(npcIdentifier);
@@ -4012,6 +4212,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
           logEvent(party, "combat_end", null, { xpAwarded: 0 });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
+          checkSoftlockRecovery(party);
         }
       }
     }
@@ -4047,6 +4248,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       // Remove dead character from initiative to prevent softlock
       if (party.session) {
         party.session = removeCombatant(party.session, char.id);
+        checkAllPcsDownObservability(party);
         if (shouldCombatEnd(party.session)) {
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
@@ -4112,6 +4314,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
           message: `${char.name} has dropped to 0 HP from ${damageType} damage!`,
         });
       }
+
+      checkAllPcsDownObservability(party);
     }
   }
 
@@ -4127,6 +4331,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
 export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string; room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Accept next_room_id, exit_id, or room_id (agents send any of these)
   const nextRoom = params.next_room_id ?? params.exit_id ?? params.room_id;
@@ -4765,6 +4971,8 @@ export function handleEndSession(userId: string, params: { summary: string; comp
 
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Strip any QA/debug markers before storing or surfacing the summary
   const cleanSummary = filterSummary(params.summary);
@@ -4778,6 +4986,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   }
 
   cancelAllAutopilotTimersForParty(party.id);
+  cancelSoftlockRecovery(party.id);
   logEvent(party, "session_end", null, { summary: cleanSummary, outcome: validOutcome });
 
   // Track lifetime stats for all party members
@@ -6450,6 +6659,154 @@ function stabilizeUnconsciousCharacters(party: GameParty): void {
   }
 }
 
+// --- P0-2: All-PCs-Down Softlock Recovery ---
+
+/** P0-2 softlock recovery state. Tracks per-party grace timer. */
+const softlockRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const SOFTLOCK_DM_GRACE_MS = parseInt(process.env.RAILROADED_DM_NARRATION_GRACE_SECONDS ?? "60", 10) * 1000;
+const SOFTLOCK_AUTO_REVIVE_HP = parseInt(process.env.RAILROADED_AUTO_REVIVE_HP ?? "1", 10);
+
+/**
+ * Detect all-PCs-unconscious-stable-no-hostiles state and initiate recovery.
+ * Called after exitCombat + stabilizeUnconsciousCharacters and on rehydration.
+ * Two-part recovery: 60s DM grace window, then auto-revive one PC at 1 HP.
+ * PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+ */
+export function checkSoftlockRecovery(party: GameParty): void {
+  if (!party.session) return;
+  // Only fire in non-combat phases (post-combat or exploration)
+  if (party.session.phase === "combat") return;
+
+  // Check: all PCs unconscious + stable. Dead characters don't block recovery.
+  // Note: "dead" condition is the canonical dead marker on GameCharacter
+  // (the runtime-added isAlive field is not declared on the type).
+  const allPCsDownStable = party.members.every((mid) => {
+    const m = characters.get(mid);
+    if (!m || m.conditions.includes("dead")) return true;
+    return m.hpCurrent === 0
+      && m.conditions.includes("unconscious")
+      && m.conditions.includes("stable");
+  });
+  if (!allPCsDownStable) return;
+
+  // Check: at least one PC alive (not all dead — TPK is handled separately)
+  const hasAlivePC = party.members.some((mid) => {
+    const m = characters.get(mid);
+    return m != null && !m.conditions.includes("dead");
+  });
+  if (!hasAlivePC) return;
+
+  // Check: no hostile combatants remaining
+  const hasHostiles = party.monsters.some((m) => m.isAlive);
+  if (hasHostiles) return;
+
+  // Already running a recovery timer for this party — idempotent
+  if (softlockRecoveryTimers.has(party.id)) return;
+
+  // --- Softlock detected. Begin recovery. ---
+
+  logEvent(party, "softlock_recovery_started", null, {
+    reason: "all_pcs_unconscious_stable_no_hostiles",
+    dmGraceSeconds: SOFTLOCK_DM_GRACE_MS / 1000,
+  });
+
+  // Inject prompt visible to DM via session state. No new event type — frontend
+  // has no consumer for system_dm_prompt; agents read this through GET handlers.
+  if (party.session) {
+    (party.session as unknown as { softlockDmPrompt?: { message: string; deadline_seconds: number } }).softlockDmPrompt = {
+      message: "All party members are unconscious but stable. No threats remain. "
+        + "Narrate the next 1 in-game hour — you may introduce a rescuer, a time-skip, "
+        + "or any narrative resolution. If you do not act within 60 seconds, "
+        + "the engine will auto-resolve via natural recovery.",
+      deadline_seconds: SOFTLOCK_DM_GRACE_MS / 1000,
+    };
+  }
+
+  const timer = setTimeout(() => {
+    // Race guard: cancelSoftlockRecovery may have fired between callback queue and execution.
+    if (!softlockRecoveryTimers.has(party.id)) return;
+    softlockRecoveryTimers.delete(party.id);
+
+    // Re-check: DM may have acted during the grace window
+    const stillSoftlocked = party.members.every((mid) => {
+      const m = characters.get(mid);
+      if (!m || m.conditions.includes("dead")) return true;
+      return m.hpCurrent === 0 && m.conditions.includes("unconscious");
+    });
+
+    if (!stillSoftlocked) {
+      logEvent(party, "softlock_recovery_cancelled", null, { reason: "dm_acted" });
+      return;
+    }
+
+    // Pick the first alive-but-unconscious PC in party.members order (deterministic).
+    const reviveTarget = party.members
+      .map((mid) => characters.get(mid))
+      .filter((m): m is GameCharacter =>
+        m != null && !m.conditions.includes("dead") && m.hpCurrent === 0
+        && m.conditions.includes("unconscious")
+        && m.conditions.includes("stable")
+      )[0];
+
+    if (!reviveTarget) {
+      // All PCs are dead (not just unconscious) — TPK already handled separately.
+      logEvent(party, "softlock_no_eligible_target", null, {
+        reason: "all_pcs_dead_or_no_stable_candidates",
+      });
+      return;
+    }
+
+    reviveTarget.hpCurrent = SOFTLOCK_AUTO_REVIVE_HP;
+    reviveTarget.conditions = reviveTarget.conditions.filter(
+      (c) => c !== "unconscious" && c !== "stable" && c !== "prone"
+    );
+    reviveTarget.deathSaves = resetDeathSaves();
+
+    logEvent(party, "softlock_auto_revive", reviveTarget.id, {
+      characterName: reviveTarget.name,
+      hpRestored: SOFTLOCK_AUTO_REVIVE_HP,
+      reason: "natural_recovery_1_ingame_hour",
+    });
+
+    // Use existing "narration" event type — frontend event-feed already renders these.
+    logEvent(party, "narration", null, {
+      text: `${reviveTarget.name} stirs awake, weak but alive. An hour has passed in silence.`,
+      source: "system",
+    });
+
+    broadcastToParty(party.id, {
+      type: "narration",
+      text: `${reviveTarget.name} stirs awake, weak but alive. An hour has passed in silence.`,
+    });
+  }, SOFTLOCK_DM_GRACE_MS);
+
+  softlockRecoveryTimers.set(party.id, timer);
+}
+
+/**
+ * Cancel softlock recovery if DM acts (narrates, heals, advances scene).
+ * Call this from DM action handlers via markDmActed.
+ */
+export function cancelSoftlockRecovery(partyId: string): void {
+  const timer = softlockRecoveryTimers.get(partyId);
+  if (timer) {
+    clearTimeout(timer);
+    softlockRecoveryTimers.delete(partyId);
+  }
+}
+
+/** Mark that the DM acted — cancels softlock recovery if active and clears the prompt flag.
+ *  PRESERVATION: do not restrict DM narrative tools per MF SPEC §3 */
+export function markDmActed(partyId: string): void {
+  cancelSoftlockRecovery(partyId);
+  const party = parties.get(partyId);
+  if (party?.session) {
+    const sess = party.session as unknown as { softlockDmPrompt?: unknown };
+    if (sess.softlockDmPrompt) delete sess.softlockDmPrompt;
+  }
+}
+
 function snapshotCharacters(party: GameParty): void {
   if (!party.dbReady) return;
   party.dbReady.then(() => {
@@ -6538,6 +6895,7 @@ function isTPK(party: GameParty): boolean {
  */
 function handleTPK(party: GameParty): void {
   cancelAllAutopilotTimersForParty(party.id);
+  cancelSoftlockRecovery(party.id);
   logEvent(party, "session_end", null, {
     summary: "Total Party Kill — all adventurers have fallen.",
     tpk: true,
@@ -6946,6 +7304,11 @@ export async function loadPersistedState(): Promise<number> {
       loaded++;
     }
 
+    // P0-2: re-detect softlock state after rehydration (in-memory timers were lost on restart).
+    for (const [, party] of parties) {
+      if (party.session) checkSoftlockRecovery(party);
+    }
+
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load persisted state:", err);
@@ -7028,6 +7391,12 @@ export async function loadPersistedCharacters(): Promise<number> {
       characters.set(charId, char);
       charactersByUser.set(userId, charId);
       loaded++;
+    }
+
+    // P0-2: re-detect softlock state after rehydration (covers cases where character
+    // state was rehydrated separately from the party-level loader above).
+    for (const [, party] of parties) {
+      if (party.session) checkSoftlockRecovery(party);
     }
 
     return loaded;
