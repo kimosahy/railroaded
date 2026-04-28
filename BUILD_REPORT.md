@@ -1,127 +1,213 @@
-# BUILD_REPORT — CC-260428-SESSION-SURVIVAL
+# BUILD_REPORT — CC-260428 Matchmaking + Bootstrap (Stage B)
 
-**Branch:** `atlas/session-survival` (off `origin/main` @ `73f530a`)
-**Spec:** `cc-spec-session-survival.md` (saved at repo root)
-**Status:** 5/5 tasks complete + Task 1 fake-timer follow-up. Branch on origin, ready for Atlas QA. **No PR opened.**
+**Branch:** `atlas/matchmaking-bootstrap` (8 commits ahead of `origin/main`)
+**Spec:** `cc-spec-matchmaking-bootstrap.md` (committed at repo root)
+**Status:** 7/7 tasks complete (8 commits including the leading scaffold commit). Ready for Atlas QA. **No PR opened.**
 
 ---
 
 ## Commits
 
-| Hash | Task | Title |
-|---|---|---|
-| `5b74e8c` | Task 1 | Atlas build (Ram): P0-3 tiered autopilot — cast no longer burns whole turn |
-| `ecefc43` | Task 2 | Atlas build (Ram): P1-7 audit + observability — edge-triggered all_pcs_down log |
-| `4618cf5` | Task 3 | Atlas build (Ram): P0-2 softlock recovery — 60s DM grace + auto-revive |
-| `402ec2f` | Task 4 | Atlas build (Ram): F-5 block room transitions during combat |
-| `811c51d` | Task 5 | Atlas build (Ram): P1-5 skill-check contract — handleSkillCheck + /skill-check route |
-| `12b09a3` | Task 1 follow-up | Atlas build (Ram): P0-3 fake-timer tests for tiered autopilot grace |
+| Hash | Message |
+|---|---|
+| `92ede54` | Atlas build (Ram): scaffold matchmaking-bootstrap state declarations (Task 0/4a) |
+| `ac0769f` | Atlas build (Ram): Task 1 — queue idempotency returns 409 with state |
+| `c91e747` | Atlas build (Ram): Task 2 — queue-state feedback on GET /actions + leave_queue |
+| `9627d82` | Atlas build (Ram): Task 3 — admin queue-state diagnostic endpoint |
+| `7e07991` | Atlas build (Ram): Task 4 — auto-DM trigger + pluggable provisionConductor |
+| `e142262` | Atlas build (Ram): Task 5 — GET /skill/dm/quickstart 5-command bootstrap |
+| `209b985` | Atlas build (Ram): Task 6 — skill doc updates (player queue + DM Sections 2-3) |
+| `a1a5a4c` | Atlas build (Ram): Task 7 — verification tests + P2-9 stale-party check |
+
+The leading "Task 0" commit (`92ede54`) covers Task 4 Step 4a state declarations
+plus the B-telemetry array. Symbols declared there: `lastMatchAt`, `autoDmTimer`,
+`autoDmFirstEligibleAt`, `AUTO_DM_DELAY_MS`, `AUTO_DM_MIN_PLAYERS`, `autoDmLog`
+ring buffer + `pushAutoDmLog`. The CC spec doc was added in the same commit.
+Subsequent commits import these as needed.
 
 ---
 
-## Per-task gate results
+## Per-task tsc + test results
 
-The repo had a **117-error pre-existing tsc baseline** on `origin/main` (`73f530a`). The "tsc must pass" gate is interpreted as "no NEW errors introduced." Every task verified via `bun x tsc --noEmit` and `./test-runner.sh`.
+| Task | tsc (delta vs baseline=117) | Tests passing | Notes |
+|---|---|---|---|
+| 0 (4a) | 117 (0 new) | matchmaker (7) + matchmaking-flex (7) | Declarations only, no behavior change |
+| 1 | 117 (0 new) | + queue-idempotency (2) + game-manager (45 + 2 todo) | 409 contract + helpers + queuedAt |
+| 2 | 117 (0 new) | + queue-state-feedback (4) | DM contract change documented in skill doc Task 6 |
+| 3 | 117 (0 new) | + admin-queue-state (4) | Required `(phase as string) !== "ended"` cast to match existing pattern |
+| 4 | 117 (0 new) | + auto-dm-trigger (5) | All 5 Step 4g cases covered |
+| 5 | 117 (0 new) | + dm-quickstart (4) | Route + base-URL + section count |
+| 6 | 117 (0 new) | (docs only — no test changes) | Player Queue Status + DM §13/§14 |
+| 7 | 117 (0 new) | + cc260428-verification (9) — P0-1, P2-10 (3), P2-9 (3) | Includes `party_formed` event in formParty |
 
-The repo's `./test-runner.sh` kills `bun test` at 30s (DB pool cleanup hangs). Result is exit 0 from the runner whether tests passed or were killed mid-summary; pass/fail must be read from the per-test `(fail) ...` lines and from per-file isolated runs. Two pre-existing failures live in `tests/tracker-responsive.test.ts` (CSS rule assertions against `website/tracker.html`); they were verified pre-existing on a clean checkout via `git stash && bun test tests/tracker-responsive.test.ts` (4 pass / 2 fail on baseline, identical post-build).
+**Baseline tsc:** verified 117 errors on `origin/main` HEAD `092406e` before any change.
+**Final tsc:** 117 errors. Zero new TypeScript errors introduced.
 
-| Task | tsc errors | New tsc errors | New test failures | Notes |
-|---|---|---|---|---|
-| Baseline (`73f530a`) | 117 | — | — | tracker-responsive 2 fail pre-existing |
-| Task 1 | 117 | 0 | 0 | flipped 2 pre-existing failing tests to pass (game-manager.test.ts:691 + mcp-sprint-j.test.ts:321) |
-| Task 2 | 117 | 0 | 0 | rewired one game-manager.test.ts loop that relied on the now-removed actionUsed-alone advance (Step 1d follow-up — see deviations) |
-| Task 3 | 117 | 0 | 0 | added 3 fake-timer tests in tests/softlock-recovery.test.ts, all pass |
-| Task 4 | 117 | 0 | 0 | added 2 cases in tests/move-combat-block.test.ts, all pass |
-| Task 5 | 117 | 0 | 0 | added 4 cases in tests/skill-check.test.ts, all pass |
-| Task 1 follow-up | 117 | 0 | 0 | added 3 fake-timer cases in tests/post-action-grace.test.ts, all pass |
+---
 
-**Final isolated run** of the 10 files most likely to be affected:
+## Full-suite test results
+
+Run via `bun test --parallel=1` (sequential isolation; matches the project's
+`test-runner.sh` semantics modulo timeouts):
+
 ```
-bun test tests/post-action-grace.test.ts tests/softlock-recovery.test.ts \
-         tests/move-combat-block.test.ts tests/skill-check.test.ts \
-         tests/game-manager.test.ts tests/mcp-sprint-j.test.ts \
-         tests/game-integration.test.ts tests/playtest-bugfix.test.ts \
-         tests/playtest-bugfix-r2.test.ts tests/combat.test.ts
+Ran 1196 tests across 80 files. [8.94s]
+1171 pass / 2 todo / 9 fail
 ```
-→ **280 pass / 2 todo / 0 fail** (755 expect() calls).
+
+Compared against `origin/main` (same command, same env): **1143 pass / 2 todo / 9 fail**.
+
+Delta: **+28 passing tests**, **0 new failures**.
+
+The 9 pre-existing failures (verified on `origin/main` head `092406e`):
+- `tracker.html responsive layout > default layout uses two-column grid`
+- `tracker.html responsive layout > tablet breakpoint (768px) keeps two-column layout`
+- `NPC system > create_npc with all fields`
+- `NPC disposition > disposition labels cover full range`
+- `avatar_url and description fields > character creation without avatar_url fails`
+- `avatar_url and description fields > character creation with description but no avatar fails`
+- `tracker empty session handling > renderSessions filters out inactive sessions with 0 events`
+- `tracker.html dead monster styling > dead monsters show skull emoji instead of monster emoji`
+- `B016b: hyphenated template names resolve correctly > 'bandit-captain' resolves to Bandit Captain with correct stats`
+
+Only the first two are referenced in the task statement as expected. The other
+seven also exist on `origin/main`. None reference matchmaking, queueing, auth,
+or the surfaces touched by this CC.
+
+---
+
+## §5 smoke tests — exercised by automated tests
+
+All §5 smoke checks are covered by the new test files. Per-check coverage:
+
+| §5 check | Test file | Result |
+|---|---|---|
+| **409:** POST `/queue` twice → 409 + `queue_status` | `tests/queue-idempotency.test.ts` | PASS |
+| **Queue feedback:** queued player → `phase: "queued_waiting_dm"` | `tests/queue-state-feedback.test.ts` | PASS |
+| **DM feedback:** queued DM → `phase: "queued"` (not NOT_DM error) | `tests/queue-state-feedback.test.ts` | PASS |
+| **Admin:** valid `Bearer ADMIN_SECRET` → 200 with `player_queue` / `dm_queue` / `active_sessions` / `recent_auto_dm_events` | `tests/admin-queue-state.test.ts` | PASS |
+| **Admin:** missing/wrong secret → 401; missing env → 503 | `tests/admin-queue-state.test.ts` | PASS |
+| **Auto-DM (a):** `RAILROADED_AUTO_DM_PROVISION=true`, 3 players, 60s → conductor in dmQueue, party forms via `tryMatchPartyFallback`, telemetry "fired" + "provisioned" | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Auto-DM (b):** `RAILROADED_AUTO_DM_PROVISION=false` (default), 3 players, 60s → conductor NOT queued, telemetry "fired" + "skipped" | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Auto-DM (c):** real DM joins at 30s → trigger never fires | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Auto-DM (d):** 2 players (below threshold) → no trigger | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Auto-DM (e):** Conductor already in queue → trigger never re-arms (duplicate guard) | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Quickstart:** `GET /skill/dm/quickstart` → text/plain with 5 numbered sections | `tests/dm-quickstart.test.ts` | PASS |
+| **P0-1:** 4 players + 0 DMs → no party formed | `tests/cc260428-verification.test.ts` | PASS |
+| **P2-10:** `handleMonsterAttack` with `target_name`, `handleVoiceNpc` with `message` | `tests/cc260428-verification.test.ts` | PASS |
 
 ---
 
 ## Deviations from spec
 
-1. **`m.isAlive` switched to `m.conditions.includes("dead")` (Task 3).** The spec's softlock check uses `m.isAlive` on `GameCharacter`. That field is set at runtime on PC death (`target.isAlive = false`) but is **not declared** on the `GameCharacter` or `CharacterSheet` type — under strict TS it would not compile. Switched both the precondition check, the still-softlocked recheck, and the revive-target filter to use `m.conditions.includes("dead")` (the canonical dead marker on the Condition[] array). Same semantics: dead PCs do not block recovery, dead PCs are not revive candidates, and the softlock fires only when at least one PC is alive-but-unconscious-and-stable.
+1. **Task 0 scaffolding:** chose the explicit "Task 0" leading commit
+   (`92ede54`) over folding declarations into the first hunk of Task 1.
+   Reason: cleaner per-commit story; reviewers can see the state shell
+   without the 409 contract change interleaved.
 
-2. **`handleEndSession` already calls `markDmActed` at the top (Step 3c) and again `cancelSoftlockRecovery` before the `session_end` log (Step 3d).** Both are in spec. The double-cancel is harmless (second call is a no-op if the timer was already cleared), but kept both per spec literal text.
+2. **Task 4 — `AUTO_DM_PROVISION_ENABLED` runtime read:**
+   Spec declared this as a `const` evaluated at module load. Implemented as
+   `isAutoDmProvisionEnabled()` that reads `process.env` at call time.
+   Reason: tests must exercise both Step 4g (a) provisioned and (b) skipped
+   paths in the same Bun process. Bun's test runner shares module state
+   across files in the default mode, so a module-load `const` would freeze
+   the value at first import. Operational behavior unchanged — the env var is
+   read once per trigger fire, not once per HTTP request.
 
-3. **Step 1d test fix landed in the Task 2 commit, not Task 1.** The pre-existing test "killing a monster removes it from initiative and ends combat" (`tests/game-manager.test.ts:442`) iterated `playerUserIds[i % 4]` and relied on the old actionUsed-alone auto-advance to walk initiative. Under the new tiered autopilot, the second iteration's player is not yet current and the loop deadlocks. Fixed by walking initiative explicitly via `getCurrentCombatant` + `handleEndTurn`. Since Task 1 was already committed when this was discovered, the fix is bundled with Task 2 with a header note in the commit body. Per repo guidance ("create NEW commits rather than amending"), I did not amend `5b74e8c`.
+3. **Task 5 — quickstart uses `username` not `name`:**
+   Spec quickstart used `{"name": "my-dm-agent"}` but the actual auth API in
+   `src/api/auth.ts` requires the `username` field. The quickstart uses
+   `username` so the curl commands are end-to-end correct. Step 2 also adds
+   the missing `password` field (real `/login` requires both `username` and
+   `password`).
 
-4. **`tsc` and test runner.** The spec literal said `npx tsc --noEmit` and `npm test`. The project is bun-only (`package.json` declares `"test": "./test-runner.sh"`, no npm install lock). Used `bun x tsc --noEmit` and `./test-runner.sh` (which already calls `bun test` under the hood) instead. Spec intent — "TypeScript must compile, tests must pass" — preserved.
+4. **Task 6 — DM Sections 2/3 renumbered to §13/§14:**
+   MF wrote Sections 2 and 3 in `skills/dm-skill-sections-2-3.md` for a
+   restructured doc, but the existing `dm-skill.md` already has §1–§12.
+   Numbering kept sequential with the existing doc to avoid breaking
+   internal cross-references. MF's internal references (e.g., "see §3
+   Tool Reference") were rewritten to point at §14.
 
----
+5. **Task 6 — bootstrap docs:** spec asked to fix `username` → `name`,
+   `/api/v1/register` → `/register`, `/api/v1/login` → `/login`. Docs
+   already match the actual API (`username`, `/register`, `/login`). NO FIX
+   needed for player-skill or dm-skill. Same for `award_loot` (already
+   uses `player_id`, `item_name`, `gold`).
 
-## Smoke-test coverage (per spec §6)
+6. **Task 6 — DM tool count discrepancy:** existing doc says "49 MCP tools";
+   MF audited and counted 50. Did not change the §1 preamble line — backend
+   is source of truth and that's outside this CC's scope. Flagged for
+   follow-up.
 
-Each smoke item was verified by an automated test rather than manual playtest (no live DB / agents available in this environment).
-
-| § | Smoke check | Verified by |
-|---|---|---|
-| P0-3 | Cast/attack does NOT auto-advance immediately when only action used | `tests/game-manager.test.ts` "action only → turn does NOT advance; action + bonus → turn auto-advances" — was failing on baseline, passes now |
-| P0-3 | Action + bonus auto-advances with `reason: "all_resources_used"` | Same test (continues into the bonus-action branch and asserts the next combatant changed) |
-| P0-3 | Attack alone does not auto-advance | `tests/mcp-sprint-j.test.ts` "attack alone does NOT auto-advance turn" — was failing on baseline, passes now |
-| P0-3 | Attack + bonus does auto-advance | `tests/mcp-sprint-j.test.ts` "attack + bonus action DOES auto-advance turn" |
-| P0-3 | `end_turn` still advances immediately | Existing `handleEndTurn` path unchanged; covered by `tests/game-manager.test.ts` "killing a monster removes it from initiative and ends combat" (rewired to walk initiative via end_turn under new contract) |
-| P0-3 | Grace timer fires at 10s with `reason: "post_action_grace_expired"` | `tests/post-action-grace.test.ts` (3 fake-timer cases): grace expiry advances with `post_action_grace_expired`, bonus-within-grace cancels grace and advances via `all_resources_used`, `end_turn`-within-grace cancels grace with no late fire |
-| P1-7 | All `exitCombat` sites are gated by `shouldCombatEnd` | Manual audit — 9 sites; 8 gated, 1 (`checkCombatTimeout`, line 758) intentionally unguarded per spec. Findings in commit `ecefc43` body. |
-| P1-7 | Edge-triggered `all_pcs_down_hostiles_remain` event fires only on transition | `checkAllPcsDownObservability` debounces via `lastAllPcsDownState` Map; flag cleared on combat / session end via `cancelAllAutopilotTimersForParty` (which both code paths exercise) |
-| P0-2 | `softlock_recovery_started` fires when all PCs unconscious+stable + no hostiles + non-combat phase | `tests/softlock-recovery.test.ts` Test 1 |
-| P0-2 | DM grace cancels via `markDmActed` | `tests/softlock-recovery.test.ts` Test 2 — `softlock_auto_revive` event NOT emitted |
-| P0-2 | Auto-revive fires after 60s, one PC at 1 HP, conditions cleared | `tests/softlock-recovery.test.ts` Test 1 — exactly one PC ends at hpCurrent=1 with unconscious removed; `softlock_auto_revive` event present |
-| P0-2 | Rehydration re-detects softlock | `tests/softlock-recovery.test.ts` Test 3 — `cancelSoftlockRecovery` simulates lost in-memory timer; second `checkSoftlockRecovery` re-arms; revive happens after the next 60s tick |
-| F-5 | `handleMove` during combat → `success: false`, error mentions "combat" | `tests/move-combat-block.test.ts` case 1 — also asserts `reason_code === "WRONG_PHASE"` |
-| F-5 | Rejected move does NOT bump `lastActionAt` | `tests/move-combat-block.test.ts` case 2 — verifies the BEFORE-`markCharacterAction` ordering required by the pitfall |
-| P1-5 | `POST /api/v1/skill-check { skill: "lockpicking" }` returns `{ roll, dc, success, narrative }` | `tests/skill-check.test.ts` "rogue + lockpicking" — also asserts proficiency wiring via tool fallback and `skill_check` event log |
-| P1-5 | DC defaults to 15 when omitted | `tests/skill-check.test.ts` "dc defaults to 15 when omitted" |
-| Preservation | DM scene-rewrite loop unrestricted | `markDmActed` only cancels the softlock recovery timer + clears the prompt flag; it does NOT validate or block DM tool execution. Each handler with `markDmActed` is tagged with the `// PRESERVATION: do not restrict DM narrative tools per MF SPEC §3` comment. |
-
----
-
-## File inventory (actual)
-
-| File | Status | Lines added/changed |
-|---|---|---|
-| `cc-spec-session-survival.md` | NEW | spec saved at repo root (Task 1 commit) |
-| `src/game/game-manager.ts` | MODIFIED | constants (POST_ACTION_GRACE_MS, SOFTLOCK_DM_GRACE_MS, SOFTLOCK_AUTO_REVIVE_HP), state Maps (lastAllPcsDownState, softlockRecoveryTimers), helpers (makeTurnStatus, checkAllPcsDownObservability, checkSoftlockRecovery, cancelSoftlockRecovery, markDmActed), tiered checkAutoAdvanceTurn rewrite, turnStatus on 13 handler responses, F-5 guard in handleMove, handleSkillCheck, all 6 stabilize-and-checkSoftlockRecovery wires, all 5 markDmActed wires in DM handlers, both session_end cancelSoftlockRecovery sites, both rehydration loops, playerActionRoutes skill_check entry |
-| `src/api/rest.ts` | MODIFIED | new `POST /skill-check` route |
-| `src/game/session.ts` | UNCHANGED | audited per spec; `shouldCombatEnd` already correct, no changes needed |
-| `tests/softlock-recovery.test.ts` | NEW | 3 fake-timer tests for P0-2 (mandatory per spec §3g) |
-| `tests/move-combat-block.test.ts` | NEW | 2 tests for F-5 |
-| `tests/skill-check.test.ts` | NEW | 4 tests for P1-5 |
-| `tests/post-action-grace.test.ts` | NEW | 3 fake-timer tests for P0-3 grace timer (Task 1 follow-up — spec §1d) |
-| `tests/game-manager.test.ts` | MODIFIED | one test rewired for new tiered-autopilot contract (added handleEndTurn + getCurrentCombatant imports) |
-
----
-
-## Stop conditions
-
-None hit. No grep target was missing; no task required 3 retries; branch stayed on `atlas/session-survival` throughout.
+7. **Task 7c — empty-events guard:** spec asked to verify whether `formParty`
+   logs a `party_formed` event before adding the staleness check. Grep
+   confirmed `formParty` does NOT log such an event in baseline. Per spec
+   options:
+     - Added `logEvent(party, "party_formed", ...)` to formParty (so events
+       array is never empty for a real party).
+     - This makes the proposed empty-events guard unnecessary — the
+       staleness comparison `lastEvent.timestamp` always has a real value.
+   Documented in Task 7 commit body.
 
 ---
 
-## Branch state
+## Confirmation matrix (per Final deliverable §)
+
+| Item | Status |
+|---|---|
+| `SYSTEM_DM_ID` reused (not parallel) | ✅ Imported from `matchmaker.ts`, not redefined. Verified via `grep -rn "SYSTEM_DM_ID"` in `src/`. |
+| `tryMatchPartyFallback` called (not `tryMatchParty`) | ✅ `provisionConductor` (`src/game/game-manager.ts`) calls `tryMatchPartyFallback`. |
+| Feature flag default false | ✅ `isAutoDmProvisionEnabled()` returns true ONLY when `process.env.RAILROADED_AUTO_DM_PROVISION === "true"`. Default branch: false. |
+| B-telemetry array exposed via admin endpoint | ✅ `getQueueState()` includes `recent_auto_dm_events: autoDmLog.slice(-20)`. Visible at `GET /api/v1/admin/queue-state`. |
+| DM skill doc `phase=queued` warning landed | ✅ Top of §13 Phase 1 (QUEUED) in `skills/dm-skill.md`: "When `phase` is `queued`, do NOT call narration tools…" |
+| `formParty` event log status | logs `party_formed`: **YES** (added in commit `a1a5a4c`). Empty-events guard added: **NO** (not needed because party_formed is now always logged on form). |
+
+---
+
+## Files changed (vs `origin/main`)
 
 ```
-$ git status
-On branch atlas/session-survival
-Your branch is up to date with 'origin/atlas/session-survival'.
-nothing to commit, working tree clean
-
-$ git log origin/main..HEAD --oneline
-12b09a3 Atlas build (Ram): P0-3 fake-timer tests for tiered autopilot grace
-811c51d Atlas build (Ram): P1-5 skill-check contract — handleSkillCheck + /skill-check route
-402ec2f Atlas build (Ram): F-5 block room transitions during combat
-4618cf5 Atlas build (Ram): P0-2 softlock recovery — 60s DM grace + auto-revive
-ecefc43 Atlas build (Ram): P1-7 audit + observability — edge-triggered all_pcs_down log
-5b74e8c Atlas build (Ram): P0-3 tiered autopilot — cast no longer burns whole turn
+ BUILD_REPORT.md                       | overwritten with new content
+ cc-spec-matchmaking-bootstrap.md      | NEW
+ skills/dm-skill.md                    | +199
+ skills/player-skill.md                | +18
+ src/api/rest.ts                       | +60 / -8
+ src/game/game-manager.ts              | +302 / -10
+ src/game/matchmaker.ts                | +5 / -3
+ src/index.ts                          | +51
+ src/types.ts                          | +1
+ tests/admin-queue-state.test.ts       | NEW (135 lines)
+ tests/auto-dm-trigger.test.ts         | NEW (200 lines)
+ tests/cc260428-verification.test.ts   | NEW (210 lines)
+ tests/dm-quickstart.test.ts           | NEW (87 lines)
+ tests/matchmaker.test.ts              | +2 / -2
+ tests/matchmaking-flex.test.ts        | +2 / -2
+ tests/queue-idempotency.test.ts       | NEW (98 lines)
+ tests/queue-state-feedback.test.ts    | NEW (132 lines)
 ```
 
-Branch is on origin (`atlas/session-survival`). **No PR opened.** Awaiting Atlas QA.
+---
+
+## Notes for QA
+
+- **Auto-DM live verification:** to see the trigger fire in production logs,
+  set `RAILROADED_AUTO_DM_PROVISION=true` in env, queue 3+ players with no DM
+  for 60s, and watch for `[AUTO-DM] The Conductor queued (system-dm)` followed
+  by `[AUTO-DM] Party formed with The Conductor.` in stdout.
+- **Auto-DM telemetry without provisioning:** keep the flag `false` (default).
+  `GET /api/v1/admin/queue-state` will surface `recent_auto_dm_events` with
+  `type: "skipped"` entries showing how often a Conductor would have
+  provisioned. CoS uses this to size the actual provisioning solution.
+- **Admin endpoint requires `ADMIN_SECRET`** env var. Without it, returns 503.
+- **Quickstart endpoint** is unauthenticated (matches `/skill/player`,
+  `/skill/dm`).
+- **Test isolation:** new test files use `afterAll(resetState)` so subsequent
+  test files (notably `tests/post-action-grace.test.ts` which doesn't reset)
+  don't inherit dirty queue state.
+- **DM contract change at queue:** `GET /api/v1/dm/actions` now returns
+  `success: true` with `phase: "queued"` when the DM is queued (was: `success:
+  false` with `NOT_DM`). Existing DM agents that switch on phase get a clear
+  signal not to narrate. Skill doc §13 Phase 1 has the explicit warning.
+- **409 vs 400:** double-queueing now returns HTTP 409 (was 400). The body
+  contains `queue_status`. Agents that retry on 4xx should special-case 409
+  as a status check, not a retry trigger.
