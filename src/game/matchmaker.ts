@@ -17,6 +17,7 @@ export interface QueueEntry {
   personality: string;
   playstyle: string;
   role: "player" | "dm";
+  queuedAt: Date;
 }
 
 export interface MatchResult {

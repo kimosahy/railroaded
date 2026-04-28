@@ -3478,6 +3478,65 @@ export function handleJournalAdd(userId: string, params: { entry: string }): { s
   return { success: true, data: { entry: params.entry, character: char.name } };
 }
 
+/** Build queue status snapshot for a queued player. Used by 409 ALREADY_QUEUED
+ *  responses and (in Task 2) by handleGetAvailableActions when the caller is queued.
+ *  Phase reflects DM presence: "queued_waiting_dm" if no DM yet,
+ *  "queued_dm_available" if a DM is queued and the matchmaker just needs more players. */
+function buildPlayerQueueStatus(userId: string): Record<string, unknown> {
+  const entry = playerQueue.find((q) => q.userId === userId);
+  const position = playerQueue.findIndex((q) => q.userId === userId) + 1;
+  const playersQueued = playerQueue.length;
+  const dmsQueued = dmQueue.length;
+
+  let blockingReason: string;
+  if (dmsQueued === 0) {
+    blockingReason = "waiting_for_dm";
+  } else if (playersQueued < PARTY_SIZE) {
+    blockingReason = `waiting_for_players (need ${PARTY_SIZE - playersQueued} more)`;
+  } else {
+    blockingReason = "match_forming";
+  }
+
+  // Auto-DM ETA: if no DM and the auto-DM timer is armed, surface remaining seconds
+  let fallbackDmEtaSeconds: number | null = null;
+  if (dmsQueued === 0 && autoDmFirstEligibleAt !== null) {
+    const elapsed = Date.now() - autoDmFirstEligibleAt;
+    const remaining = Math.max(0, AUTO_DM_DELAY_MS - elapsed);
+    fallbackDmEtaSeconds = Math.ceil(remaining / 1000);
+  }
+
+  return {
+    phase: dmsQueued === 0 ? "queued_waiting_dm" : "queued_dm_available",
+    players_queued: playersQueued,
+    dms_queued: dmsQueued,
+    blocking_reason: blockingReason,
+    queued_at: entry?.queuedAt?.toISOString() ?? null,
+    position,
+    total_in_queue: playersQueued + dmsQueued,
+    fallback_dm_eta_seconds: fallbackDmEtaSeconds,
+  };
+}
+
+/** Build queue status snapshot for a queued DM. Position is in dmQueue, blocking
+ *  reason reflects player count vs PARTY_SIZE. */
+function buildDmQueueStatus(userId: string): Record<string, unknown> {
+  const entry = dmQueue.find((q) => q.userId === userId);
+  const position = dmQueue.findIndex((q) => q.userId === userId) + 1;
+  const playersQueued = playerQueue.length;
+  const playersNeeded = Math.max(0, PARTY_SIZE - playersQueued);
+
+  return {
+    phase: playersQueued >= 2 ? "queued_players_available" : "queued_waiting_players",
+    players_queued: playersQueued,
+    dms_queued: dmQueue.length,
+    blocking_reason: playersNeeded > 0 ? `waiting_for_players (need ${playersNeeded} more)` : "match_forming",
+    queued_at: entry?.queuedAt?.toISOString() ?? null,
+    position,
+    players_needed: playersNeeded,
+    total_in_queue: playersQueued + dmQueue.length,
+  };
+}
+
 export function handleQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found. Create one first.", reason_code: "CHARACTER_NOT_FOUND" };
@@ -3492,9 +3551,16 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     }
   }
 
-  // Prevent duplicate queue entries
+  // Prevent duplicate queue entries — return 409 ALREADY_QUEUED with current
+  // queue state so the agent can distinguish "I'm already queued" from a true
+  // bad request and know whether to keep polling.
   if (playerQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the queue.", reason_code: "WRONG_STATE" };
+    return {
+      success: false,
+      error: "Already in the queue.",
+      reason_code: "ALREADY_QUEUED",
+      data: { queue_status: buildPlayerQueueStatus(userId) },
+    };
   }
 
   const entry: QueueEntry = {
@@ -3505,6 +3571,7 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
     personality: char.personality,
     playstyle: char.playstyle,
     role: "player",
+    queuedAt: new Date(),
   };
 
   playerQueue.push(entry);
@@ -3552,9 +3619,15 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
     return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
   }
 
-  // Prevent duplicate queue entries
+  // Prevent duplicate queue entries — same 409 ALREADY_QUEUED contract as the
+  // player handler.
   if (dmQueue.some((q) => q.userId === userId)) {
-    return { success: false, error: "Already in the DM queue.", reason_code: "WRONG_STATE" };
+    return {
+      success: false,
+      error: "Already in the DM queue.",
+      reason_code: "ALREADY_QUEUED",
+      data: { queue_status: buildDmQueueStatus(userId) },
+    };
   }
 
   const entry: QueueEntry = {
@@ -3565,6 +3638,7 @@ export function handleDMQueueForParty(userId: string): { success: boolean; data?
     personality: "",
     playstyle: "",
     role: "dm",
+    queuedAt: new Date(),
   };
 
   dmQueue.push(entry);

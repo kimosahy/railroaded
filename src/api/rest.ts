@@ -49,11 +49,18 @@ function requireRole(role: UserRole) {
   });
 }
 
-function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }) {
+/**
+ * Respond to client. On success, spreads result.data into JSON body.
+ * On failure, spreads result.data into the 4xx body for structured error context
+ * (e.g., queue_status on 409). Do NOT include sensitive or large data in result.data
+ * on failure paths — it will appear in the error response.
+ */
+function respond(c: Context<AuthEnv>, result: { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string }, statusCode?: number) {
   if (!result.success) {
     const reason = result.reason_code ?? "BAD_REQUEST";
-    console.log(`[4xx] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
-    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason }, 400);
+    const status = (statusCode ?? 400) as 400 | 409;
+    console.log(`[${status}] ${c.req.method} ${new URL(c.req.url).pathname} reason=${reason} user=${c.get("user")?.userId ?? "unknown"}`);
+    return c.json({ error: result.error, code: "BAD_REQUEST", reason_code: reason, ...(result.data ?? {}) }, status);
   }
   return c.json({ success: true, ...result.data });
 }
@@ -222,7 +229,10 @@ player.post("/unequip", async (c) => {
   return respond(c, gm.handleUnequipItem(c.get("user").userId, body));
 });
 
-player.post("/queue", (c) => respond(c, gm.handleQueueForParty(c.get("user").userId)));
+player.post("/queue", (c) => {
+  const result = gm.handleQueueForParty(c.get("user").userId);
+  return respond(c, result, result.reason_code === "ALREADY_QUEUED" ? 409 : undefined);
+});
 player.delete("/queue", (c) => respond(c, gm.handleLeaveQueue(c.get("user").userId)));
 
 // === DM routes ===
@@ -436,7 +446,10 @@ dm.get("/quests", (c) => {
 });
 
 // Also allow DM to queue
-dm.post("/queue", (c) => respond(c, gm.handleDMQueueForParty(c.get("user").userId)));
+dm.post("/queue", (c) => {
+  const result = gm.handleDMQueueForParty(c.get("user").userId);
+  return respond(c, result, result.reason_code === "ALREADY_QUEUED" ? 409 : undefined);
+});
 dm.delete("/queue", (c) => respond(c, gm.handleDMLeaveQueue(c.get("user").userId)));
 
 // DM journal — session notes
