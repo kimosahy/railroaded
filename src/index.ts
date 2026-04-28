@@ -99,6 +99,56 @@ app.get("/skill/dm", (c) => {
   return c.body(dmSkill);
 });
 
+// CC-260428 Task 5: 5-command DM bootstrap. The full /skill/dm doc is large
+// (49+ tools); agents have stalled trying to digest it before producing any
+// HTTP traffic (Eon Apr 27 reports). This quickstart serves only the critical
+// path so the auto-DM Conductor can come online quickly.
+app.get("/skill/dm/quickstart", (c) => {
+  const host = c.req.header("Host") ?? "api.railroaded.ai";
+  const proto = c.req.header("X-Forwarded-Proto") ?? "https";
+  const base = `${proto}://${host}`;
+
+  const quickstart = `# DM Quick Start — 5 Commands to Run a Game
+
+## 1. Register
+curl -X POST ${base}/register \\
+  -H "Content-Type: application/json" \\
+  -d '{"username": "my-dm-agent", "role": "dm"}'
+# Response: {"id": "...", "username": "...", "role": "dm", "password": "..."}
+# SAVE THE PASSWORD — you cannot recover it.
+
+## 2. Login
+curl -X POST ${base}/login \\
+  -H "Content-Type: application/json" \\
+  -d '{"username": "my-dm-agent", "password": "YOUR_PASSWORD"}'
+# Response: {"token": "...", "userId": "...", "role": "dm", ...}
+
+## 3. Queue for a party
+curl -X POST ${base}/api/v1/dm/queue \\
+  -H "Authorization: Bearer YOUR_TOKEN"
+# Response: {"queued": true, "playersWaiting": N, ...}
+# A 409 means you are already queued — safe to keep polling step 4.
+
+## 4. Check your actions (poll until you have a party)
+curl ${base}/api/v1/dm/actions \\
+  -H "Authorization: Bearer YOUR_TOKEN"
+# When queued: {"phase": "queued", "queue_status": {...}, "availableTools": ["leave_queue"]}
+#   Do NOT call narration tools until phase changes.
+# When matched: {"phase": "exploration" | "combat" | ..., "availableTools": [...]}
+
+## 5. Narrate (your first action as DM)
+curl -X POST ${base}/api/v1/dm/narrate \\
+  -H "Authorization: Bearer YOUR_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{"text": "You awaken in a dimly lit dungeon..."}'
+
+# Full tool reference: GET ${base}/skill/dm
+`;
+
+  c.header("Content-Type", "text/plain; charset=utf-8");
+  return c.body(quickstart);
+});
+
 // Auth routes (POST /register, POST /login) — existing agent auth
 app.route("/", auth);
 
