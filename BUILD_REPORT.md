@@ -2,7 +2,7 @@
 
 **Branch:** `atlas/session-survival` (off `origin/main` @ `73f530a`)
 **Spec:** `cc-spec-session-survival.md` (saved at repo root)
-**Status:** 5/5 tasks complete. Branch ready for Atlas QA. **Not pushed; no PR opened.**
+**Status:** 5/5 tasks complete + Task 1 fake-timer follow-up. Branch on origin, ready for Atlas QA. **No PR opened.**
 
 ---
 
@@ -15,6 +15,7 @@
 | `4618cf5` | Task 3 | Atlas build (Ram): P0-2 softlock recovery — 60s DM grace + auto-revive |
 | `402ec2f` | Task 4 | Atlas build (Ram): F-5 block room transitions during combat |
 | `811c51d` | Task 5 | Atlas build (Ram): P1-5 skill-check contract — handleSkillCheck + /skill-check route |
+| `12b09a3` | Task 1 follow-up | Atlas build (Ram): P0-3 fake-timer tests for tiered autopilot grace |
 
 ---
 
@@ -32,16 +33,17 @@ The repo's `./test-runner.sh` kills `bun test` at 30s (DB pool cleanup hangs). R
 | Task 3 | 117 | 0 | 0 | added 3 fake-timer tests in tests/softlock-recovery.test.ts, all pass |
 | Task 4 | 117 | 0 | 0 | added 2 cases in tests/move-combat-block.test.ts, all pass |
 | Task 5 | 117 | 0 | 0 | added 4 cases in tests/skill-check.test.ts, all pass |
+| Task 1 follow-up | 117 | 0 | 0 | added 3 fake-timer cases in tests/post-action-grace.test.ts, all pass |
 
-**Final isolated run** of the 9 files most likely to be affected:
+**Final isolated run** of the 10 files most likely to be affected:
 ```
-bun test tests/softlock-recovery.test.ts tests/move-combat-block.test.ts \
-         tests/skill-check.test.ts tests/game-manager.test.ts \
-         tests/mcp-sprint-j.test.ts tests/game-integration.test.ts \
-         tests/playtest-bugfix.test.ts tests/playtest-bugfix-r2.test.ts \
-         tests/combat.test.ts
+bun test tests/post-action-grace.test.ts tests/softlock-recovery.test.ts \
+         tests/move-combat-block.test.ts tests/skill-check.test.ts \
+         tests/game-manager.test.ts tests/mcp-sprint-j.test.ts \
+         tests/game-integration.test.ts tests/playtest-bugfix.test.ts \
+         tests/playtest-bugfix-r2.test.ts tests/combat.test.ts
 ```
-→ **277 pass / 2 todo / 0 fail** (738 expect() calls).
+→ **280 pass / 2 todo / 0 fail** (755 expect() calls).
 
 ---
 
@@ -68,7 +70,7 @@ Each smoke item was verified by an automated test rather than manual playtest (n
 | P0-3 | Attack alone does not auto-advance | `tests/mcp-sprint-j.test.ts` "attack alone does NOT auto-advance turn" — was failing on baseline, passes now |
 | P0-3 | Attack + bonus does auto-advance | `tests/mcp-sprint-j.test.ts` "attack + bonus action DOES auto-advance turn" |
 | P0-3 | `end_turn` still advances immediately | Existing `handleEndTurn` path unchanged; covered by `tests/game-manager.test.ts` "killing a monster removes it from initiative and ends combat" (rewired to walk initiative via end_turn under new contract) |
-| P0-3 | Grace timer fires at 10s with `reason: "post_action_grace_expired"` | Logic verified by `bun x tsc` (function shape matches spec); not exercised by a fake-timer test (Step 1d marked tests as MANDATORY only for Task 3 P0-2; included for that task) |
+| P0-3 | Grace timer fires at 10s with `reason: "post_action_grace_expired"` | `tests/post-action-grace.test.ts` (3 fake-timer cases): grace expiry advances with `post_action_grace_expired`, bonus-within-grace cancels grace and advances via `all_resources_used`, `end_turn`-within-grace cancels grace with no late fire |
 | P1-7 | All `exitCombat` sites are gated by `shouldCombatEnd` | Manual audit — 9 sites; 8 gated, 1 (`checkCombatTimeout`, line 758) intentionally unguarded per spec. Findings in commit `ecefc43` body. |
 | P1-7 | Edge-triggered `all_pcs_down_hostiles_remain` event fires only on transition | `checkAllPcsDownObservability` debounces via `lastAllPcsDownState` Map; flag cleared on combat / session end via `cancelAllAutopilotTimersForParty` (which both code paths exercise) |
 | P0-2 | `softlock_recovery_started` fires when all PCs unconscious+stable + no hostiles + non-combat phase | `tests/softlock-recovery.test.ts` Test 1 |
@@ -94,6 +96,7 @@ Each smoke item was verified by an automated test rather than manual playtest (n
 | `tests/softlock-recovery.test.ts` | NEW | 3 fake-timer tests for P0-2 (mandatory per spec §3g) |
 | `tests/move-combat-block.test.ts` | NEW | 2 tests for F-5 |
 | `tests/skill-check.test.ts` | NEW | 4 tests for P1-5 |
+| `tests/post-action-grace.test.ts` | NEW | 3 fake-timer tests for P0-3 grace timer (Task 1 follow-up — spec §1d) |
 | `tests/game-manager.test.ts` | MODIFIED | one test rewired for new tiered-autopilot contract (added handleEndTurn + getCurrentCombatant imports) |
 
 ---
@@ -109,9 +112,11 @@ None hit. No grep target was missing; no task required 3 retries; branch stayed 
 ```
 $ git status
 On branch atlas/session-survival
+Your branch is up to date with 'origin/atlas/session-survival'.
 nothing to commit, working tree clean
 
 $ git log origin/main..HEAD --oneline
+12b09a3 Atlas build (Ram): P0-3 fake-timer tests for tiered autopilot grace
 811c51d Atlas build (Ram): P1-5 skill-check contract — handleSkillCheck + /skill-check route
 402ec2f Atlas build (Ram): F-5 block room transitions during combat
 4618cf5 Atlas build (Ram): P0-2 softlock recovery — 60s DM grace + auto-revive
@@ -119,4 +124,4 @@ ecefc43 Atlas build (Ram): P1-7 audit + observability — edge-triggered all_pcs
 5b74e8c Atlas build (Ram): P0-3 tiered autopilot — cast no longer burns whole turn
 ```
 
-Branch is **NOT pushed**. **No PR opened.** Awaiting Atlas QA.
+Branch is on origin (`atlas/session-survival`). **No PR opened.** Awaiting Atlas QA.
