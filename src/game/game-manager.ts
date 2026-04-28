@@ -3812,10 +3812,25 @@ export function handleQueueForParty(userId: string): { success: boolean; data?: 
 // --- DM Tool Handlers ---
 
 export function handleDMQueueForParty(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
-  // Prevent re-queuing if DM already has an active party
+  // Prevent re-queuing if DM already has an active party.
+  // CC-260428 Task 7c (P2-9): if the party hasn't had an event in 5+ minutes,
+  // it's effectively orphaned (no narration, combat, chat — likely all PCs
+  // disconnected). Allow re-queue in that case. The 5-minute threshold is a
+  // pragmatic workaround; the real fix is proper session cleanup on disconnect
+  // (CC Doc 1's autopilot timer covers part of that).
+  // Empty events array is impossible for a real party as of this commit —
+  // formParty now logs `party_formed` so lastEvent is always set on a fresh
+  // party. No empty-events fallback needed.
   const existingParty = findDMParty(userId);
   if (existingParty && existingParty.session && existingParty.session.phase !== "ended") {
-    return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
+    const lastEvent = existingParty.events[existingParty.events.length - 1];
+    const STALE_THRESHOLD_MS = 5 * 60 * 1000;
+    if (lastEvent && (Date.now() - lastEvent.timestamp.getTime()) > STALE_THRESHOLD_MS) {
+      console.log(`[P2-9] DM ${userId} stale party ${existingParty.id} (last event ${lastEvent.timestamp.toISOString()}) — allowing re-queue`);
+      // Fall through to the queue-entry construction below.
+    } else {
+      return { success: false, error: "You already have an active party. Use /api/v1/dm/party-state to see it.", reason_code: "WRONG_STATE" };
+    }
   }
 
   // Prevent duplicate queue entries — same 409 ALREADY_QUEUED contract as the
@@ -6893,6 +6908,19 @@ function formParty(match: MatchResult): void {
   })();
 
   parties.set(partyId, party);
+
+  // CC-260428 Task 7c: log party_formed so the events array is non-empty for
+  // any real party. Without this, the P2-9 stale-party check below couldn't
+  // distinguish a brand-new party (events: []) from an orphaned one (also
+  // events: []) — either both block re-queue or both allow it. Logging on
+  // form gives a real timestamp for the staleness comparison and a signal
+  // for spectators that a session started.
+  logEvent(party, "party_formed", null, {
+    partyName,
+    memberCount: party.members.length,
+    dmUserId: match.dm.userId,
+    template: template?.name ?? null,
+  });
 
   // Track DM stats
   if (match.dm.userId) {

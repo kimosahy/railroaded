@@ -16,7 +16,7 @@
  * autoDmLog is module-level state that persists across tests; we snapshot the
  * length before each action and assert deltas instead of absolute counts.
  */
-import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import {
   handleCreateCharacter,
   handleQueueForParty,
@@ -81,6 +81,12 @@ describe("Auto-DM trigger (Task 4)", () => {
     if (ORIGINAL_PROVISION === undefined) delete process.env.RAILROADED_AUTO_DM_PROVISION;
     else process.env.RAILROADED_AUTO_DM_PROVISION = ORIGINAL_PROVISION;
   });
+
+  // After this file finishes, leave the in-memory state clean so test files
+  // that don't reset themselves (e.g. tests/post-action-grace.test.ts) start
+  // fresh. Without this, a leftover SYSTEM_DM_ID entry in dmQueue from test
+  // (a) can be picked up by subsequent files' setupCombat helpers.
+  afterAll(resetState);
 
   test("(a) provision enabled: 3 players, no DM, advance 60s → conductor queued + party forms", async () => {
     process.env.RAILROADED_AUTO_DM_PROVISION = "true";

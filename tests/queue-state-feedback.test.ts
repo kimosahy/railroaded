@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterAll } from "bun:test";
 import { Hono } from "hono";
 import auth from "../src/api/auth.ts";
 import rest from "../src/api/rest.ts";
@@ -17,13 +17,16 @@ const app = new Hono();
 app.route("/", auth);
 app.route("/api/v1", rest);
 
-beforeEach(() => {
+function resetState() {
   const { playerQueue, dmQueue, characters, parties } = getState();
   playerQueue.length = 0;
   dmQueue.length = 0;
   characters.clear();
   parties.clear();
-});
+}
+
+beforeEach(resetState);
+afterAll(resetState);
 
 async function registerAndLogin(role: "player" | "dm"): Promise<string> {
   const username = `qfeedback-${role}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

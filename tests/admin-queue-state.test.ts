@@ -18,18 +18,23 @@ const app = new Hono();
 app.route("/", auth);
 app.route("/api/v1", rest);
 
-beforeEach(() => {
-  process.env.ADMIN_SECRET = TEST_ADMIN_SECRET;
+function resetState() {
   const { playerQueue, dmQueue, characters, parties } = getState();
   playerQueue.length = 0;
   dmQueue.length = 0;
   characters.clear();
   parties.clear();
+}
+
+beforeEach(() => {
+  process.env.ADMIN_SECRET = TEST_ADMIN_SECRET;
+  resetState();
 });
 
 afterAll(() => {
   if (ORIGINAL_ADMIN_SECRET === undefined) delete process.env.ADMIN_SECRET;
   else process.env.ADMIN_SECRET = ORIGINAL_ADMIN_SECRET;
+  resetState();
 });
 
 async function registerAndLogin(role: "player" | "dm"): Promise<string> {
