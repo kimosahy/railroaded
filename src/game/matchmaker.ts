@@ -32,14 +32,15 @@ export const PARTY_SIZE_MAX = 20;
 // Keep PARTY_SIZE as alias for backward compat (used in queue messages)
 export const PARTY_SIZE = PARTY_SIZE_MIN;
 
-/** Sentinel userId for parties that formed without a real DM in the queue. */
+/** Sentinel userId for The Conductor auto-DM agent. */
 export const SYSTEM_DM_ID = "system-dm";
 
 /**
  * Attempt to form a party from the queue.
  * Returns a MatchResult if a valid party can be formed, null otherwise.
  * Requires at least 1 DM + 2 players. Takes up to 20 players.
- * A real DM is always required — no system-dm fallback.
+ * A real DM is required for standard matches. The Conductor (SYSTEM_DM_ID)
+ * serves as auto-DM fallback when provisioning is enabled (CC-260428 Task 4).
  */
 export function tryMatchParty(queue: QueueEntry[]): MatchResult | null {
   const players = queue.filter((e) => e.role === "player");
