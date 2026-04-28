@@ -17,9 +17,11 @@ import {
   handleCreateNpc,
   handleUpdateNpcDisposition,
   handleBonusAction,
+  handleEndTurn,
   getState,
   getCharacterForUser,
 } from "../src/game/game-manager.ts";
+import { getCurrentCombatant } from "../src/game/session.ts";
 
 // --- Helpers ---
 
@@ -440,9 +442,9 @@ describe("handleAttack", () => {
   test.todo("attack when unconscious (0 HP) → returns UNCONSCIOUS_ERROR (guard implemented in handleAttack)");
 
   test("killing a monster removes it from initiative and ends combat", async () => {
-    const { partyId, playerUserIds, dmUserId } = await createTestParty();
+    const { partyId, dmUserId } = await createTestParty();
     handleSpawnEncounter(dmUserId, { monsters: [{ template_name: "Goblin", count: 1 }] });
-    const { parties } = getState();
+    const { parties, characters } = getState();
     const party = parties.get(partyId)!;
     const monsterId = party.monsters[0]!.id;
 
@@ -450,11 +452,22 @@ describe("handleAttack", () => {
     party.monsters[0]!.hpCurrent = 1;
     party.monsters[0]!.ac = 1;
 
-    // Attack until monster dies (statistically near-certain within 20 tries)
+    // Walk initiative — current player attacks then ends turn (P0-3 tiered autopilot
+    // no longer auto-advances on action alone), monsters get skipped via end_turn.
     for (let i = 0; i < 20; i++) {
       if (!party.monsters.find((m) => m.id === monsterId)?.isAlive) break;
       if (party.session?.phase !== "combat") break;
-      handleAttack(playerUserIds[i % 4]!, { target_id: monsterId });
+      const current = getCurrentCombatant(party.session);
+      if (!current) break;
+      if (current.type === "player") {
+        const char = characters.get(current.entityId);
+        if (char) {
+          handleAttack(char.userId, { target_id: monsterId });
+          handleEndTurn(char.userId);
+        }
+      } else {
+        handleEndTurn(dmUserId);
+      }
     }
 
     const monster = party.monsters.find((m) => m.id === monsterId)!;

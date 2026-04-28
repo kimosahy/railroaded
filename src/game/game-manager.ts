@@ -263,6 +263,10 @@ const AUTOPILOT_TIMEOUT_MS = 45_000;
  *  Tunable: RAILROADED_POST_ACTION_GRACE_SECONDS env var. */
 const POST_ACTION_GRACE_MS = parseInt(process.env.RAILROADED_POST_ACTION_GRACE_SECONDS ?? "10", 10) * 1000;
 
+/** P1-7 observability: per-party flag tracking last emitted all-PCs-down-with-hostiles state.
+ *  Only logs on transition INTO the state (edge-triggered debounce). */
+const lastAllPcsDownState = new Map<string, boolean>();
+
 /** Matchmaker wait-window. Set to Date.now() when the FIRST player enters the queue.
  *  Cleared when a match fires or when the queue empties. */
 let matchmakerFirstQueueAt: number | null = null;
@@ -488,8 +492,10 @@ function cancelAutopilotTimer(partyId: string, entityId: string): void {
   }
 }
 
-/** Cancel all autopilot timers for a party (e.g. on combat/session end). */
+/** Cancel all autopilot timers for a party (e.g. on combat/session end).
+ *  Also clears the P1-7 all-PCs-down debounce flag so a fresh combat starts in a known state. */
 function cancelAllAutopilotTimersForParty(partyId: string): void {
+  lastAllPcsDownState.delete(partyId);
   for (const [key, timer] of autopilotTimers.entries()) {
     if (key.startsWith(`${partyId}:`)) {
       clearTimeout(timer);
@@ -520,6 +526,30 @@ function markCharacterAction(char: GameCharacter): void {
   char.lastActionAt = new Date();
   if (char.partyId) {
     cancelAutopilotTimer(char.partyId, char.id);
+  }
+}
+
+/**
+ * P1-7: Edge-triggered observability log for all-PCs-down-with-hostiles state.
+ * Call after any PC HP-zero / removal event. Only logs on TRANSITION into the
+ * down state (lastAllPcsDownState debounce). Flag clears when PCs come back up
+ * via the next call where !allPCsDown is observed, or via combat/session end.
+ */
+function checkAllPcsDownObservability(party: GameParty): void {
+  const allPCsDown = party.members.every((mid) => {
+    const m = characters.get(mid);
+    return !m || m.hpCurrent <= 0 || m.conditions.includes("unconscious") || m.conditions.includes("dead");
+  });
+  const hasHostiles = party.session?.initiativeOrder.some((s) => s.type === "monster") ?? false;
+  const wasDown = lastAllPcsDownState.get(party.id) ?? false;
+
+  if (allPCsDown && hasHostiles && !wasDown) {
+    lastAllPcsDownState.set(party.id, true);
+    logEvent(party, "all_pcs_down_hostiles_remain", null, {
+      monstersRemaining: party.session!.initiativeOrder.filter((s) => s.type === "monster").length,
+    });
+  } else if (!allPCsDown && wasDown) {
+    lastAllPcsDownState.set(party.id, false);
   }
 }
 
@@ -1678,6 +1708,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
           attackerName: monster.name,
           message: `${t.name} has fallen unconscious!`,
         });
+        checkAllPcsDownObservability(party);
       }
       results.push({ name: t.name, saved: save.success, saveRoll: save.roll.total, damage: dmg, droppedToZero: actuallyDropped });
     }
@@ -1737,6 +1768,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         attackerName: monster.name,
         message: `${target.name} has fallen unconscious!`,
       });
+      checkAllPcsDownObservability(party);
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -1899,6 +1931,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
           message: `${target.name} has dropped to 0 HP from ${monster.name}'s ${attack.name}!`,
         });
       }
+
+      checkAllPcsDownObservability(party);
     }
 
     logEvent(party, "monster_attack", monster.id, {
@@ -3263,6 +3297,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
   // If dead, remove from initiative
   if (result.dead && party.session) {
     party.session = removeCombatant(party.session, char.id);
+    checkAllPcsDownObservability(party);
     if (shouldCombatEnd(party.session)) {
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
@@ -4098,6 +4133,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       // Remove dead character from initiative to prevent softlock
       if (party.session) {
         party.session = removeCombatant(party.session, char.id);
+        checkAllPcsDownObservability(party);
         if (shouldCombatEnd(party.session)) {
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
@@ -4163,6 +4199,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
           message: `${char.name} has dropped to 0 HP from ${damageType} damage!`,
         });
       }
+
+      checkAllPcsDownObservability(party);
     }
   }
 
