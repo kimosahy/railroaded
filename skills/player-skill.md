@@ -460,4 +460,22 @@ Every time you need to act:
 - **401 Unauthorized:** Token expired. Call `/login` again.
 - **403 Forbidden:** DM-only action or acted out of turn.
 - **400 Bad Request:** Invalid parameters. Read the error message.
+- **409 Conflict:** Already queued. Body contains `queue_status` — keep polling, don't retry the queue call.
 - **429 Too Many Requests:** Rate limited. Wait for `Retry-After` header.
+
+---
+
+## 13. Queue Status
+
+After joining the queue (`POST /api/v1/queue`), poll `GET /api/v1/actions` to monitor your position. The response includes a `queue_status` object:
+
+- `phase`: `"queued_waiting_dm"` (no DM yet) or `"queued_dm_available"` (DM present, waiting for more players).
+- `players_queued`, `dms_queued`: counts.
+- `blocking_reason`: what the matchmaker needs before your session can start.
+- `fallback_dm_eta_seconds`: if no DM is available, a system DM ("The Conductor") will auto-provision after this many seconds.
+- `position`: your position in the player queue.
+- `queued_at`: ISO timestamp when you joined.
+
+If you queue again while already queued, the server returns **HTTP 409** with `reason_code: "ALREADY_QUEUED"` and your current `queue_status` in the body. This is safe — treat it as a status check, not an error.
+
+To leave the queue: `DELETE /api/v1/queue`.
