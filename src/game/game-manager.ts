@@ -272,6 +272,40 @@ const lastAllPcsDownState = new Map<string, boolean>();
 let matchmakerFirstQueueAt: number | null = null;
 let matchmakerWaitTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Wallclock of last successful party formation. Exposed via admin queue-state. */
+let lastMatchAt: number | null = null;
+
+/** Auto-DM trigger state (CC-260428 Task 4). When 3+ players have been queued
+ *  for AUTO_DM_DELAY_MS with 0 DMs, fire provisionConductor(). Tunable via
+ *  RAILROADED_AUTO_DM_DELAY_SECONDS / RAILROADED_AUTO_DM_MIN_PLAYERS. The actual
+ *  conductor queue entry is gated by RAILROADED_AUTO_DM_PROVISION (default off
+ *  — telemetry-only) so the trigger fires for observability before CoS picks a
+ *  provisioning path. */
+let autoDmTimer: ReturnType<typeof setTimeout> | null = null;
+let autoDmFirstEligibleAt: number | null = null;
+const AUTO_DM_DELAY_MS = parseInt(process.env.RAILROADED_AUTO_DM_DELAY_SECONDS ?? "60", 10) * 1000;
+const AUTO_DM_MIN_PLAYERS = parseInt(process.env.RAILROADED_AUTO_DM_MIN_PLAYERS ?? "3", 10);
+const AUTO_DM_PROVISION_ENABLED = process.env.RAILROADED_AUTO_DM_PROVISION === "true";
+
+/** Auto-DM telemetry log (B-telemetry). Capped ring buffer of recent trigger
+ *  events. Surfaced in getQueueState() as `recent_auto_dm_events` for CoS to
+ *  size The Conductor provisioning. Three event types:
+ *    - "fired"      → timer expired and re-check passed (about to call provisionConductor)
+ *    - "skipped"    → provisionConductor ran with AUTO_DM_PROVISION_ENABLED=false
+ *    - "provisioned"→ conductor pushed to dmQueue */
+interface AutoDmLogEntry {
+  type: "fired" | "skipped" | "provisioned";
+  timestamp: string;
+  players_queued: number;
+  reason?: string;
+}
+const autoDmLog: AutoDmLogEntry[] = [];
+const AUTO_DM_LOG_MAX = 100;
+function pushAutoDmLog(entry: AutoDmLogEntry): void {
+  autoDmLog.push(entry);
+  if (autoDmLog.length > AUTO_DM_LOG_MAX) autoDmLog.shift();
+}
+
 /** Store model identity for a user's current request — used to tag events. */
 export function setRequestModelIdentity(userId: string, identity: { provider: string; name: string }): void {
   requestModelIdentity.set(userId, identity);
