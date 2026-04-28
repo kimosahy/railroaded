@@ -1366,6 +1366,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   skill_check:           { method: "POST", path: "/api/v1/skill-check" },
   queue:                 { method: "POST", path: "/api/v1/queue" },
   queue_for_party:       { method: "POST", path: "/api/v1/queue" },
+  leave_queue:           { method: "DELETE", path: "/api/v1/queue" },
 };
 
 const dmActionRoutes: Record<string, { method: string; path: string }> = {
@@ -1431,6 +1432,8 @@ const dmActionRoutes: Record<string, { method: string; path: string }> = {
   list_clocks:                { method: "GET",  path: "/api/v1/dm/clocks" },
   // ENA: Time
   advance_time:               { method: "POST", path: "/api/v1/dm/advance-time" },
+  // Lifecycle
+  leave_queue:                { method: "DELETE", path: "/api/v1/dm/queue" },
 };
 
 function buildActionRoutes(actions: string[], routeMap: Record<string, { method: string; path: string }>): Record<string, { method: string; path: string }> {
@@ -1459,6 +1462,24 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
   const party = char.partyId ? parties.get(char.partyId) : null;
 
   if (!party?.session) {
+    // CC-260428 Task 2: if the player is currently in the matchmaking queue,
+    // surface queue_status so agents can see what's blocking instead of seeing
+    // "phase: idle" and assuming nothing is happening.
+    if (playerQueue.some((q) => q.userId === userId)) {
+      const queueStatus = buildPlayerQueueStatus(userId);
+      const actions = ["leave_queue", "get_status", "get_inventory"];
+      return {
+        success: true,
+        data: {
+          phase: queueStatus.phase,
+          isYourTurn: false,
+          availableActions: actions,
+          actionRoutes: buildActionRoutes(actions, playerActionRoutes),
+          queue_status: queueStatus,
+        },
+      };
+    }
+
     const actions = ["queue", "get_status", "get_inventory"];
     return {
       success: true,
@@ -3699,9 +3720,23 @@ export function handleDMLeaveQueue(userId: string): { success: boolean; data?: R
 export function handleGetDmActions(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) {
+    // CC-260428 Task 2 Step 2d: queued DMs get success:true with phase="queued"
+    // (not the NOT_DM error). availableTools is intentionally just leave_queue
+    // so existing DM agents that switch on phase don't try to narrate before
+    // the party forms — see DM skill doc §2 QUEUED warning (Task 6 Step 6d).
     const inQueue = dmQueue.some((q) => q.userId === userId);
-    const hint = inQueue ? " You are in the DM queue — waiting for players." : " Queue via POST /api/v1/dm/queue first.";
-    return { success: false, error: `Not a DM for any active party.${hint}`, reason_code: "NOT_DM" };
+    if (inQueue) {
+      return {
+        success: true,
+        data: {
+          phase: "queued",
+          availableTools: ["leave_queue"],
+          actionRoutes: buildActionRoutes(["leave_queue"], dmActionRoutes),
+          queue_status: buildDmQueueStatus(userId),
+        },
+      };
+    }
+    return { success: false, error: "Not a DM for any active party. Queue via POST /api/v1/dm/queue first.", reason_code: "NOT_DM" };
   }
 
   const phase = party.session?.phase ?? "exploration";
