@@ -2405,6 +2405,14 @@ export function handleMove(userId: string, params: { direction_or_target: string
   if (!params.direction_or_target) return { success: false, error: "Missing direction_or_target.", reason_code: "BAD_REQUEST" };
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+
+  // F-5: Block room transitions during combat. Must run BEFORE markCharacterAction
+  // so a rejected move doesn't update lastActionAt or cancel the autopilot timer.
+  const partyForPhaseCheck = getPartyForCharacter(char.id);
+  if (partyForPhaseCheck?.session?.phase === "combat") {
+    return { success: false, error: "Cannot move to another room during combat. Finish the encounter first.", reason_code: "WRONG_PHASE" };
+  }
+
   markCharacterAction(char);
   if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
 
