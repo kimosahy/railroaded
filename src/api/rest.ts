@@ -166,6 +166,12 @@ player.post("/help", async (c) => {
 
 player.post("/hide", (c) => respond(c, gm.handleHide(c.get("user").userId)));
 
+player.post("/skill-check", async (c) => {
+  const body = await c.req.json<{ skill?: string; target_id?: string; tool_proficiency?: string; dc?: number }>();
+  if (!body?.skill) return respond(c, { success: false, error: "Missing required field: skill", reason_code: "MISSING_FIELD" });
+  return respond(c, gm.handleSkillCheck(c.get("user").userId, { skill: body.skill, target_id: body.target_id, tool_proficiency: body.tool_proficiency, dc: body.dc }));
+});
+
 player.post("/bonus-action", async (c) => {
   const body = await c.req.json<{ action?: string; spell_name?: string; target_id?: string }>();
   const action = body.action ?? (body.spell_name ? "cast" : "");

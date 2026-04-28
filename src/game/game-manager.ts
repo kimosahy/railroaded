@@ -1329,6 +1329,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   pickup_item:           { method: "POST", path: "/api/v1/pickup" },
   equip_item:            { method: "POST", path: "/api/v1/equip" },
   unequip_item:          { method: "POST", path: "/api/v1/unequip" },
+  skill_check:           { method: "POST", path: "/api/v1/skill-check" },
   queue:                 { method: "POST", path: "/api/v1/queue" },
   queue_for_party:       { method: "POST", path: "/api/v1/queue" },
 };
@@ -2460,6 +2461,100 @@ export function handleMove(userId: string, params: { direction_or_target: string
       room: room?.name,
       description: room?.description,
       type: room?.type,
+    },
+  };
+}
+
+// P1-5: generalizable skill-check contract. Greenfield handler — agents
+// previously had no way to perform lockpicking, perception, athletics, etc.
+// and got back nothing useful. dc is optional (default 15, 5e DMG "medium").
+// PRESERVATION: do not restrict DM narrative tools per MF SPEC §3 — this is
+// a player-side handler, but kept open for use mid-combat (perception to
+// spot hidden, athletics to grapple, etc. — DC + DM context handle gating).
+export function handleSkillCheck(userId: string, params: {
+  skill: string;
+  target_id?: string;
+  tool_proficiency?: string;
+  dc?: number;
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session) return { success: false, error: "Not in an active session.", reason_code: "WRONG_STATE" };
+
+  // No combat-phase block — see header comment.
+
+  const skillAbilityMap: Record<string, keyof AbilityScores> = {
+    athletics: "str",
+    acrobatics: "dex", sleight_of_hand: "dex", stealth: "dex",
+    lockpicking: "dex", disarm_trap: "dex",
+    arcana: "int", history: "int", investigation: "int",
+    nature: "int", religion: "int",
+    animal_handling: "wis", insight: "wis", medicine: "wis",
+    perception: "wis", survival: "wis",
+    deception: "cha", intimidation: "cha", performance: "cha",
+    persuasion: "cha",
+  };
+
+  const normalizedSkill = params.skill.toLowerCase().replace(/\s+/g, "_");
+  const ability = skillAbilityMap[normalizedSkill];
+  if (!ability) {
+    const validSkills = Object.keys(skillAbilityMap).join(", ");
+    return { success: false, error: `Unknown skill: ${params.skill}. Valid skills: ${validSkills}`, reason_code: "INVALID_ENUM_VALUE" };
+  }
+
+  const d20 = roll("1d20");
+  const mod = abilityModifier(char.abilityScores[ability]);
+  const profBonus = proficiencyBonus(char.level);
+
+  // char.proficiencies (string[]) is the source of truth — no class→skill table.
+  const skillName = normalizedSkill.replace(/_/g, " ");
+  const isProficient = char.proficiencies.some(
+    (p) => p.toLowerCase().includes(skillName)
+  ) || (
+    // Tool proficiency fallback for thieves' tools (lockpicking / disarm_trap).
+    (normalizedSkill === "lockpicking" || normalizedSkill === "disarm_trap")
+    && (char.class.toLowerCase() === "rogue" || char.inventory?.some((i) => i.toLowerCase().includes("thieves")))
+  );
+
+  const totalMod = mod + (isProficient ? profBonus : 0);
+  const total = d20.total + totalMod;
+  const dc = params.dc ?? 15;
+  const success = total >= dc;
+
+  const narrative = success
+    ? `${char.name} succeeds at ${params.skill} (rolled ${d20.total} + ${totalMod} = ${total} vs DC ${dc}).`
+    : `${char.name} fails at ${params.skill} (rolled ${d20.total} + ${totalMod} = ${total} vs DC ${dc}).`;
+
+  logEvent(party, "skill_check", char.id, {
+    characterName: char.name,
+    skill: normalizedSkill,
+    ability,
+    roll: d20.total,
+    modifier: totalMod,
+    total,
+    dc,
+    success,
+    proficient: isProficient,
+    toolProficiency: params.tool_proficiency ?? null,
+  });
+
+  markCharacterAction(char);
+
+  return {
+    success: true,
+    data: {
+      skill: normalizedSkill,
+      ability,
+      roll: d20.total,
+      modifier: totalMod,
+      total,
+      dc,
+      success,
+      proficient: isProficient,
+      narrative,
     },
   };
 }
