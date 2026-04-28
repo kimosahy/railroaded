@@ -789,6 +789,7 @@ function checkCombatTimeout(party: GameParty): boolean {
     }
     stabilizeUnconsciousCharacters(party);
     snapshotCharacters(party);
+    checkSoftlockRecovery(party);
     return true;
   }
   return false;
@@ -1589,6 +1590,7 @@ export function handleAttack(userId: string, params: { target_id: string; weapon
         }
         stabilizeUnconsciousCharacters(party);
         snapshotCharacters(party);
+        checkSoftlockRecovery(party);
       }
     }
 
@@ -2011,6 +2013,7 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
       logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
       stabilizeUnconsciousCharacters(party);
       snapshotCharacters(party);
+      checkSoftlockRecovery(party);
     }
   } else {
     logEvent(party, "monster_action", monster.id, { monsterName: monster.name, action, outcome: `${monster.name} uses ${action}.` });
@@ -2234,6 +2237,7 @@ export function handleCast(userId: string, params: { spell_name: string; target_
               }
               stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
+              checkSoftlockRecovery(party);
             }
           }
         } else {
@@ -3175,6 +3179,7 @@ export function handleReaction(userId: string, params: { action: string; spell_n
               }
               stabilizeUnconsciousCharacters(party);
               snapshotCharacters(party);
+              checkSoftlockRecovery(party);
             }
           }
         }
@@ -3559,6 +3564,8 @@ export function handleNarrate(userId: string, params: {
   const party = findDMParty(userId);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "You are not a DM for any active party.", reason_code: "BAD_REQUEST" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Sprint M Task 3: duplicate narration suppression during combat stalls
   if (party.session) {
@@ -3639,6 +3646,8 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
   if (!party.session) return { success: false, error: "No active session.", reason_code: "WRONG_STATE" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Normalize flat format to array format
   let monsterList = params.monsters;
@@ -3813,6 +3822,8 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
 
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Check if this references a persistent NPC
   const npc = npcsMap.get(npcIdentifier);
@@ -4098,6 +4109,7 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
           logEvent(party, "combat_end", null, { xpAwarded: 0 });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
+          checkSoftlockRecovery(party);
         }
       }
     }
@@ -4216,6 +4228,8 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
 export function handleAdvanceScene(userId: string, params: { next_room_id?: string; exit_id?: string; room_id?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Accept next_room_id, exit_id, or room_id (agents send any of these)
   const nextRoom = params.next_room_id ?? params.exit_id ?? params.room_id;
@@ -4854,6 +4868,8 @@ export function handleEndSession(userId: string, params: { summary: string; comp
 
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
 
   // Strip any QA/debug markers before storing or surfacing the summary
   const cleanSummary = filterSummary(params.summary);
@@ -4867,6 +4883,7 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   }
 
   cancelAllAutopilotTimersForParty(party.id);
+  cancelSoftlockRecovery(party.id);
   logEvent(party, "session_end", null, { summary: cleanSummary, outcome: validOutcome });
 
   // Track lifetime stats for all party members
@@ -6539,6 +6556,154 @@ function stabilizeUnconsciousCharacters(party: GameParty): void {
   }
 }
 
+// --- P0-2: All-PCs-Down Softlock Recovery ---
+
+/** P0-2 softlock recovery state. Tracks per-party grace timer. */
+const softlockRecoveryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const SOFTLOCK_DM_GRACE_MS = parseInt(process.env.RAILROADED_DM_NARRATION_GRACE_SECONDS ?? "60", 10) * 1000;
+const SOFTLOCK_AUTO_REVIVE_HP = parseInt(process.env.RAILROADED_AUTO_REVIVE_HP ?? "1", 10);
+
+/**
+ * Detect all-PCs-unconscious-stable-no-hostiles state and initiate recovery.
+ * Called after exitCombat + stabilizeUnconsciousCharacters and on rehydration.
+ * Two-part recovery: 60s DM grace window, then auto-revive one PC at 1 HP.
+ * PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+ */
+export function checkSoftlockRecovery(party: GameParty): void {
+  if (!party.session) return;
+  // Only fire in non-combat phases (post-combat or exploration)
+  if (party.session.phase === "combat") return;
+
+  // Check: all PCs unconscious + stable. Dead characters don't block recovery.
+  // Note: "dead" condition is the canonical dead marker on GameCharacter
+  // (the runtime-added isAlive field is not declared on the type).
+  const allPCsDownStable = party.members.every((mid) => {
+    const m = characters.get(mid);
+    if (!m || m.conditions.includes("dead")) return true;
+    return m.hpCurrent === 0
+      && m.conditions.includes("unconscious")
+      && m.conditions.includes("stable");
+  });
+  if (!allPCsDownStable) return;
+
+  // Check: at least one PC alive (not all dead — TPK is handled separately)
+  const hasAlivePC = party.members.some((mid) => {
+    const m = characters.get(mid);
+    return m != null && !m.conditions.includes("dead");
+  });
+  if (!hasAlivePC) return;
+
+  // Check: no hostile combatants remaining
+  const hasHostiles = party.monsters.some((m) => m.isAlive);
+  if (hasHostiles) return;
+
+  // Already running a recovery timer for this party — idempotent
+  if (softlockRecoveryTimers.has(party.id)) return;
+
+  // --- Softlock detected. Begin recovery. ---
+
+  logEvent(party, "softlock_recovery_started", null, {
+    reason: "all_pcs_unconscious_stable_no_hostiles",
+    dmGraceSeconds: SOFTLOCK_DM_GRACE_MS / 1000,
+  });
+
+  // Inject prompt visible to DM via session state. No new event type — frontend
+  // has no consumer for system_dm_prompt; agents read this through GET handlers.
+  if (party.session) {
+    (party.session as unknown as { softlockDmPrompt?: { message: string; deadline_seconds: number } }).softlockDmPrompt = {
+      message: "All party members are unconscious but stable. No threats remain. "
+        + "Narrate the next 1 in-game hour — you may introduce a rescuer, a time-skip, "
+        + "or any narrative resolution. If you do not act within 60 seconds, "
+        + "the engine will auto-resolve via natural recovery.",
+      deadline_seconds: SOFTLOCK_DM_GRACE_MS / 1000,
+    };
+  }
+
+  const timer = setTimeout(() => {
+    // Race guard: cancelSoftlockRecovery may have fired between callback queue and execution.
+    if (!softlockRecoveryTimers.has(party.id)) return;
+    softlockRecoveryTimers.delete(party.id);
+
+    // Re-check: DM may have acted during the grace window
+    const stillSoftlocked = party.members.every((mid) => {
+      const m = characters.get(mid);
+      if (!m || m.conditions.includes("dead")) return true;
+      return m.hpCurrent === 0 && m.conditions.includes("unconscious");
+    });
+
+    if (!stillSoftlocked) {
+      logEvent(party, "softlock_recovery_cancelled", null, { reason: "dm_acted" });
+      return;
+    }
+
+    // Pick the first alive-but-unconscious PC in party.members order (deterministic).
+    const reviveTarget = party.members
+      .map((mid) => characters.get(mid))
+      .filter((m): m is GameCharacter =>
+        m != null && !m.conditions.includes("dead") && m.hpCurrent === 0
+        && m.conditions.includes("unconscious")
+        && m.conditions.includes("stable")
+      )[0];
+
+    if (!reviveTarget) {
+      // All PCs are dead (not just unconscious) — TPK already handled separately.
+      logEvent(party, "softlock_no_eligible_target", null, {
+        reason: "all_pcs_dead_or_no_stable_candidates",
+      });
+      return;
+    }
+
+    reviveTarget.hpCurrent = SOFTLOCK_AUTO_REVIVE_HP;
+    reviveTarget.conditions = reviveTarget.conditions.filter(
+      (c) => c !== "unconscious" && c !== "stable" && c !== "prone"
+    );
+    reviveTarget.deathSaves = resetDeathSaves();
+
+    logEvent(party, "softlock_auto_revive", reviveTarget.id, {
+      characterName: reviveTarget.name,
+      hpRestored: SOFTLOCK_AUTO_REVIVE_HP,
+      reason: "natural_recovery_1_ingame_hour",
+    });
+
+    // Use existing "narration" event type — frontend event-feed already renders these.
+    logEvent(party, "narration", null, {
+      text: `${reviveTarget.name} stirs awake, weak but alive. An hour has passed in silence.`,
+      source: "system",
+    });
+
+    broadcastToParty(party.id, {
+      type: "narration",
+      text: `${reviveTarget.name} stirs awake, weak but alive. An hour has passed in silence.`,
+    });
+  }, SOFTLOCK_DM_GRACE_MS);
+
+  softlockRecoveryTimers.set(party.id, timer);
+}
+
+/**
+ * Cancel softlock recovery if DM acts (narrates, heals, advances scene).
+ * Call this from DM action handlers via markDmActed.
+ */
+export function cancelSoftlockRecovery(partyId: string): void {
+  const timer = softlockRecoveryTimers.get(partyId);
+  if (timer) {
+    clearTimeout(timer);
+    softlockRecoveryTimers.delete(partyId);
+  }
+}
+
+/** Mark that the DM acted — cancels softlock recovery if active and clears the prompt flag.
+ *  PRESERVATION: do not restrict DM narrative tools per MF SPEC §3 */
+export function markDmActed(partyId: string): void {
+  cancelSoftlockRecovery(partyId);
+  const party = parties.get(partyId);
+  if (party?.session) {
+    const sess = party.session as unknown as { softlockDmPrompt?: unknown };
+    if (sess.softlockDmPrompt) delete sess.softlockDmPrompt;
+  }
+}
+
 function snapshotCharacters(party: GameParty): void {
   if (!party.dbReady) return;
   party.dbReady.then(() => {
@@ -6627,6 +6792,7 @@ function isTPK(party: GameParty): boolean {
  */
 function handleTPK(party: GameParty): void {
   cancelAllAutopilotTimersForParty(party.id);
+  cancelSoftlockRecovery(party.id);
   logEvent(party, "session_end", null, {
     summary: "Total Party Kill — all adventurers have fallen.",
     tpk: true,
@@ -7035,6 +7201,11 @@ export async function loadPersistedState(): Promise<number> {
       loaded++;
     }
 
+    // P0-2: re-detect softlock state after rehydration (in-memory timers were lost on restart).
+    for (const [, party] of parties) {
+      if (party.session) checkSoftlockRecovery(party);
+    }
+
     return loaded;
   } catch (err) {
     console.error("[DB] Failed to load persisted state:", err);
@@ -7117,6 +7288,12 @@ export async function loadPersistedCharacters(): Promise<number> {
       characters.set(charId, char);
       charactersByUser.set(userId, charId);
       loaded++;
+    }
+
+    // P0-2: re-detect softlock state after rehydration (covers cases where character
+    // state was rehydrated separately from the party-level loader above).
+    for (const [, party] of parties) {
+      if (party.session) checkSoftlockRecovery(party);
     }
 
     return loaded;
