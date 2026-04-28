@@ -538,6 +538,60 @@ function cancelAllAutopilotTimersForParty(partyId: string): void {
   }
 }
 
+/**
+ * Admin diagnostic snapshot — full state of the matchmaker for operators.
+ * Surfaced via GET /api/v1/admin/queue-state (CC-260428 Task 3).
+ *
+ * Includes:
+ *  - playerQueue + dmQueue with userId / character / queuedAt
+ *  - active sessions (party id, name, phase, dmUserId, member count)
+ *  - matchmaker wait-window state and auto-DM ETA
+ *  - lastMatchAt timestamp
+ *  - recent_auto_dm_events: last 20 entries from autoDmLog (the ring buffer
+ *    holds 100; we trim to 20 in the response so admins get a digestible
+ *    signal without dumping the full buffer)
+ */
+export function getQueueState(): Record<string, unknown> {
+  // SessionPhase doesn't include "ended" in the type, but the runtime does emit
+  // it. Other call sites in this file use the same `(phase as string) !== "ended"`
+  // shape (e.g. findDMParty) — match that to avoid a NEW tsc error vs baseline.
+  const activeParties = [...parties.values()].filter(
+    (p) => p.session && (p.session.phase as string) !== "ended"
+  );
+
+  return {
+    timestamp: new Date().toISOString(),
+    player_queue: playerQueue.map((q) => ({
+      userId: q.userId,
+      characterName: q.characterName,
+      characterClass: q.characterClass,
+      queuedAt: q.queuedAt?.toISOString() ?? null,
+    })),
+    dm_queue: dmQueue.map((q) => ({
+      userId: q.userId,
+      queuedAt: q.queuedAt?.toISOString() ?? null,
+    })),
+    active_sessions: activeParties.map((p) => ({
+      partyId: p.id,
+      partyName: p.name,
+      phase: p.session!.phase,
+      memberCount: p.members.length,
+      dmUserId: p.dmUserId,
+    })),
+    matchmaker: {
+      firstQueueAt: matchmakerFirstQueueAt ? new Date(matchmakerFirstQueueAt).toISOString() : null,
+      waitTimerActive: matchmakerWaitTimer !== null,
+      autoDmTimerActive: autoDmTimer !== null,
+      autoDmEtaSeconds: autoDmFirstEligibleAt
+        ? Math.max(0, Math.ceil((AUTO_DM_DELAY_MS - (Date.now() - autoDmFirstEligibleAt)) / 1000))
+        : null,
+      autoDmProvisionEnabled: AUTO_DM_PROVISION_ENABLED,
+    },
+    last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
+    recent_auto_dm_events: autoDmLog.slice(-20),
+  };
+}
+
 /** Clear the matchmaker wait-window timer and reset the first-queue anchor. */
 function clearMatchmakerWaitTimer(): void {
   if (matchmakerWaitTimer) {
@@ -6616,6 +6670,9 @@ function fallbackConnections() {
 }
 
 function formParty(match: MatchResult): void {
+  // CC-260428 Task 3: timestamp every successful match for the admin endpoint.
+  lastMatchAt = Date.now();
+
   const partyId = nextId("party");
 
   const memberIds = match.players.map((p) => p.characterId);
