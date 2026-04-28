@@ -628,8 +628,13 @@ function clearAutoDmTimer(): void {
  * implementation here; the trigger infrastructure does not change.
  *
  * Uses SYSTEM_DM_ID exported from matchmaker.ts — never define a parallel sentinel.
+ *
+ * Exported for tests: the duplicate-guard branch is unreachable via the timer
+ * because checkAutoDmTrigger's re-check returns early whenever dmQueue is
+ * non-empty. Direct invocation is the only way to exercise the guard's
+ * autoDmLog "skipped" reason="duplicate" telemetry.
  */
-function provisionConductor(): void {
+export function provisionConductor(): void {
   if (!isAutoDmProvisionEnabled()) {
     pushAutoDmLog({
       type: "skipped",
@@ -643,7 +648,16 @@ function provisionConductor(): void {
 
   // Duplicate guard: trigger can fire after a previous Conductor was already
   // queued (e.g. timer race during a queue churn). Don't push twice.
+  // Reuse the "skipped" type with reason="duplicate" so admins querying
+  // /api/v1/admin/queue-state see the prevented duplicate (vs the existing
+  // "provision_disabled" reason). No schema change.
   if (dmQueue.some((q) => q.userId === SYSTEM_DM_ID)) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "duplicate",
+    });
     console.log(`[AUTO-DM] Conductor already in queue — skipping duplicate provision`);
     return;
   }

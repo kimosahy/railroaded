@@ -23,6 +23,7 @@ import {
   handleDMQueueForParty,
   getQueueState,
   getState,
+  provisionConductor,
 } from "../src/game/game-manager.ts";
 import { SYSTEM_DM_ID } from "../src/game/matchmaker.ts";
 import type { AbilityScores } from "../src/types.ts";
@@ -175,38 +176,31 @@ describe("Auto-DM trigger (Task 4)", () => {
     expect(newEvents.length).toBe(0);
   });
 
-  test("(e) Conductor already in queue → auto-DM trigger never arms (eligibility check excludes Conductor)", async () => {
+  test("(e) duplicate guard: second provisionConductor call logs skipped+duplicate (delta=1)", async () => {
     process.env.RAILROADED_AUTO_DM_PROVISION = "true";
-    const before = logSnapshot();
 
-    // Hand-seed the Conductor as if a prior cycle queued it.
+    // First provisionConductor call: no Conductor present, queue is empty.
+    // Pushes "provisioned" + (since playerQueue is empty) doesn't form a
+    // party. dmQueue now has SYSTEM_DM_ID.
+    provisionConductor();
     const { dmQueue } = getState();
-    dmQueue.push({
-      userId: SYSTEM_DM_ID,
-      characterId: "",
-      characterClass: "fighter",
-      characterName: "The Conductor",
-      personality: "",
-      playstyle: "",
-      role: "dm",
-      queuedAt: new Date(),
-    });
+    expect(dmQueue.filter((q) => q.userId === SYSTEM_DM_ID).length).toBe(1);
 
-    // Add 3 players. checkAutoDmTrigger sees dmQueue.length > 0 and refuses
-    // to arm the timer. (Defense-in-depth: even if it did arm, the re-check
-    // and dmQueue.some(SYSTEM_DM_ID) duplicate guard inside provisionConductor
-    // would prevent a second push.)
-    await queueThreePlayers();
+    // Snapshot autoDmLog length right before the second call so we can
+    // assert exactly one new entry.
+    const beforeLen = logSnapshot().length;
 
-    // Advance to just before the standard 30s wait-window would fire a
-    // standard fallback match. Asserts auto-DM never fires in this state.
-    jest.advanceTimersByTime(29_000);
+    // Second call exercises the duplicate guard.
+    provisionConductor();
 
-    const conductors = dmQueue.filter((q) => q.userId === SYSTEM_DM_ID);
-    expect(conductors.length).toBe(1);
+    // Conductor count is still 1 — the guard prevented a duplicate push.
+    expect(dmQueue.filter((q) => q.userId === SYSTEM_DM_ID).length).toBe(1);
 
-    const newEvents = logsAfter(before);
-    expect(newEvents.some((e) => e.type === "fired")).toBe(false);
-    expect(newEvents.some((e) => e.type === "provisioned")).toBe(false);
+    // Exactly one new log entry, of type "skipped" with reason "duplicate".
+    const after = logSnapshot();
+    expect(after.length - beforeLen).toBe(1);
+    const newEntry = after[after.length - 1];
+    expect(newEntry?.type).toBe("skipped");
+    expect(newEntry?.reason).toBe("duplicate");
   });
 });
