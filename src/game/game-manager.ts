@@ -296,7 +296,9 @@ function isAutoDmProvisionEnabled(): boolean {
  *  events. Surfaced in getQueueState() as `recent_auto_dm_events` for CoS to
  *  size The Conductor provisioning. Three event types:
  *    - "fired"      → timer expired and re-check passed (about to call provisionConductor)
- *    - "skipped"    → provisionConductor ran with AUTO_DM_PROVISION_ENABLED=false
+ *    - "skipped"    → provisionConductor returned without pushing — `reason`
+ *                     distinguishes "provision_disabled" (flag off) from
+ *                     "duplicate" (Conductor already in queue)
  *    - "provisioned"→ conductor pushed to dmQueue */
 interface AutoDmLogEntry {
   type: "fired" | "skipped" | "provisioned";

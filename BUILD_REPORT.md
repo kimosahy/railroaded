@@ -1,8 +1,8 @@
 # BUILD_REPORT — CC-260428 Matchmaking + Bootstrap (Stage B)
 
-**Branch:** `atlas/matchmaking-bootstrap` (8 commits ahead of `origin/main`)
+**Branch:** `atlas/matchmaking-bootstrap` (10 commits ahead of `origin/main`)
 **Spec:** `cc-spec-matchmaking-bootstrap.md` (committed at repo root)
-**Status:** 7/7 tasks complete (8 commits including the leading scaffold commit). Ready for Atlas QA. **No PR opened.**
+**Status:** 7/7 tasks complete + Atlas QA follow-up landed. Ready for re-QA + merge.
 
 ---
 
@@ -18,6 +18,8 @@
 | `e142262` | Atlas build (Ram): Task 5 — GET /skill/dm/quickstart 5-command bootstrap |
 | `209b985` | Atlas build (Ram): Task 6 — skill doc updates (player queue + DM Sections 2-3) |
 | `a1a5a4c` | Atlas build (Ram): Task 7 — verification tests + P2-9 stale-party check |
+| `1d2753c` | Atlas build (Ram): BUILD_REPORT for CC-260428 matchmaking-bootstrap |
+| `631830c` | Atlas build (Ram): close autoDmLog telemetry gap on duplicate-guard path |
 
 The leading "Task 0" commit (`92ede54`) covers Task 4 Step 4a state declarations
 plus the B-telemetry array. Symbols declared there: `lastMatchAt`, `autoDmTimer`,
@@ -91,7 +93,7 @@ All §5 smoke checks are covered by the new test files. Per-check coverage:
 | **Auto-DM (b):** `RAILROADED_AUTO_DM_PROVISION=false` (default), 3 players, 60s → conductor NOT queued, telemetry "fired" + "skipped" | `tests/auto-dm-trigger.test.ts` | PASS |
 | **Auto-DM (c):** real DM joins at 30s → trigger never fires | `tests/auto-dm-trigger.test.ts` | PASS |
 | **Auto-DM (d):** 2 players (below threshold) → no trigger | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Auto-DM (e):** Conductor already in queue → trigger never re-arms (duplicate guard) | `tests/auto-dm-trigger.test.ts` | PASS |
+| **Auto-DM (e):** second `provisionConductor` call with Conductor already queued → guard pushes autoDmLog `type:"skipped"` `reason:"duplicate"`, dmQueue still has exactly 1 Conductor (delta = 1) | `tests/auto-dm-trigger.test.ts` | PASS |
 | **Quickstart:** `GET /skill/dm/quickstart` → text/plain with 5 numbered sections | `tests/dm-quickstart.test.ts` | PASS |
 | **P0-1:** 4 players + 0 DMs → no party formed | `tests/cc260428-verification.test.ts` | PASS |
 | **P2-10:** `handleMonsterAttack` with `target_name`, `handleVoiceNpc` with `message` | `tests/cc260428-verification.test.ts` | PASS |
