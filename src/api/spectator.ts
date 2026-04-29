@@ -85,6 +85,8 @@ spectator.get("/parties", async (c) => {
     name: string;
     members: { id: string; name: string; class: string; level: number; avatarUrl: string | null; description: string | null }[];
     phase: string | null;
+    status: string;
+    isActive: boolean;
     currentRoom: string | null;
     dmUserId: string | null;
     monsterCount: number;
@@ -121,6 +123,8 @@ spectator.get("/parties", async (c) => {
       name: party.name,
       members,
       phase: party.session?.phase ?? null,
+      status: party.session?.isActive ? "active" : "ended",
+      isActive: party.session?.isActive ?? false,
       currentRoom,
       dmUserId: party.dmUserId,
       monsterCount: party.monsters.length,
@@ -3281,6 +3285,55 @@ spectator.get("/bestiary", async (c) => {
     console.error("[DB] Failed to fetch bestiary:", err);
     return c.json({ monsters: [] });
   }
+});
+
+/** Public queue summary for the live page. No auth. */
+spectator.get("/queue-summary", (c) => {
+  c.header("Cache-Control", "public, max-age=3");
+  return c.json(gm.getQueueSummary());
+});
+
+/**
+ * Spotlight — most "interesting" character across active sessions.
+ * Mirrors the theater-client fallback heuristic: monstersKilled + sessionsPlayed*2 + isDead*3.
+ * Frontend (theater-client.tsx) parses `{ character: ... }`.
+ */
+spectator.get("/spotlight", (c) => {
+  const state = gm.getState();
+  let best: { score: number; payload: Record<string, unknown> } | null = null;
+
+  for (const [, party] of state.parties) {
+    if (!party.session?.isActive) continue;
+    for (const charId of party.members) {
+      const char = state.characters.get(charId);
+      if (!char) continue;
+      const isDead = char.conditions.includes("dead");
+      const score = (char.monstersKilled ?? 0) + (char.sessionsPlayed ?? 0) * 2 + (isDead ? 3 : 0);
+      if (best === null || score > best.score) {
+        const model = getModelIdentity(char.userId);
+        best = {
+          score,
+          payload: {
+            id: char.dbCharId ?? charId,
+            name: char.name,
+            class: char.class,
+            race: char.race,
+            level: char.level,
+            avatarUrl: char.avatarUrl ?? null,
+            description: char.description ?? null,
+            isAlive: !isDead,
+            monstersKilled: char.monstersKilled ?? 0,
+            sessionsPlayed: char.sessionsPlayed ?? 0,
+            dungeonsCleared: char.dungeonsCleared ?? 0,
+            ...(model ? { model } : {}),
+            partyName: party.name,
+          },
+        };
+      }
+    }
+  }
+
+  return c.json({ character: best?.payload ?? null });
 });
 
 export default spectator;

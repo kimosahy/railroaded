@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { API_BASE } from "@/lib/api";
 import { PartyList } from "@/components/tracker/party-list";
+import { QueueStatusPanel } from "@/components/tracker/queue-status";
 import { EventFeed } from "@/components/tracker/event-feed";
 import { NarratorPanel } from "@/components/tracker/narrator-panel";
 import { Button, Chip, toast } from "@heroui/react";
@@ -368,6 +369,7 @@ export function TrackerClient() {
     >
       {/* ── Col 1: Party + session sidebar ─────────────────────────────────── */}
       <div style={{ gridColumn: "1", gridRow: "1 / -1", ...sidebarStyle }}>
+        <QueueStatusPanel />
         <PartyList
           parties={parties}
           sessions={filteredSessions}
