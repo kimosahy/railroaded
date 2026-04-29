@@ -240,7 +240,10 @@ interface Stats {
 
 interface Party {
   id: string;
+  name: string;
+  phase: string | null;
   status: string;
+  isActive: boolean;
 }
 
 // ─── Narration Hero ───────────────────────────────────────────────────────────
@@ -264,7 +267,7 @@ export function NarrationHero() {
       const items: Narration[] = narData.narrations || [];
       setNarrations(items);
       const active = (partyData.parties || []).some(
-        (p: Party) => p.status === "active"
+        (p: Party) => p.isActive === true
       );
       setHasActiveSessions(active);
       setLoading(false);

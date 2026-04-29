@@ -85,6 +85,8 @@ spectator.get("/parties", async (c) => {
     name: string;
     members: { id: string; name: string; class: string; level: number; avatarUrl: string | null; description: string | null }[];
     phase: string | null;
+    status: string;
+    isActive: boolean;
     currentRoom: string | null;
     dmUserId: string | null;
     monsterCount: number;
@@ -121,6 +123,8 @@ spectator.get("/parties", async (c) => {
       name: party.name,
       members,
       phase: party.session?.phase ?? null,
+      status: party.session?.isActive ? "active" : "ended",
+      isActive: party.session?.isActive ?? false,
       currentRoom,
       dmUserId: party.dmUserId,
       monsterCount: party.monsters.length,
