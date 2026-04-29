@@ -115,6 +115,7 @@ export const ReasonCode = {
   NO_VALID_ACTION: "NO_VALID_ACTION",
   // Server
   SERVER_STATE_ERROR: "SERVER_STATE_ERROR",
+  RATE_LIMITED: "RATE_LIMITED",
   // Fallback — any call site not yet mapped. Removed in Pass 2.
   BAD_REQUEST: "BAD_REQUEST",
 } as const;
