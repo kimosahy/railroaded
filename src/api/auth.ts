@@ -328,6 +328,9 @@ export async function getAuthUser(
 
   // Renew on activity
   session.expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
+  // T-4: temporary diagnostic — confirms renewal fires for every authenticated
+  // request. TODO: remove after one playtest confirms no mid-session 401s.
+  console.log(`[AUTH-RENEW] Token renewed for user=${session.userId}, new expiry=${session.expiresAt.toISOString()}`);
 
   // Update DB if >1 min since last renewal (throttle)
   const lastRenewal = sessionRenewalTimestamps.get(raw);
