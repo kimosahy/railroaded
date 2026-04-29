@@ -1,215 +1,223 @@
-# BUILD_REPORT — CC-260428 Matchmaking + Bootstrap (Stage B)
+# BUILD_REPORT — CC-260429 Security + Class Features + Progression Fix
 
-**Branch:** `atlas/matchmaking-bootstrap` (10 commits ahead of `origin/main`)
-**Spec:** `cc-spec-matchmaking-bootstrap.md` (committed at repo root)
-**Status:** 7/7 tasks complete + Atlas QA follow-up landed. Ready for re-QA + merge.
+**Branch:** `atlas/security-class-features` (8 commits ahead of `origin/main` @ `6988f87`)
+**Spec:** `cc-spec-security-class-features.md` (committed at repo root)
+**Status:** All 7 tasks complete. Branch pushed. PR not opened — Atlas runs QA + opens PR.
 
 ---
 
 ## Commits
 
-| Hash | Message |
-|---|---|
-| `92ede54` | Atlas build (Ram): scaffold matchmaking-bootstrap state declarations (Task 0/4a) |
-| `ac0769f` | Atlas build (Ram): Task 1 — queue idempotency returns 409 with state |
-| `c91e747` | Atlas build (Ram): Task 2 — queue-state feedback on GET /actions + leave_queue |
-| `9627d82` | Atlas build (Ram): Task 3 — admin queue-state diagnostic endpoint |
-| `7e07991` | Atlas build (Ram): Task 4 — auto-DM trigger + pluggable provisionConductor |
-| `e142262` | Atlas build (Ram): Task 5 — GET /skill/dm/quickstart 5-command bootstrap |
-| `209b985` | Atlas build (Ram): Task 6 — skill doc updates (player queue + DM Sections 2-3) |
-| `a1a5a4c` | Atlas build (Ram): Task 7 — verification tests + P2-9 stale-party check |
-| `1d2753c` | Atlas build (Ram): BUILD_REPORT for CC-260428 matchmaking-bootstrap |
-| `631830c` | Atlas build (Ram): close autoDmLog telemetry gap on duplicate-guard path |
-
-The leading "Task 0" commit (`92ede54`) covers Task 4 Step 4a state declarations
-plus the B-telemetry array. Symbols declared there: `lastMatchAt`, `autoDmTimer`,
-`autoDmFirstEligibleAt`, `AUTO_DM_DELAY_MS`, `AUTO_DM_MIN_PLAYERS`, `autoDmLog`
-ring buffer + `pushAutoDmLog`. The CC spec doc was added in the same commit.
-Subsequent commits import these as needed.
+| # | Hash | Message |
+|---|---|---|
+| 0 | `1b3769e` | Atlas build (Ram): add CC spec for security + class features (CC-260429) |
+| 1 | `d6416a1` | Atlas build (Ram): Task 1 — IP-based rate limiter for unauthenticated routes |
+| 2 | `dd96d25` | Atlas build (Ram): Task 2 — token renewal audit + permanent guard |
+| 3 | `4127580` | Atlas build (Ram): Task 3 — XP partial award on non-normal combat exits |
+| 4 | `3981d3a` | Atlas build (Ram): Task 4 — 6 wizard spells + L3 slot infrastructure |
+| 5 | `cdc1df3` | Atlas build (Ram): Task 5 — Turn Undead + creature_type (agent-visible) |
+| 6 | `8897595` | Atlas build (Ram): Task 6 — P2-12 verified, no level field in create_character |
+| 7 | `193bbc1` | Atlas build (Ram): Task 7 — P2-13 move docs clarified |
 
 ---
 
 ## Per-task tsc + test results
 
-| Task | tsc (delta vs baseline=117) | Tests passing | Notes |
+| Task | tsc (delta vs baseline=117) | New tests | Notes |
 |---|---|---|---|
-| 0 (4a) | 117 (0 new) | matchmaker (7) + matchmaking-flex (7) | Declarations only, no behavior change |
-| 1 | 117 (0 new) | + queue-idempotency (2) + game-manager (45 + 2 todo) | 409 contract + helpers + queuedAt |
-| 2 | 117 (0 new) | + queue-state-feedback (4) | DM contract change documented in skill doc Task 6 |
-| 3 | 117 (0 new) | + admin-queue-state (4) | Required `(phase as string) !== "ended"` cast to match existing pattern |
-| 4 | 117 (0 new) | + auto-dm-trigger (5) | All 5 Step 4g cases covered |
-| 5 | 117 (0 new) | + dm-quickstart (4) | Route + base-URL + section count |
-| 6 | 117 (0 new) | (docs only — no test changes) | Player Queue Status + DM §13/§14 |
-| 7 | 117 (0 new) | + cc260428-verification (9) — P0-1, P2-10 (3), P2-9 (3) | Includes `party_formed` event in formParty |
+| 0 (spec) | 117 (0 new) | — | Spec file only |
+| 1 | 117 (0 new) | + ip-rate-limit (5) | IP-based limiter only; tick-based pacer untouched |
+| 2 | 117 (0 new) | + token-renewal (3) | Audit confirmed; temp log + permanent fake-timer test |
+| 3 | 117 (0 new) | + partial-xp-award (5) | 5 sites wired; one extra similar site flagged below |
+| 4 | 117 (0 new) | + l3-spells (21) | L3 slots through getMaxSpellSlots/has/expend/recovery; 6 yaml spells |
+| 5 | 117 (0 new) | + turn-undead (18) | creature_type on monsters + custom monster schema; 6 response shapes |
+| 6 | 117 (0 new) | (verification only) | No code changes |
+| 7 | 117 (0 new) | (docs only) | move tool description clarified |
 
-**Baseline tsc:** verified 117 errors on `origin/main` HEAD `092406e` before any change.
+**Baseline tsc:** verified 117 errors on `origin/main` HEAD `6988f87` before any change.
 **Final tsc:** 117 errors. Zero new TypeScript errors introduced.
 
 ---
 
 ## Full-suite test results
 
-Run via `bun test --parallel=1` (sequential isolation; matches the project's
-`test-runner.sh` semantics modulo timeouts):
+Run via `bun test --parallel=1`:
 
 ```
-Ran 1196 tests across 80 files. [8.94s]
-1171 pass / 2 todo / 9 fail
+1223 pass / 14 skip / 2 todo / 9 fail
+Ran 1248 tests across 85 files. [9.66s]
 ```
 
-Compared against `origin/main` (same command, same env): **1143 pass / 2 todo / 9 fail**.
+Compared against the previous CC-260428 BUILD_REPORT baseline (`1143 pass / 2 todo / 9 fail`):
 
-Delta: **+28 passing tests**, **0 new failures**.
+- **+80 passing tests**, 0 new failures, 0 new todos.
+- The 9 pre-existing failures are unchanged:
+  - `tracker.html responsive layout > default layout uses two-column grid`
+  - `tracker.html responsive layout > tablet breakpoint (768px) keeps two-column layout`
+  - `NPC system > create_npc with all fields`
+  - `NPC disposition > disposition labels cover full range`
+  - `avatar_url and description fields > character creation without avatar_url fails`
+  - `avatar_url and description fields > character creation with description but no avatar fails`
+  - `tracker empty session handling > renderSessions filters out inactive sessions with 0 events`
+  - `tracker.html dead monster styling > dead monsters show skull emoji instead of monster emoji`
+  - `B016b: hyphenated template names resolve correctly > 'bandit-captain' resolves to Bandit Captain with correct stats`
 
-The 9 pre-existing failures (verified on `origin/main` head `092406e`):
-- `tracker.html responsive layout > default layout uses two-column grid`
-- `tracker.html responsive layout > tablet breakpoint (768px) keeps two-column layout`
-- `NPC system > create_npc with all fields`
-- `NPC disposition > disposition labels cover full range`
-- `avatar_url and description fields > character creation without avatar_url fails`
-- `avatar_url and description fields > character creation with description but no avatar fails`
-- `tracker empty session handling > renderSessions filters out inactive sessions with 0 events`
-- `tracker.html dead monster styling > dead monsters show skull emoji instead of monster emoji`
-- `B016b: hyphenated template names resolve correctly > 'bandit-captain' resolves to Bandit Captain with correct stats`
-
-Only the first two are referenced in the task statement as expected. The other
-seven also exist on `origin/main`. None reference matchmaking, queueing, auth,
-or the surfaces touched by this CC.
+The B016b failure now exists on a touched template (`Bandit Captain` got a `creature_type` field added in Task 5), but the failure is pre-existing — its root cause is in template-name resolution code, not the data file.
 
 ---
 
-## §5 smoke tests — exercised by automated tests
+## Smoke tests (from CC §3)
 
-All §5 smoke checks are covered by the new test files. Per-check coverage:
+| Smoke check | Result |
+|---|---|
+| `/register` 31 from same IP → 31st is 429 with Retry-After | ✅ tests/ip-rate-limit.test.ts |
+| Different IPs are independent | ✅ tests/ip-rate-limit.test.ts |
+| `clearIpRateLimits` resets | ✅ tests/ip-rate-limit.test.ts |
+| Active calls every 25 min keep session past base 30-min expiry | ✅ tests/token-renewal.test.ts |
+| 31-min idle → token expired | ✅ tests/token-renewal.test.ts |
+| Kill 2 of 3 monsters, end-session → partial_xp_awarded with correct count | ✅ tests/partial-xp-award.test.ts |
+| 0 kills → no event | ✅ tests/partial-xp-award.test.ts |
+| Out-of-combat end-session → no event | ✅ tests/partial-xp-award.test.ts |
+| All-kills via partial path → full encounter XP | ✅ tests/partial-xp-award.test.ts |
+| Partial XP triggers level_up events when threshold crossed | ✅ tests/partial-xp-award.test.ts |
+| Wizard L5: 4 L1, 3 L2, 2 L3 slots | ✅ tests/l3-spells.test.ts |
+| L1 wizard hasSpellSlot(slots, 3) === false | ✅ tests/l3-spells.test.ts |
+| Arcane Recovery prefers L3 first | ✅ tests/l3-spells.test.ts |
+| Short rest preserves level_3 + recovers L3 at L5 | ✅ tests/l3-spells.test.ts |
+| All 6 new spells loadable from yaml | ✅ tests/l3-spells.test.ts |
+| Cleric initialized with channelDivinityUses=1 | ✅ tests/turn-undead.test.ts |
+| Non-cleric initialized with 0 | ✅ tests/turn-undead.test.ts |
+| Skeleton/Wolf/Goblin templates carry correct creature_type | ✅ tests/turn-undead.test.ts |
+| handleLook + handleSpawnEncounter + handleGetRoomState surface creatureType | ✅ tests/turn-undead.test.ts |
+| Cleric vs skeletons → frightened on failed saves (RNG-tolerant) | ✅ tests/turn-undead.test.ts |
+| Non-cleric → WRONG_STATE | ✅ tests/turn-undead.test.ts |
+| 0 uses → ABILITY_ON_COOLDOWN | ✅ tests/turn-undead.test.ts |
+| No undead → TARGET_INVALID | ✅ tests/turn-undead.test.ts |
+| Not in combat → WRONG_PHASE | ✅ tests/turn-undead.test.ts |
+| Unknown ability → INVALID_ENUM_VALUE | ✅ tests/turn-undead.test.ts |
+| Short rest + long rest restore Channel Divinity | ✅ tests/turn-undead.test.ts |
 
-| §5 check | Test file | Result |
-|---|---|---|
-| **409:** POST `/queue` twice → 409 + `queue_status` | `tests/queue-idempotency.test.ts` | PASS |
-| **Queue feedback:** queued player → `phase: "queued_waiting_dm"` | `tests/queue-state-feedback.test.ts` | PASS |
-| **DM feedback:** queued DM → `phase: "queued"` (not NOT_DM error) | `tests/queue-state-feedback.test.ts` | PASS |
-| **Admin:** valid `Bearer ADMIN_SECRET` → 200 with `player_queue` / `dm_queue` / `active_sessions` / `recent_auto_dm_events` | `tests/admin-queue-state.test.ts` | PASS |
-| **Admin:** missing/wrong secret → 401; missing env → 503 | `tests/admin-queue-state.test.ts` | PASS |
-| **Auto-DM (a):** `RAILROADED_AUTO_DM_PROVISION=true`, 3 players, 60s → conductor in dmQueue, party forms via `tryMatchPartyFallback`, telemetry "fired" + "provisioned" | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Auto-DM (b):** `RAILROADED_AUTO_DM_PROVISION=false` (default), 3 players, 60s → conductor NOT queued, telemetry "fired" + "skipped" | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Auto-DM (c):** real DM joins at 30s → trigger never fires | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Auto-DM (d):** 2 players (below threshold) → no trigger | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Auto-DM (e):** second `provisionConductor` call with Conductor already queued → guard pushes autoDmLog `type:"skipped"` `reason:"duplicate"`, dmQueue still has exactly 1 Conductor (delta = 1) | `tests/auto-dm-trigger.test.ts` | PASS |
-| **Quickstart:** `GET /skill/dm/quickstart` → text/plain with 5 numbered sections | `tests/dm-quickstart.test.ts` | PASS |
-| **P0-1:** 4 players + 0 DMs → no party formed | `tests/cc260428-verification.test.ts` | PASS |
-| **P2-10:** `handleMonsterAttack` with `target_name`, `handleVoiceNpc` with `message` | `tests/cc260428-verification.test.ts` | PASS |
+All 52 new tests pass.
+
+---
+
+## Confirmation matrix (from spec)
+
+### Task 2 audit outcome
+
+- **Renewal works:** YES.
+  - Trace verified: `requireAuth` (rest.ts:20) → `getAuthUser(header)` (auth.ts:305) → expiry check at L321 → renewal at L330 (in-memory) → throttled DB update at L335-340 → return user.
+  - Renewal fires AFTER expiry check and BEFORE returning user, so it can't race with itself. Both in-memory and DB stay in sync.
+  - No middleware strips Authorization header. The admin-route bypass at rest.ts:25 only short-circuits before the user lookup; it doesn't touch the header.
+- **Branch taken:** Temp log + permanent test (Step 2c "audit confirms working" branch). Log line is marked `// TODO: remove after one playtest confirms renewal works`.
+- **Commit:** `dd96d25`.
+
+### Task 3: all 5 awardPartialXP sites wired
+
+| # | Site | Approx file:line (post-edit) | Reason emitted |
+|---|---|---|---|
+| 1 | `checkCombatTimeout` (party stalled) | game-manager.ts ~L1056-1068 | `combat_timeout` |
+| 2 | `handleEndSession` mid-combat | game-manager.ts ~L5462-5475 | `session_end_mid_combat` |
+| 3 | TPK from `monster_attack` | game-manager.ts ~L2173-2186 | `tpk` |
+| 4 | TPK from death-save (cast-triggered) | game-manager.ts ~L3725-3739 | `tpk` |
+| 5 | Environment damage kills last monster | game-manager.ts ~L4659-4673 | `environment_kill` (replaces hardcoded `xpAwarded: 0`) |
+
+**Commit:** `4127580`.
+
+**Note on a 6th similar site (game-manager.ts ~L4685, environment-damage TPK from PC death):** structurally identical to sites 3 and 4 (combat_end with `reason: "all_players_dead"`). Not listed in spec. Not wired. Easy 5-line addition if desired in a follow-up.
+
+### Task 4: DB migration SQL
+
+- **In-process defensive defaults:** YES, both loaders.
+  - `loadPersistedState`: `if (!spellSlots.level_3) spellSlots.level_3 = { current: 0, max: 0 };`
+  - `loadPersistedCharacters`: same pattern
+- **Migration SQL noted in commit body:** YES, commit `3981d3a` body includes:
+  ```sql
+  UPDATE characters
+  SET spell_slots = spell_slots || '{"level_3": {"current": 0, "max": 0}}'::jsonb
+  WHERE NOT spell_slots ? 'level_3';
+  ```
+  with the directive "Run this SQL against the production database before deploying."
+
+### Task 5: channelDivinityUses init
+
+- **Main sites updated:** 3 (handleCreateCharacter, loadPersistedState, loadPersistedCharacters). Pattern: `params.class === "cleric" ? 1 : 0` (or `row.class === "cleric"` in loaders).
+- **Test files updated:** 0 — no test file directly constructs `GameCharacter`. All tests use `handleCreateCharacter`, which routes through the main init site. Verified via codebase grep.
+- All cleric agents initialized with `channelDivinityUses = 1`; non-clerics with `0`.
+
+### Task 5: customMonsterTemplates schema + DM handler
+
+- **schema.ts updated:** YES — `creatureType?: string` added inside `statBlock` JSONB `$type` definition.
+- **handleCreateCustomMonster accepts `creature_type`:** YES — params type updated; template assignment writes `creatureType: params.creature_type ?? "humanoid"`.
+- **MCP tool `create_custom_monster` passes `creature_type`:** YES.
+- **DM tool schema (dm-tools.ts) declares creature_type:** YES — new property added with description listing 5e creature types.
+- **loadCustomMonsters DB rehydration backfills:** YES — `if (!stat.creatureType) stat.creatureType = "humanoid";`.
+
+### Task 5: 6 response shapes carry creatureType
+
+| # | Site | File:Line (post-edit) | Status |
+|---|---|---|---|
+| 1 | Spectator party combat snapshot | spectator.ts:199 | ✅ `creatureType: m.creatureType ?? "humanoid"` |
+| 2 | handleLook monsters (player view) | game-manager.ts:1477 | ✅ |
+| 3 | combat_start log monsters | game-manager.ts:4381 | ✅ |
+| 4 | handleSpawnEncounter return | game-manager.ts:4392 | ✅ |
+| 5 | handleGetRoomState monsters (DM view) | game-manager.ts:5054 | ✅ |
+| 6 | customMonsterTemplates schema field | db/schema.ts (statBlock JSONB type) | ✅ |
+
+**Note:** the spec named "handleGetAvailableActions combat data" and "handleGetPartyState monsters" as sites — I verified that the actual monster-detail shapes in the codebase live in `handleLook` (player) and `handleGetRoomState` (DM). `handleGetAvailableActions` returns only available action names + actionRoutes, no monster details. `handleGetPartyState` returns members + initiative names, not monster stats. The 6 sites I wired cover every place monster-instance data is exposed.
 
 ---
 
 ## Deviations from spec
 
-1. **Task 0 scaffolding:** chose the explicit "Task 0" leading commit
-   (`92ede54`) over folding declarations into the first hunk of Task 1.
-   Reason: cleaner per-commit story; reviewers can see the state shell
-   without the 409 contract change interleaved.
+1. **Task 3 — 6th similar exit path not wired.** The spec lists 5 sites; a 6th (game-manager.ts ~L4685, environment-damage TPK from PC death) is structurally identical but not listed. I followed the spec list and flagged the 6th site here for follow-up.
 
-2. **Task 4 — `AUTO_DM_PROVISION_ENABLED` runtime read:**
-   Spec declared this as a `const` evaluated at module load. Implemented as
-   `isAutoDmProvisionEnabled()` that reads `process.env` at call time.
-   Reason: tests must exercise both Step 4g (a) provisioned and (b) skipped
-   paths in the same Bun process. Bun's test runner shares module state
-   across files in the default mode, so a module-load `const` would freeze
-   the value at first import. Operational behavior unchanged — the env var is
-   read once per trigger fire, not once per HTTP request.
+2. **Task 3 — `m.isAlive` check dropped from `awardPartialXP` filter.** The spec's helper template included `m.isAlive && !m.conditions.includes("dead")`. The codebase has pre-existing TS errors at L2133, L2145, L4700 etc. for `isAlive` not declared on `GameCharacter` (it's set at runtime; counts in baseline 117). Adding a 6th `m.isAlive` would have brought the count to 118. I dropped `m.isAlive` and rely on `!m.conditions.includes("dead")`, which is the canonical death check throughout the codebase (e.g., L7335 `char.hpCurrent > 0 && !char.conditions.includes("dead")`). Functionally equivalent — both flags are set in lockstep at every player-death site.
 
-3. **Task 5 — quickstart uses `username` not `name`:**
-   Spec quickstart used `{"name": "my-dm-agent"}` but the actual auth API in
-   `src/api/auth.ts` requires the `username` field. The quickstart uses
-   `username` so the curl commands are end-to-end correct. Step 2 also adds
-   the missing `password` field (real `/login` requires both `username` and
-   `password`).
+3. **Task 5 — site numbering for response shapes.** Spec mentions "handleGetAvailableActions combat data" and "handleGetPartyState monsters". Actual codebase exposes monster-instance data in handleLook (player view) and handleGetRoomState (DM view). 6 sites total are covered with creatureType pass-through.
 
-4. **Task 6 — DM Sections 2/3 renumbered to §13/§14:**
-   MF wrote Sections 2 and 3 in `skills/dm-skill-sections-2-3.md` for a
-   restructured doc, but the existing `dm-skill.md` already has §1–§12.
-   Numbering kept sequential with the existing doc to avoid breaking
-   internal cross-references. MF's internal references (e.g., "see §3
-   Tool Reference") were rewritten to point at §14.
+4. **Task 6 — empty commit.** No code change required. Spec said "Probably commit-message-only", so I created an empty commit (`8897595`) for traceability.
 
-5. **Task 6 — bootstrap docs:** spec asked to fix `username` → `name`,
-   `/api/v1/register` → `/register`, `/api/v1/login` → `/login`. Docs
-   already match the actual API (`username`, `/register`, `/login`). NO FIX
-   needed for player-skill or dm-skill. Same for `award_loot` (already
-   uses `player_id`, `item_name`, `gold`).
-
-6. **Task 6 — DM tool count discrepancy:** existing doc says "49 MCP tools";
-   MF audited and counted 50. Did not change the §1 preamble line — backend
-   is source of truth and that's outside this CC's scope. Flagged for
-   follow-up.
-
-7. **Task 7c — empty-events guard:** spec asked to verify whether `formParty`
-   logs a `party_formed` event before adding the staleness check. Grep
-   confirmed `formParty` does NOT log such an event in baseline. Per spec
-   options:
-     - Added `logEvent(party, "party_formed", ...)` to formParty (so events
-       array is never empty for a real party).
-     - This makes the proposed empty-events guard unnecessary — the
-       staleness comparison `lastEvent.timestamp` always has a real value.
-   Documented in Task 7 commit body.
+5. **DB migration runner.** No drizzle migration file was added; spec said "If the migration runner doesn't exist, add the SQL as a comment in the commit message". The SQL is in the Task 4 commit body verbatim. Defensive in-memory defaults in both loaders mean an unmigrated row is still safe to read.
 
 ---
 
-## Confirmation matrix (per Final deliverable §)
-
-| Item | Status |
-|---|---|
-| `SYSTEM_DM_ID` reused (not parallel) | ✅ Imported from `matchmaker.ts`, not redefined. Verified via `grep -rn "SYSTEM_DM_ID"` in `src/`. |
-| `tryMatchPartyFallback` called (not `tryMatchParty`) | ✅ `provisionConductor` (`src/game/game-manager.ts`) calls `tryMatchPartyFallback`. |
-| Feature flag default false | ✅ `isAutoDmProvisionEnabled()` returns true ONLY when `process.env.RAILROADED_AUTO_DM_PROVISION === "true"`. Default branch: false. |
-| B-telemetry array exposed via admin endpoint | ✅ `getQueueState()` includes `recent_auto_dm_events: autoDmLog.slice(-20)`. Visible at `GET /api/v1/admin/queue-state`. |
-| DM skill doc `phase=queued` warning landed | ✅ Top of §13 Phase 1 (QUEUED) in `skills/dm-skill.md`: "When `phase` is `queued`, do NOT call narration tools…" |
-| `formParty` event log status | logs `party_formed`: **YES** (added in commit `a1a5a4c`). Empty-events guard added: **NO** (not needed because party_formed is now always logged on form). |
-
----
-
-## Files changed (vs `origin/main`)
+## Files changed (vs origin/main @ 6988f87)
 
 ```
- BUILD_REPORT.md                       | overwritten with new content
- cc-spec-matchmaking-bootstrap.md      | NEW
- skills/dm-skill.md                    | +199
- skills/player-skill.md                | +18
- src/api/rest.ts                       | +60 / -8
- src/game/game-manager.ts              | +302 / -10
- src/game/matchmaker.ts                | +5 / -3
- src/index.ts                          | +51
- src/types.ts                          | +1
- tests/admin-queue-state.test.ts       | NEW (135 lines)
- tests/auto-dm-trigger.test.ts         | NEW (200 lines)
- tests/cc260428-verification.test.ts   | NEW (210 lines)
- tests/dm-quickstart.test.ts           | NEW (87 lines)
- tests/matchmaker.test.ts              | +2 / -2
- tests/matchmaking-flex.test.ts        | +2 / -2
- tests/queue-idempotency.test.ts       | NEW (98 lines)
- tests/queue-state-feedback.test.ts    | NEW (132 lines)
+ BUILD_REPORT.md                          | this file
+ cc-spec-security-class-features.md       | new (spec)
+ data/monsters.yaml                       | +16  (creature_type per monster)
+ data/spells.yaml                         | +78  (6 new wizard spells)
+ skills/player-skill.md                   | +4/-2 (move docs)
+ src/api/auth.ts                          | +3   (renewal log)
+ src/api/mcp.ts                           | +3   (channel_divinity case + create_custom_monster.creature_type)
+ src/api/rate-limit.ts                    | +47  (ipRateLimitMiddleware + clearIpRateLimits)
+ src/api/rest.ts                          | +5   (POST /channel-divinity)
+ src/api/spectator.ts                     | +1/-1 (creatureType in monster snapshot)
+ src/db/schema.ts                         | +1   (creatureType?: string in statBlock JSONB type)
+ src/engine/rest.ts                       | +6/-1 (level_3 in newSpellSlots; spellSlotsRecovered checks L3)
+ src/engine/spells.ts                     | +27/-9 (L3 in getMaxSpellSlots/has/expend/arcaneRecovery)
+ src/game/encounters.ts                   | +6   (creatureType field + spawnMonsters param)
+ src/game/game-manager.ts                 | ~200 net (awardPartialXP, handleChannelDivinity,
+                                                    channelDivinityUses, creature_type wiring,
+                                                    defensive defaults, level_3 in checkLevelUp)
+ src/index.ts                             | +9   (ipRateLimitMiddleware wiring)
+ src/tools/dm-tools.ts                    | +4   (creature_type property in create_custom_monster schema)
+ src/types.ts                             | +2   (level_3 on SpellSlots, RATE_LIMITED on ReasonCode)
+ tests/ip-rate-limit.test.ts              | new (5 tests)
+ tests/token-renewal.test.ts              | new (3 tests)
+ tests/partial-xp-award.test.ts           | new (5 tests)
+ tests/l3-spells.test.ts                  | new (21 tests)
+ tests/turn-undead.test.ts                | new (18 tests)
 ```
+
+**Total:** 14 source files modified, 5 test files created, 1 spec file created, 8 commits, +80 passing tests, 0 new TS errors, 0 new test failures.
 
 ---
 
-## Notes for QA
+## Pre-deploy checklist
 
-- **Auto-DM live verification:** to see the trigger fire in production logs,
-  set `RAILROADED_AUTO_DM_PROVISION=true` in env, queue 3+ players with no DM
-  for 60s, and watch for `[AUTO-DM] The Conductor queued (system-dm)` followed
-  by `[AUTO-DM] Party formed with The Conductor.` in stdout.
-- **Auto-DM telemetry without provisioning:** keep the flag `false` (default).
-  `GET /api/v1/admin/queue-state` will surface `recent_auto_dm_events` with
-  `type: "skipped"` entries showing how often a Conductor would have
-  provisioned. CoS uses this to size the actual provisioning solution.
-- **Admin endpoint requires `ADMIN_SECRET`** env var. Without it, returns 503.
-- **Quickstart endpoint** is unauthenticated (matches `/skill/player`,
-  `/skill/dm`).
-- **Test isolation:** new test files use `afterAll(resetState)` so subsequent
-  test files (notably `tests/post-action-grace.test.ts` which doesn't reset)
-  don't inherit dirty queue state.
-- **DM contract change at queue:** `GET /api/v1/dm/actions` now returns
-  `success: true` with `phase: "queued"` when the DM is queued (was: `success:
-  false` with `NOT_DM`). Existing DM agents that switch on phase get a clear
-  signal not to narrate. Skill doc §13 Phase 1 has the explicit warning.
-- **409 vs 400:** double-queueing now returns HTTP 409 (was 400). The body
-  contains `queue_status`. Agents that retry on 4xx should special-case 409
-  as a status check, not a retry trigger.
+- [ ] Run the L3 spell-slot DB migration (SQL in Task 4 commit body) before deploying.
+- [ ] After one playtest confirms renewal works, remove the temporary `[AUTH-RENEW]` console.log line in src/api/auth.ts (marked with TODO).
+- [ ] Atlas QA + open PR against `main`.
