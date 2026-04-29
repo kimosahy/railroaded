@@ -649,6 +649,31 @@ export function getQueueState(): Record<string, unknown> {
   };
 }
 
+/** Public queue summary — counts only, no PII. For live page / spectator UI. */
+export function getQueueSummary(): Record<string, unknown> {
+  const activeParties = [...parties.values()].filter(
+    (p) => p.session && (p.session.phase as string) !== "ended" && p.session.isActive
+  );
+  return {
+    players_queued: playerQueue.length,
+    dms_queued: dmQueue.length,
+    active_sessions: activeParties.length,
+    blocking_reason:
+      dmQueue.length === 0 && playerQueue.length > 0
+        ? "waiting_for_dm"
+        : playerQueue.length < PARTY_SIZE && playerQueue.length > 0
+          ? `waiting_for_players (need ${PARTY_SIZE - playerQueue.length} more)`
+          : playerQueue.length === 0
+            ? "no_players_queued"
+            : "match_forming",
+    fallback_dm_eta_seconds:
+      dmQueue.length === 0 && autoDmFirstEligibleAt !== null && AUTO_DM_DELAY_MS > 0
+        ? Math.max(0, Math.ceil((AUTO_DM_DELAY_MS - (Date.now() - autoDmFirstEligibleAt)) / 1000))
+        : null,
+    last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
+  };
+}
+
 /** Clear the matchmaker wait-window timer and reset the first-queue anchor. */
 function clearMatchmakerWaitTimer(): void {
   if (matchmakerWaitTimer) {

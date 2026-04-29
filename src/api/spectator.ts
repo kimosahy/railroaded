@@ -3287,4 +3287,10 @@ spectator.get("/bestiary", async (c) => {
   }
 });
 
+/** Public queue summary for the live page. No auth. */
+spectator.get("/queue-summary", (c) => {
+  c.header("Cache-Control", "public, max-age=3");
+  return c.json(gm.getQueueSummary());
+});
+
 export default spectator;
