@@ -340,6 +340,8 @@ async function executeToolCall(
       return gm.handleShortRest(userId);
     case "long_rest":
       return gm.handleLongRest(userId);
+    case "channel_divinity":
+      return gm.handleChannelDivinity(userId, { ability: args.ability as string });
     case "party_chat":
       return gm.handlePartyChat(userId, { message: args.message as string });
     case "whisper":
@@ -444,6 +446,7 @@ async function executeToolCall(
         special_abilities: args.special_abilities as { name: string; description: string }[] | undefined,
         xp_value: args.xp_value as number | undefined,
         loot_table: args.loot_table as { item_name: string; weight: number; quantity: number }[] | undefined,
+        creature_type: args.creature_type as string | undefined,
       });
     case "list_monster_templates":
       return gm.handleListCustomMonsters(userId);

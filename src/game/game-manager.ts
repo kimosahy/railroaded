@@ -128,6 +128,9 @@ interface GameCharacter extends CharacterSheet {
   safetyRefusals: number;
   chatMessages: number;
   tacticalChats: number;
+  /** Channel Divinity uses remaining. Clerics get 1 at L1, 2 at L6.
+   *  Resets on short or long rest. Non-clerics: 0. */
+  channelDivinityUses: number;
 }
 
 interface GameParty {
@@ -479,6 +482,7 @@ const monsterTemplates = new Map<string, {
   vulnerabilities?: string[];
   immunities?: string[];
   resistances?: string[];
+  creatureType?: string;
 }>();
 
 let idCounter = 1;
@@ -1279,6 +1283,7 @@ export async function handleCreateCharacter(userId: string, params: {
     safetyRefusals: 0,
     chatMessages: 0,
     tacticalChats: 0,
+    channelDivinityUses: params.class === "cleric" ? 1 : 0,
   };
 
   characters.set(id, character);
@@ -1469,7 +1474,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
       type: room.type,
       features: room.features,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, condition: describeMonsterCondition(m), conditions: m.conditions })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, condition: describeMonsterCondition(m), conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       partyMembers: party.members
         .map((mid) => characters.get(mid))
         .filter(Boolean)
@@ -1608,6 +1613,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   death_save:            { method: "POST", path: "/api/v1/death-save" },
   short_rest:            { method: "POST", path: "/api/v1/short-rest" },
   long_rest:             { method: "POST", path: "/api/v1/long-rest" },
+  channel_divinity:      { method: "POST", path: "/api/v1/channel-divinity" },
   party_chat:            { method: "POST", path: "/api/v1/chat" },
   whisper:               { method: "POST", path: "/api/v1/whisper" },
   journal_add:           { method: "POST", path: "/api/v1/journal" },
@@ -2980,6 +2986,10 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   char.hpCurrent = result.hpAfter;
   char.hitDice = { ...char.hitDice, current: result.hitDiceRemaining };
   char.spellSlots = result.newSpellSlots;
+  // P1-6: Channel Divinity recharges on a short rest. L1 cleric → 1 use; L6 → 2.
+  if (char.class === "cleric") {
+    char.channelDivinityUses = 1;
+  }
 
   return {
     success: true,
@@ -3016,6 +3026,10 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   char.hitDice = { ...char.hitDice, current: result.hitDiceTotal };
   char.spellSlots = result.newSpellSlots;
   char.relentlessEnduranceUsed = false;
+  // P1-6: Channel Divinity recharges on a long rest as well.
+  if (char.class === "cleric") {
+    char.channelDivinityUses = 1;
+  }
   // Clear conditions (unconscious, stable, etc.) but preserve "dead" — though we already block dead above
   char.conditions = char.conditions.filter((c) => c === "dead");
 
@@ -3026,6 +3040,100 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
       hpAfter: result.hpAfter,
       hitDiceRecovered: result.hitDiceRecovered,
       spellSlots: result.newSpellSlots,
+    },
+  };
+}
+
+/**
+ * P1-6: Channel Divinity — clerics. Currently only "turn_undead" implemented.
+ * Each undead within range makes a WIS save vs spell save DC; failures get the
+ * "frightened" condition (decorative — engine doesn't enforce frightened mechanics yet).
+ */
+export function handleChannelDivinity(userId: string, params: {
+  ability: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
+  if (char.class !== "cleric") {
+    return { success: false, error: "Only clerics can use Channel Divinity.", reason_code: "WRONG_STATE" };
+  }
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Channel Divinity can only be used during combat.", reason_code: "WRONG_PHASE" };
+  }
+
+  if (char.channelDivinityUses <= 0) {
+    return { success: false, error: "No Channel Divinity uses remaining. Take a short or long rest to regain uses.", reason_code: "ABILITY_ON_COOLDOWN" };
+  }
+
+  if (params.ability !== "turn_undead") {
+    return { success: false, error: `Unknown Channel Divinity ability: ${params.ability}. Available: turn_undead`, reason_code: "INVALID_ENUM_VALUE" };
+  }
+
+  const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+  const undead = party.monsters.filter((m) => m.isAlive && m.creatureType === "undead");
+
+  if (undead.length === 0) {
+    return { success: false, error: "No undead creatures present to turn.", reason_code: "TARGET_INVALID" };
+  }
+
+  char.channelDivinityUses--;
+  markCharacterAction(char);
+
+  const results: { monsterName: string; roll: number; dc: number; saved: boolean }[] = [];
+  for (const monster of undead) {
+    const wisMod = abilityModifier(monster.abilityScores.wis);
+    const saveRoll = roll("1d20");
+    const total = saveRoll.total + wisMod;
+    const saved = total >= dc;
+
+    if (!saved) {
+      // The frightened condition is decorative for now — engine doesn't enforce
+      // disadvantage / "must move away" behavior. Tracks intent so DM agents and
+      // future spectator UI can see the cleric's effect on the encounter.
+      if (!monster.conditions.includes("frightened")) {
+        monster.conditions.push("frightened");
+      }
+    }
+
+    results.push({
+      monsterName: monster.name,
+      roll: saveRoll.total,
+      dc,
+      saved,
+    });
+  }
+
+  const turned = results.filter((r) => !r.saved);
+  const resisted = results.filter((r) => r.saved);
+
+  logEvent(party, "channel_divinity", char.id, {
+    characterName: char.name,
+    ability: "turn_undead",
+    dc,
+    undeadTargeted: undead.length,
+    turned: turned.map((r) => r.monsterName),
+    resisted: resisted.map((r) => r.monsterName),
+    usesRemaining: char.channelDivinityUses,
+  });
+
+  // Consume action — same pattern as handleAttack/handleCast/handleDodge
+  const resources = getTurnResources(party, char.id);
+  setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  checkAutoAdvanceTurn(party, char.id);
+
+  return {
+    success: true,
+    data: {
+      ability: "turn_undead",
+      dc,
+      results,
+      turned: turned.length,
+      resisted: resisted.length,
+      usesRemaining: char.channelDivinityUses,
+      turnStatus: makeTurnStatus(party, char.id),
     },
   };
 }
@@ -4243,6 +4351,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
           attacks: [{ name: "Attack", to_hit: 3, damage: "1d6+1", type: "slashing" }],
           specialAbilities: [],
           xpValue: 50,
+          creatureType: "humanoid",
         },
       };
     }
@@ -4269,7 +4378,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   party.session = newSession;
 
   logEvent(party, "combat_start", null, {
-    monsters: monsters.map((m) => ({ name: m.name, templateName: m.templateName, hp: m.hpMax, ac: m.ac })),
+    monsters: monsters.map((m) => ({ name: m.name, templateName: m.templateName, hp: m.hpMax, ac: m.ac, creatureType: m.creatureType ?? "humanoid" })),
     initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
   });
   notifyTurnChange(party);
@@ -4280,7 +4389,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   return {
     success: true,
     data: {
-      monsters: monsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpMax, ac: m.ac })),
+      monsters: monsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpMax, ac: m.ac, creatureType: m.creatureType ?? "humanoid" })),
       initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative, type: e.type })),
       phase: "combat",
     },
@@ -4942,7 +5051,7 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
     data: {
       room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       suggestedEncounter,
       lootTable,
       sessionTheme,
@@ -6697,6 +6806,7 @@ export function handleCreateCustomMonster(userId: string, params: {
   loot_table?: { item_name: string; weight: number; quantity: number }[];
   avatar_url?: string;
   lore?: string;
+  creature_type?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
@@ -6747,6 +6857,7 @@ export function handleCreateCustomMonster(userId: string, params: {
     vulnerabilities: params.vulnerabilities ?? [],
     immunities: params.immunities ?? [],
     resistances: params.resistances ?? [],
+    creatureType: params.creature_type ?? "humanoid",
   };
 
   monsterTemplates.set(params.name, template);
@@ -7498,14 +7609,16 @@ export function loadMonsterTemplate(name: string, template: {
   specialAbilities: string[];
   xpValue: number;
   lootTable?: LootTableEntry[];
+  creatureType?: string;
 }): void {
-  monsterTemplates.set(name, template);
+  monsterTemplates.set(name, { ...template, creatureType: template.creatureType ?? "humanoid" });
 }
 
 // --- Data loading ---
 
 interface YAMLMonster {
   name: string;
+  creature_type?: string;
   hp_max: number;
   ac: number;
   ability_scores: AbilityScores;
@@ -7562,6 +7675,7 @@ export function initGameData(dataDir?: string): void {
           weight: e.weight,
           quantity: e.quantity,
         })),
+        creatureType: m.creature_type ?? "humanoid",
       });
     }
     console.log(`  Loaded ${monsters.length} monster templates`);
@@ -7746,6 +7860,7 @@ export async function loadPersistedState(): Promise<number> {
           safetyRefusals: row.safetyRefusals ?? 0,
           chatMessages: row.chatMessages ?? 0,
           tacticalChats: row.tacticalChats ?? 0,
+          channelDivinityUses: row.class === "cleric" ? 1 : 0,
         };
 
         characters.set(charId, char);
@@ -7893,6 +8008,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         goldEarned: row.goldEarned ?? 0,
         relentlessEnduranceUsed: false,
         lastActionAt: new Date(),
+        channelDivinityUses: row.class === "cleric" ? 1 : 0,
       };
 
       characters.set(charId, char);
@@ -7955,6 +8071,8 @@ export async function loadCustomMonsters(): Promise<number> {
         console.warn(`[DB] Custom monster "${row.name}" has no hpMax — skipping`);
         continue;
       }
+      // P1-6: defensive default for older rows persisted before creatureType existed.
+      if (!stat.creatureType) stat.creatureType = "humanoid";
       monsterTemplates.set(row.name, stat);
       loaded++;
     }

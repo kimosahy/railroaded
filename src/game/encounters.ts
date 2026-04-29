@@ -33,6 +33,10 @@ export interface MonsterInstance {
   isAlive: boolean;
   lootTable?: LootTableEntry[];
   rechargeTracker: Record<string, boolean>; // attack name → available (true = ready to use)
+  /** P1-6: 5e creature_type (humanoid|beast|undead|monstrosity|dragon|fey|fiend...).
+   * Drives Turn Undead targeting and future typed-targeting spells.
+   * Defensive default "humanoid" everywhere this is read. */
+  creatureType: string;
 }
 
 export interface EncounterState {
@@ -56,6 +60,7 @@ export function spawnMonsters(
       specialAbilities: string[];
       xpValue: number;
       lootTable?: LootTableEntry[];
+      creatureType?: string;
     };
   }[]
 ): MonsterInstance[] {
@@ -90,6 +95,7 @@ export function spawnMonsters(
         isAlive: true,
         lootTable: group.template.lootTable ? [...group.template.lootTable] : undefined,
         rechargeTracker,
+        creatureType: group.template.creatureType ?? "humanoid",
       });
       counter++;
     }

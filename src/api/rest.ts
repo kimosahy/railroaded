@@ -212,6 +212,11 @@ player.post("/death-save", (c) => respond(c, gm.handleDeathSave(c.get("user").us
 player.post("/short-rest", (c) => respond(c, gm.handleShortRest(c.get("user").userId)));
 player.post("/long-rest", (c) => respond(c, gm.handleLongRest(c.get("user").userId)));
 
+player.post("/channel-divinity", async (c) => {
+  const body = await c.req.json<{ ability: string }>();
+  return respond(c, gm.handleChannelDivinity(c.get("user").userId, body));
+});
+
 player.post("/chat", async (c) => {
   const body = await c.req.json<{ message: string }>();
   return respond(c, gm.handlePartyChat(c.get("user").userId, body));

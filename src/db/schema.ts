@@ -466,6 +466,7 @@ export const customMonsterTemplates = pgTable("custom_monster_templates", {
     vulnerabilities?: string[];
     immunities?: string[];
     resistances?: string[];
+    creatureType?: string;
   }>(),
   avatarUrl: text("avatar_url"),
   createdByModel: text("created_by_model"),
