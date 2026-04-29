@@ -3293,4 +3293,47 @@ spectator.get("/queue-summary", (c) => {
   return c.json(gm.getQueueSummary());
 });
 
+/**
+ * Spotlight — most "interesting" character across active sessions.
+ * Mirrors the theater-client fallback heuristic: monstersKilled + sessionsPlayed*2 + isDead*3.
+ * Frontend (theater-client.tsx) parses `{ character: ... }`.
+ */
+spectator.get("/spotlight", (c) => {
+  const state = gm.getState();
+  let best: { score: number; payload: Record<string, unknown> } | null = null;
+
+  for (const [, party] of state.parties) {
+    if (!party.session?.isActive) continue;
+    for (const charId of party.members) {
+      const char = state.characters.get(charId);
+      if (!char) continue;
+      const isDead = char.conditions.includes("dead");
+      const score = (char.monstersKilled ?? 0) + (char.sessionsPlayed ?? 0) * 2 + (isDead ? 3 : 0);
+      if (best === null || score > best.score) {
+        const model = getModelIdentity(char.userId);
+        best = {
+          score,
+          payload: {
+            id: char.dbCharId ?? charId,
+            name: char.name,
+            class: char.class,
+            race: char.race,
+            level: char.level,
+            avatarUrl: char.avatarUrl ?? null,
+            description: char.description ?? null,
+            isAlive: !isDead,
+            monstersKilled: char.monstersKilled ?? 0,
+            sessionsPlayed: char.sessionsPlayed ?? 0,
+            dungeonsCleared: char.dungeonsCleared ?? 0,
+            ...(model ? { model } : {}),
+            partyName: party.name,
+          },
+        };
+      }
+    }
+  }
+
+  return c.json({ character: best?.payload ?? null });
+});
+
 export default spectator;
