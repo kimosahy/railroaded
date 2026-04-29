@@ -61,6 +61,39 @@ describe("GET /spectator/queue-summary", () => {
   });
 });
 
+describe("GET /spectator/parties contract", () => {
+  test("each party in the list has status:string and isActive:boolean", async () => {
+    // Form a party so the list has at least one entry.
+    const pids = [uid("p"), uid("p"), uid("p"), uid("p")];
+    const dmId = uid("dm");
+    for (const id of pids) {
+      const r = await handleCreateCharacter(id, {
+        name: `Hero-${id}`,
+        race: "human",
+        class: "fighter",
+        ability_scores: scores,
+        avatar_url: "https://example.com/test-avatar.png",
+      });
+      expect(r.success).toBe(true);
+      handleQueueForParty(id);
+    }
+    expect(handleDMQueueForParty(dmId).success).toBe(true);
+
+    const res = await app.request("/spectator/parties");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { parties: Record<string, unknown>[] };
+    expect(Array.isArray(body.parties)).toBe(true);
+    expect(body.parties.length).toBeGreaterThan(0);
+
+    for (const p of body.parties) {
+      expect(p).toHaveProperty("status");
+      expect(p).toHaveProperty("isActive");
+      expect(typeof p.status).toBe("string");
+      expect(typeof p.isActive).toBe("boolean");
+    }
+  });
+});
+
 describe("GET /spectator/spotlight", () => {
   test("returns { character: null } when no active sessions exist", async () => {
     // Wipe transient state so this test stands alone — drop any in-memory parties.
