@@ -357,9 +357,11 @@ function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; 
     const newSlots = getMaxSpellSlots(nextLevel, char.class);
     const l1Gain = newSlots.level_1.max - char.spellSlots.level_1.max;
     const l2Gain = newSlots.level_2.max - char.spellSlots.level_2.max;
+    const l3Gain = newSlots.level_3.max - char.spellSlots.level_3.max;
     char.spellSlots = {
       level_1: { current: char.spellSlots.level_1.current + Math.max(0, l1Gain), max: newSlots.level_1.max },
       level_2: { current: char.spellSlots.level_2.current + Math.max(0, l2Gain), max: newSlots.level_2.max },
+      level_3: { current: char.spellSlots.level_3.current + Math.max(0, l3Gain), max: newSlots.level_3.max },
     };
 
     // Class features at new level
@@ -7687,6 +7689,10 @@ export async function loadPersistedState(): Promise<number> {
         const charId = nextId("char");
         const abilityScores = row.abilityScores as AbilityScores;
         const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+        // P1-8: defensive default — older rows persisted before the L3 slot
+        // infrastructure landed are missing the level_3 field. JSONB tolerates
+        // additive keys, so newer code reads safely and we backfill in-memory here.
+        if (!spellSlots.level_3) spellSlots.level_3 = { current: 0, max: 0 };
         const hitDice = row.hitDice as CharacterSheet["hitDice"];
         const equipment = row.equipment as CharacterSheet["equipment"];
 
@@ -7840,6 +7846,8 @@ export async function loadPersistedCharacters(): Promise<number> {
       const charId = nextId("char");
       const abilityScores = row.abilityScores as AbilityScores;
       const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+      // P1-8: defensive default — older rows missing level_3 field.
+      if (!spellSlots.level_3) spellSlots.level_3 = { current: 0, max: 0 };
       const hitDice = row.hitDice as CharacterSheet["hitDice"];
       const equipment = row.equipment as CharacterSheet["equipment"];
 

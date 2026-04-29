@@ -56,6 +56,7 @@ export type UserRole = "player" | "dm";
 export interface SpellSlots {
   level_1: { current: number; max: number };
   level_2: { current: number; max: number };
+  level_3: { current: number; max: number };
 }
 
 export interface HitDice {
