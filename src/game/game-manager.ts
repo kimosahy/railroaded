@@ -2335,6 +2335,18 @@ export function handleMonsterAction(userId: string, params: { monster_id: string
     broadcastToParty(party.id, { type: "monster_fled", monsterName: monster.name });
 
     if (shouldCombatEnd(party.session)) {
+      const { xpAwarded, levelUps } = awardPartialXP(party);
+      if (xpAwarded > 0) {
+        logEvent(party, "partial_xp_awarded", null, {
+          xpAwarded,
+          reason: "all_monsters_fled",
+          monstersDefeated: party.monsters.filter((m) => !m.isAlive).length,
+        });
+      }
+      for (const lu of levelUps) {
+        logEvent(party, "level_up", null, lu);
+        broadcastToParty(party.id, { type: "level_up", ...lu });
+      }
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_monsters_gone" });
       stabilizeUnconsciousCharacters(party);
@@ -4825,6 +4837,18 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
         party.session = removeCombatant(party.session, char.id);
         checkAllPcsDownObservability(party);
         if (shouldCombatEnd(party.session)) {
+          const { xpAwarded, levelUps } = awardPartialXP(party);
+          if (xpAwarded > 0) {
+            logEvent(party, "partial_xp_awarded", null, {
+              xpAwarded,
+              reason: "environment_damage_tpk",
+              monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+            });
+          }
+          for (const lu of levelUps) {
+            logEvent(party, "level_up", null, lu);
+            broadcastToParty(party.id, { type: "level_up", ...lu });
+          }
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
