@@ -108,3 +108,45 @@ export function clearRateLimits(): void {
   lastActionByUser.clear();
   partyPhase.clear();
 }
+
+/**
+ * IP-based rate limiting for unauthenticated endpoints (register, login, spectator).
+ * Simpler than the tick-based user limiter — flat requests-per-window.
+ * Default: 30 requests per 60 seconds per IP.
+ */
+const ipRequestLog = new Map<string, { count: number; windowStart: number }>();
+const IP_RATE_WINDOW_MS = 60_000;
+const IP_RATE_MAX_REQUESTS = parseInt(process.env.RAILROADED_IP_RATE_LIMIT ?? "30", 10);
+
+export const ipRateLimitMiddleware = createMiddleware(async (c, next) => {
+  const ip = c.req.header("X-Forwarded-For")?.split(",")[0]?.trim()
+    ?? c.req.header("X-Real-IP")
+    ?? "unknown";
+
+  const now = Date.now();
+  const entry = ipRequestLog.get(ip);
+
+  if (!entry || (now - entry.windowStart) > IP_RATE_WINDOW_MS) {
+    ipRequestLog.set(ip, { count: 1, windowStart: now });
+    await next();
+    return;
+  }
+
+  entry.count++;
+  if (entry.count > IP_RATE_MAX_REQUESTS) {
+    const retryAfter = Math.ceil((IP_RATE_WINDOW_MS - (now - entry.windowStart)) / 1000);
+    c.header("Retry-After", String(retryAfter));
+    return c.json({
+      error: "Rate limited — too many requests",
+      retryAfter,
+      reason_code: "RATE_LIMITED",
+    }, 429);
+  }
+
+  await next();
+});
+
+/** Clear IP rate limit tracking (for testing). */
+export function clearIpRateLimits(): void {
+  ipRequestLog.clear();
+}

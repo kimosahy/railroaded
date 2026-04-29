@@ -128,6 +128,9 @@ interface GameCharacter extends CharacterSheet {
   safetyRefusals: number;
   chatMessages: number;
   tacticalChats: number;
+  /** Channel Divinity uses remaining. Clerics get 1 at L1, 2 at L6.
+   *  Resets on short or long rest. Non-clerics: 0. */
+  channelDivinityUses: number;
 }
 
 interface GameParty {
@@ -357,9 +360,11 @@ function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; 
     const newSlots = getMaxSpellSlots(nextLevel, char.class);
     const l1Gain = newSlots.level_1.max - char.spellSlots.level_1.max;
     const l2Gain = newSlots.level_2.max - char.spellSlots.level_2.max;
+    const l3Gain = newSlots.level_3.max - char.spellSlots.level_3.max;
     char.spellSlots = {
       level_1: { current: char.spellSlots.level_1.current + Math.max(0, l1Gain), max: newSlots.level_1.max },
       level_2: { current: char.spellSlots.level_2.current + Math.max(0, l2Gain), max: newSlots.level_2.max },
+      level_3: { current: char.spellSlots.level_3.current + Math.max(0, l3Gain), max: newSlots.level_3.max },
     };
 
     // Class features at new level
@@ -371,6 +376,50 @@ function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; 
 
   if (char.level === startLevel) return null;
   return { newLevel: char.level, hpGain: totalHpGain, newFeatures: allNewFeatures };
+}
+
+/**
+ * Award XP for monsters killed so far. Used at non-normal combat exits
+ * (timeout, session-end, TPK, environment kills) where the standard
+ * combat_end XP path doesn't run with a partial monster pool.
+ *
+ * F-4: XP was 0 on TPK because the original code at TPK paths logged
+ * combat_end without computing XP. calculateEncounterXP sums ALL monsters,
+ * which is wrong here — survivors shouldn't earn XP. We sum dead monsters
+ * only and split among living party members (or among all members if
+ * the whole party is down — they earned it before going unconscious).
+ */
+function awardPartialXP(party: GameParty): {
+  xpAwarded: number;
+  levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[];
+} {
+  const deadMonsters = party.monsters.filter((m) => !m.isAlive);
+  if (deadMonsters.length === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const xp = deadMonsters.reduce((sum, m) => sum + (m.xpValue ?? 0), 0);
+  if (xp === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const aliveMembers = party.members.filter((mid) => {
+    const m = characters.get(mid);
+    // The "dead" condition is the canonical marker — set in lockstep with the
+    // (untyped) isAlive=false flag at every player-death site (L2133, L2145, L4700).
+    return m && !m.conditions.includes("dead");
+  });
+
+  const recipients = aliveMembers.length > 0 ? aliveMembers : party.members;
+  if (recipients.length === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const xpEach = Math.floor(xp / recipients.length);
+  const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
+  for (const mid of recipients) {
+    const m = characters.get(mid);
+    if (m) {
+      m.xp += xpEach;
+      const lu = checkLevelUp(m);
+      if (lu) levelUps.push({ name: m.name, ...lu });
+    }
+  }
+  return { xpAwarded: xp, levelUps };
 }
 
 // Spell definitions loaded from YAML (simplified for in-memory)
@@ -433,6 +482,7 @@ const monsterTemplates = new Map<string, {
   vulnerabilities?: string[];
   immunities?: string[];
   resistances?: string[];
+  creatureType?: string;
 }>();
 
 let idCounter = 1;
@@ -1007,6 +1057,22 @@ function checkCombatTimeout(party: GameParty): boolean {
       currentTurn: getCurrentCombatant(party.session!)?.entityId ?? null,
     });
 
+    // F-4: award XP for monsters killed before timeout (was 0)
+    {
+      const { xpAwarded, levelUps } = awardPartialXP(party);
+      if (xpAwarded > 0) {
+        logEvent(party, "partial_xp_awarded", null, {
+          xpAwarded,
+          reason: "combat_timeout",
+          monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+        });
+      }
+      for (const lu of levelUps) {
+        logEvent(party, "level_up", null, lu);
+        broadcastToParty(party.id, { type: "level_up", ...lu });
+      }
+    }
+
     if (party.session) {
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
     }
@@ -1217,6 +1283,7 @@ export async function handleCreateCharacter(userId: string, params: {
     safetyRefusals: 0,
     chatMessages: 0,
     tacticalChats: 0,
+    channelDivinityUses: params.class === "cleric" ? 1 : 0,
   };
 
   characters.set(id, character);
@@ -1407,7 +1474,7 @@ export function handleLook(userId: string): { success: boolean; data?: Record<st
       type: room.type,
       features: room.features,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, condition: describeMonsterCondition(m), conditions: m.conditions })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, condition: describeMonsterCondition(m), conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       partyMembers: party.members
         .map((mid) => characters.get(mid))
         .filter(Boolean)
@@ -1546,6 +1613,7 @@ const playerActionRoutes: Record<string, { method: string; path: string }> = {
   death_save:            { method: "POST", path: "/api/v1/death-save" },
   short_rest:            { method: "POST", path: "/api/v1/short-rest" },
   long_rest:             { method: "POST", path: "/api/v1/long-rest" },
+  channel_divinity:      { method: "POST", path: "/api/v1/channel-divinity" },
   party_chat:            { method: "POST", path: "/api/v1/chat" },
   whisper:               { method: "POST", path: "/api/v1/whisper" },
   journal_add:           { method: "POST", path: "/api/v1/journal" },
@@ -2109,6 +2177,19 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       if (isDead && party.session) {
         party.session = removeCombatant(party.session, target.id);
         if (shouldCombatEnd(party.session)) {
+          // F-4: award XP for monsters killed before TPK (was 0)
+          const { xpAwarded, levelUps } = awardPartialXP(party);
+          if (xpAwarded > 0) {
+            logEvent(party, "partial_xp_awarded", null, {
+              xpAwarded,
+              reason: "tpk",
+              monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+            });
+          }
+          for (const lu of levelUps) {
+            logEvent(party, "level_up", null, lu);
+            broadcastToParty(party.id, { type: "level_up", ...lu });
+          }
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
@@ -2905,6 +2986,10 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   char.hpCurrent = result.hpAfter;
   char.hitDice = { ...char.hitDice, current: result.hitDiceRemaining };
   char.spellSlots = result.newSpellSlots;
+  // P1-6: Channel Divinity recharges on a short rest. L1 cleric → 1 use; L6 → 2.
+  if (char.class === "cleric") {
+    char.channelDivinityUses = 1;
+  }
 
   return {
     success: true,
@@ -2941,6 +3026,10 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   char.hitDice = { ...char.hitDice, current: result.hitDiceTotal };
   char.spellSlots = result.newSpellSlots;
   char.relentlessEnduranceUsed = false;
+  // P1-6: Channel Divinity recharges on a long rest as well.
+  if (char.class === "cleric") {
+    char.channelDivinityUses = 1;
+  }
   // Clear conditions (unconscious, stable, etc.) but preserve "dead" — though we already block dead above
   char.conditions = char.conditions.filter((c) => c === "dead");
 
@@ -2951,6 +3040,100 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
       hpAfter: result.hpAfter,
       hitDiceRecovered: result.hitDiceRecovered,
       spellSlots: result.newSpellSlots,
+    },
+  };
+}
+
+/**
+ * P1-6: Channel Divinity — clerics. Currently only "turn_undead" implemented.
+ * Each undead within range makes a WIS save vs spell save DC; failures get the
+ * "frightened" condition (decorative — engine doesn't enforce frightened mechanics yet).
+ */
+export function handleChannelDivinity(userId: string, params: {
+  ability: string;
+}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  const char = getCharacterForUser(userId);
+  if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
+  if (requireConscious(char)) return { success: false, error: UNCONSCIOUS_ERROR, reason_code: "CHARACTER_UNCONSCIOUS" };
+  if (char.class !== "cleric") {
+    return { success: false, error: "Only clerics can use Channel Divinity.", reason_code: "WRONG_STATE" };
+  }
+
+  const party = getPartyForCharacter(char.id);
+  if (!party?.session || party.session.phase !== "combat") {
+    return { success: false, error: "Channel Divinity can only be used during combat.", reason_code: "WRONG_PHASE" };
+  }
+
+  if (char.channelDivinityUses <= 0) {
+    return { success: false, error: "No Channel Divinity uses remaining. Take a short or long rest to regain uses.", reason_code: "ABILITY_ON_COOLDOWN" };
+  }
+
+  if (params.ability !== "turn_undead") {
+    return { success: false, error: `Unknown Channel Divinity ability: ${params.ability}. Available: turn_undead`, reason_code: "INVALID_ENUM_VALUE" };
+  }
+
+  const dc = spellSaveDC(char.abilityScores, char.class, proficiencyBonus(char.level));
+  const undead = party.monsters.filter((m) => m.isAlive && m.creatureType === "undead");
+
+  if (undead.length === 0) {
+    return { success: false, error: "No undead creatures present to turn.", reason_code: "TARGET_INVALID" };
+  }
+
+  char.channelDivinityUses--;
+  markCharacterAction(char);
+
+  const results: { monsterName: string; roll: number; dc: number; saved: boolean }[] = [];
+  for (const monster of undead) {
+    const wisMod = abilityModifier(monster.abilityScores.wis);
+    const saveRoll = roll("1d20");
+    const total = saveRoll.total + wisMod;
+    const saved = total >= dc;
+
+    if (!saved) {
+      // The frightened condition is decorative for now — engine doesn't enforce
+      // disadvantage / "must move away" behavior. Tracks intent so DM agents and
+      // future spectator UI can see the cleric's effect on the encounter.
+      if (!monster.conditions.includes("frightened")) {
+        monster.conditions.push("frightened");
+      }
+    }
+
+    results.push({
+      monsterName: monster.name,
+      roll: saveRoll.total,
+      dc,
+      saved,
+    });
+  }
+
+  const turned = results.filter((r) => !r.saved);
+  const resisted = results.filter((r) => r.saved);
+
+  logEvent(party, "channel_divinity", char.id, {
+    characterName: char.name,
+    ability: "turn_undead",
+    dc,
+    undeadTargeted: undead.length,
+    turned: turned.map((r) => r.monsterName),
+    resisted: resisted.map((r) => r.monsterName),
+    usesRemaining: char.channelDivinityUses,
+  });
+
+  // Consume action — same pattern as handleAttack/handleCast/handleDodge
+  const resources = getTurnResources(party, char.id);
+  setTurnResources(party, char.id, { ...resources, actionUsed: true });
+  checkAutoAdvanceTurn(party, char.id);
+
+  return {
+    success: true,
+    data: {
+      ability: "turn_undead",
+      dc,
+      results,
+      turned: turned.length,
+      resisted: resisted.length,
+      usesRemaining: char.channelDivinityUses,
+      turnStatus: makeTurnStatus(party, char.id),
     },
   };
 }
@@ -3651,6 +3834,19 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     party.session = removeCombatant(party.session, char.id);
     checkAllPcsDownObservability(party);
     if (shouldCombatEnd(party.session)) {
+      // F-4: award XP for monsters killed before TPK (was 0)
+      const { xpAwarded, levelUps } = awardPartialXP(party);
+      if (xpAwarded > 0) {
+        logEvent(party, "partial_xp_awarded", null, {
+          xpAwarded,
+          reason: "tpk",
+          monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+        });
+      }
+      for (const lu of levelUps) {
+        logEvent(party, "level_up", null, lu);
+        broadcastToParty(party.id, { type: "level_up", ...lu });
+      }
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
       if (isTPK(party)) {
@@ -4155,6 +4351,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
           attacks: [{ name: "Attack", to_hit: 3, damage: "1d6+1", type: "slashing" }],
           specialAbilities: [],
           xpValue: 50,
+          creatureType: "humanoid",
         },
       };
     }
@@ -4181,7 +4378,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   party.session = newSession;
 
   logEvent(party, "combat_start", null, {
-    monsters: monsters.map((m) => ({ name: m.name, templateName: m.templateName, hp: m.hpMax, ac: m.ac })),
+    monsters: monsters.map((m) => ({ name: m.name, templateName: m.templateName, hp: m.hpMax, ac: m.ac, creatureType: m.creatureType ?? "humanoid" })),
     initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative })),
   });
   notifyTurnChange(party);
@@ -4192,7 +4389,7 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
   return {
     success: true,
     data: {
-      monsters: monsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpMax, ac: m.ac })),
+      monsters: monsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpMax, ac: m.ac, creatureType: m.creatureType ?? "humanoid" })),
       initiative: initiative.map((e) => ({ name: e.name, initiative: e.initiative, type: e.type })),
       phase: "combat",
     },
@@ -4571,8 +4768,23 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, monster.id);
         if (shouldCombatEnd(party.session)) {
+          // F-4: env damage killed the last monster — award XP for all dead monsters
+          // (was hardcoded 0). awardPartialXP returns the full encounter XP because
+          // shouldCombatEnd is true (no live monsters remain).
+          const { xpAwarded, levelUps } = awardPartialXP(party);
+          if (xpAwarded > 0) {
+            logEvent(party, "partial_xp_awarded", null, {
+              xpAwarded,
+              reason: "environment_kill",
+              monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+            });
+          }
+          for (const lu of levelUps) {
+            logEvent(party, "level_up", null, lu);
+            broadcastToParty(party.id, { type: "level_up", ...lu });
+          }
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
-          logEvent(party, "combat_end", null, { xpAwarded: 0 });
+          logEvent(party, "combat_end", null, { xpAwarded });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
           checkSoftlockRecovery(party);
@@ -4839,7 +5051,7 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
     data: {
       room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
-      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions })),
+      monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       suggestedEncounter,
       lootTable,
       sessionTheme,
@@ -5343,6 +5555,22 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   // Validate outcome if provided
   const validOutcomes = ["victory", "tpk", "retreat", "abandoned"];
   const validOutcome = validOutcomes.includes(params.outcome ?? "") ? params.outcome! : null;
+
+  // F-4: award partial XP if DM ends session mid-combat (was 0)
+  if (party.session && party.session.phase === "combat") {
+    const { xpAwarded, levelUps } = awardPartialXP(party);
+    if (xpAwarded > 0) {
+      logEvent(party, "partial_xp_awarded", null, {
+        xpAwarded,
+        reason: "session_end_mid_combat",
+        monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+      });
+    }
+    for (const lu of levelUps) {
+      logEvent(party, "level_up", null, lu);
+      broadcastToParty(party.id, { type: "level_up", ...lu });
+    }
+  }
 
   if (party.session) {
     party.session = endSessionState(party.session);
@@ -6578,6 +6806,7 @@ export function handleCreateCustomMonster(userId: string, params: {
   loot_table?: { item_name: string; weight: number; quantity: number }[];
   avatar_url?: string;
   lore?: string;
+  creature_type?: string;
 }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
@@ -6628,6 +6857,7 @@ export function handleCreateCustomMonster(userId: string, params: {
     vulnerabilities: params.vulnerabilities ?? [],
     immunities: params.immunities ?? [],
     resistances: params.resistances ?? [],
+    creatureType: params.creature_type ?? "humanoid",
   };
 
   monsterTemplates.set(params.name, template);
@@ -7379,14 +7609,16 @@ export function loadMonsterTemplate(name: string, template: {
   specialAbilities: string[];
   xpValue: number;
   lootTable?: LootTableEntry[];
+  creatureType?: string;
 }): void {
-  monsterTemplates.set(name, template);
+  monsterTemplates.set(name, { ...template, creatureType: template.creatureType ?? "humanoid" });
 }
 
 // --- Data loading ---
 
 interface YAMLMonster {
   name: string;
+  creature_type?: string;
   hp_max: number;
   ac: number;
   ability_scores: AbilityScores;
@@ -7443,6 +7675,7 @@ export function initGameData(dataDir?: string): void {
           weight: e.weight,
           quantity: e.quantity,
         })),
+        creatureType: m.creature_type ?? "humanoid",
       });
     }
     console.log(`  Loaded ${monsters.length} monster templates`);
@@ -7570,6 +7803,10 @@ export async function loadPersistedState(): Promise<number> {
         const charId = nextId("char");
         const abilityScores = row.abilityScores as AbilityScores;
         const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+        // P1-8: defensive default — older rows persisted before the L3 slot
+        // infrastructure landed are missing the level_3 field. JSONB tolerates
+        // additive keys, so newer code reads safely and we backfill in-memory here.
+        if (!spellSlots.level_3) spellSlots.level_3 = { current: 0, max: 0 };
         const hitDice = row.hitDice as CharacterSheet["hitDice"];
         const equipment = row.equipment as CharacterSheet["equipment"];
 
@@ -7623,6 +7860,7 @@ export async function loadPersistedState(): Promise<number> {
           safetyRefusals: row.safetyRefusals ?? 0,
           chatMessages: row.chatMessages ?? 0,
           tacticalChats: row.tacticalChats ?? 0,
+          channelDivinityUses: row.class === "cleric" ? 1 : 0,
         };
 
         characters.set(charId, char);
@@ -7723,6 +7961,8 @@ export async function loadPersistedCharacters(): Promise<number> {
       const charId = nextId("char");
       const abilityScores = row.abilityScores as AbilityScores;
       const spellSlots = row.spellSlots as CharacterSheet["spellSlots"];
+      // P1-8: defensive default — older rows missing level_3 field.
+      if (!spellSlots.level_3) spellSlots.level_3 = { current: 0, max: 0 };
       const hitDice = row.hitDice as CharacterSheet["hitDice"];
       const equipment = row.equipment as CharacterSheet["equipment"];
 
@@ -7768,6 +8008,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         goldEarned: row.goldEarned ?? 0,
         relentlessEnduranceUsed: false,
         lastActionAt: new Date(),
+        channelDivinityUses: row.class === "cleric" ? 1 : 0,
       };
 
       characters.set(charId, char);
@@ -7830,6 +8071,8 @@ export async function loadCustomMonsters(): Promise<number> {
         console.warn(`[DB] Custom monster "${row.name}" has no hpMax — skipping`);
         continue;
       }
+      // P1-6: defensive default for older rows persisted before creatureType existed.
+      if (!stat.creatureType) stat.creatureType = "humanoid";
       monsterTemplates.set(row.name, stat);
       loaded++;
     }

@@ -56,6 +56,7 @@ export type UserRole = "player" | "dm";
 export interface SpellSlots {
   level_1: { current: number; max: number };
   level_2: { current: number; max: number };
+  level_3: { current: number; max: number };
 }
 
 export interface HitDice {
@@ -115,6 +116,7 @@ export const ReasonCode = {
   NO_VALID_ACTION: "NO_VALID_ACTION",
   // Server
   SERVER_STATE_ERROR: "SERVER_STATE_ERROR",
+  RATE_LIMITED: "RATE_LIMITED",
   // Fallback — any call site not yet mapped. Removed in Pass 2.
   BAD_REQUEST: "BAD_REQUEST",
 } as const;

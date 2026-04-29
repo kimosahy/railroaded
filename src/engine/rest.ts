@@ -78,14 +78,19 @@ export function shortRest(params: {
   }
 
   // Wizard arcane recovery
-  let newSpellSlots = { ...spellSlots, level_1: { ...spellSlots.level_1 }, level_2: { ...spellSlots.level_2 } };
+  let newSpellSlots: SpellSlots = {
+    level_1: { ...spellSlots.level_1 },
+    level_2: { ...spellSlots.level_2 },
+    level_3: { ...spellSlots.level_3 },
+  };
   let spellSlotsRecovered = false;
 
   if (characterClass === "wizard" && !arcaneRecoveryUsed) {
     newSpellSlots = arcaneRecovery(spellSlots, characterLevel);
     spellSlotsRecovered =
       newSpellSlots.level_1.current !== spellSlots.level_1.current ||
-      newSpellSlots.level_2.current !== spellSlots.level_2.current;
+      newSpellSlots.level_2.current !== spellSlots.level_2.current ||
+      newSpellSlots.level_3.current !== spellSlots.level_3.current;
   }
 
   return {

@@ -903,6 +903,10 @@ export const dmTools: readonly ToolDefinition[] = [
           type: "string",
           description: "Optional lore/flavor text describing the monster's origin, habits, or legend.",
         },
+        creature_type: {
+          type: "string",
+          description: "5e creature type (e.g., 'humanoid', 'undead', 'beast', 'dragon', 'fey', 'fiend', 'monstrosity'). Defaults to 'humanoid'. Drives Turn Undead and future typed-targeting spells.",
+        },
       },
       required: ["name", "hp_max", "ac", "attacks", "avatar_url"],
     },

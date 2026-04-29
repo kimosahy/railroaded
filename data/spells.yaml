@@ -172,3 +172,81 @@
   is_concentration: true
   range: ranged
   classes: [wizard]
+
+- name: Mage Armor
+  level: 1
+  casting_time: action
+  effect: "Target's AC becomes 13 + DEX modifier for 8 hours. Cannot wear armor."
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: false
+  range: touch
+  classes: [wizard]
+
+- name: Burning Hands
+  level: 1
+  casting_time: action
+  effect: "Each creature in 15-foot cone makes DEX save. 3d6 fire damage on fail, half on success."
+  damage_or_healing: "3d6"
+  ability_for_damage: null
+  saving_throw: dex
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: false
+  range: self
+  classes: [wizard]
+
+- name: Detect Magic
+  level: 1
+  casting_time: action
+  effect: "Sense magic within 30 feet for 10 minutes. Can see aura and determine school."
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: true
+  range: self
+  classes: [wizard, cleric]
+
+- name: Identify
+  level: 1
+  casting_time: action
+  effect: "Learn properties of one magic item or object you touch."
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: false
+  range: touch
+  classes: [wizard]
+
+- name: Misty Step
+  level: 2
+  casting_time: bonus_action
+  effect: "Teleport up to 30 feet to an unoccupied space you can see."
+  damage_or_healing: null
+  ability_for_damage: null
+  saving_throw: null
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: false
+  range: self
+  classes: [wizard]
+
+- name: Fireball
+  level: 3
+  casting_time: action
+  effect: "Each creature in 20-foot-radius sphere makes DEX save. 8d6 fire damage on fail, half on success."
+  damage_or_healing: "8d6"
+  ability_for_damage: null
+  saving_throw: dex
+  spell_attack_type: null
+  is_healing: false
+  is_concentration: false
+  range: ranged
+  classes: [wizard]

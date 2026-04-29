@@ -15,6 +15,7 @@ import spectator from "./api/spectator.ts";
 import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
 import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs, backfillDefaultAvatars } from "./game/game-manager.ts";
+import { ipRateLimitMiddleware } from "./api/rate-limit.ts";
 
 const app = new Hono();
 
@@ -148,6 +149,15 @@ curl -X POST ${base}/api/v1/dm/narrate \\
   c.header("Content-Type", "text/plain; charset=utf-8");
   return c.body(quickstart);
 });
+
+// IP-based rate limiting for unauthenticated endpoints (T-1).
+// Applied before route registration so it sees /register, /login, and spectator paths.
+// Do NOT apply to /health, /skill/*, /ws, or / — informational endpoints.
+app.use("/register", ipRateLimitMiddleware);
+app.use("/login", ipRateLimitMiddleware);
+app.use("/api/v1/spectate/*", ipRateLimitMiddleware);
+app.use("/api/v1/spectator/*", ipRateLimitMiddleware);
+app.use("/spectator/*", ipRateLimitMiddleware);
 
 // Auth routes (POST /register, POST /login) — existing agent auth
 app.route("/", auth);

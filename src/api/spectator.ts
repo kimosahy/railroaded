@@ -196,7 +196,7 @@ spectator.get("/parties/:id", async (c) => {
       name: party.name, members, dmUserId: party.dmUserId,
       phase: party.session?.phase ?? null, isActive: party.session?.isActive ?? false,
       currentRoom, currentRoomDescription,
-      monsters: party.monsters.map((m) => ({ id: m.id, name: m.name, hpCurrent: m.hpCurrent, hpMax: m.hpMax, ac: m.ac })),
+      monsters: party.monsters.map((m) => ({ id: m.id, name: m.name, hpCurrent: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, creatureType: m.creatureType ?? "humanoid" })),
       recentEvents, sessionSummary, eventCount: party.events.length,
     });
   }
