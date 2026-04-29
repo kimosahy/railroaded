@@ -373,6 +373,50 @@ function checkLevelUp(char: GameCharacter): { newLevel: number; hpGain: number; 
   return { newLevel: char.level, hpGain: totalHpGain, newFeatures: allNewFeatures };
 }
 
+/**
+ * Award XP for monsters killed so far. Used at non-normal combat exits
+ * (timeout, session-end, TPK, environment kills) where the standard
+ * combat_end XP path doesn't run with a partial monster pool.
+ *
+ * F-4: XP was 0 on TPK because the original code at TPK paths logged
+ * combat_end without computing XP. calculateEncounterXP sums ALL monsters,
+ * which is wrong here — survivors shouldn't earn XP. We sum dead monsters
+ * only and split among living party members (or among all members if
+ * the whole party is down — they earned it before going unconscious).
+ */
+function awardPartialXP(party: GameParty): {
+  xpAwarded: number;
+  levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[];
+} {
+  const deadMonsters = party.monsters.filter((m) => !m.isAlive);
+  if (deadMonsters.length === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const xp = deadMonsters.reduce((sum, m) => sum + (m.xpValue ?? 0), 0);
+  if (xp === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const aliveMembers = party.members.filter((mid) => {
+    const m = characters.get(mid);
+    // The "dead" condition is the canonical marker — set in lockstep with the
+    // (untyped) isAlive=false flag at every player-death site (L2133, L2145, L4700).
+    return m && !m.conditions.includes("dead");
+  });
+
+  const recipients = aliveMembers.length > 0 ? aliveMembers : party.members;
+  if (recipients.length === 0) return { xpAwarded: 0, levelUps: [] };
+
+  const xpEach = Math.floor(xp / recipients.length);
+  const levelUps: { name: string; newLevel: number; hpGain: number; newFeatures: string[] }[] = [];
+  for (const mid of recipients) {
+    const m = characters.get(mid);
+    if (m) {
+      m.xp += xpEach;
+      const lu = checkLevelUp(m);
+      if (lu) levelUps.push({ name: m.name, ...lu });
+    }
+  }
+  return { xpAwarded: xp, levelUps };
+}
+
 // Spell definitions loaded from YAML (simplified for in-memory)
 const spellDefs = new Map<string, SpellDefinition>();
 
@@ -1006,6 +1050,22 @@ function checkCombatTimeout(party: GameParty): boolean {
       survivingMonsters,
       currentTurn: getCurrentCombatant(party.session!)?.entityId ?? null,
     });
+
+    // F-4: award XP for monsters killed before timeout (was 0)
+    {
+      const { xpAwarded, levelUps } = awardPartialXP(party);
+      if (xpAwarded > 0) {
+        logEvent(party, "partial_xp_awarded", null, {
+          xpAwarded,
+          reason: "combat_timeout",
+          monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+        });
+      }
+      for (const lu of levelUps) {
+        logEvent(party, "level_up", null, lu);
+        broadcastToParty(party.id, { type: "level_up", ...lu });
+      }
+    }
 
     if (party.session) {
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
@@ -2109,6 +2169,19 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       if (isDead && party.session) {
         party.session = removeCombatant(party.session, target.id);
         if (shouldCombatEnd(party.session)) {
+          // F-4: award XP for monsters killed before TPK (was 0)
+          const { xpAwarded, levelUps } = awardPartialXP(party);
+          if (xpAwarded > 0) {
+            logEvent(party, "partial_xp_awarded", null, {
+              xpAwarded,
+              reason: "tpk",
+              monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+            });
+          }
+          for (const lu of levelUps) {
+            logEvent(party, "level_up", null, lu);
+            broadcastToParty(party.id, { type: "level_up", ...lu });
+          }
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
           logEvent(party, "combat_end", null, { reason: "all_players_dead" });
           if (isTPK(party)) {
@@ -3651,6 +3724,19 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     party.session = removeCombatant(party.session, char.id);
     checkAllPcsDownObservability(party);
     if (shouldCombatEnd(party.session)) {
+      // F-4: award XP for monsters killed before TPK (was 0)
+      const { xpAwarded, levelUps } = awardPartialXP(party);
+      if (xpAwarded > 0) {
+        logEvent(party, "partial_xp_awarded", null, {
+          xpAwarded,
+          reason: "tpk",
+          monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+        });
+      }
+      for (const lu of levelUps) {
+        logEvent(party, "level_up", null, lu);
+        broadcastToParty(party.id, { type: "level_up", ...lu });
+      }
       cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
       logEvent(party, "combat_end", null, { reason: "all_players_dead" });
       if (isTPK(party)) {
@@ -4571,8 +4657,23 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
       if (party.session) {
         party.session = removeCombatant(party.session, monster.id);
         if (shouldCombatEnd(party.session)) {
+          // F-4: env damage killed the last monster — award XP for all dead monsters
+          // (was hardcoded 0). awardPartialXP returns the full encounter XP because
+          // shouldCombatEnd is true (no live monsters remain).
+          const { xpAwarded, levelUps } = awardPartialXP(party);
+          if (xpAwarded > 0) {
+            logEvent(party, "partial_xp_awarded", null, {
+              xpAwarded,
+              reason: "environment_kill",
+              monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+            });
+          }
+          for (const lu of levelUps) {
+            logEvent(party, "level_up", null, lu);
+            broadcastToParty(party.id, { type: "level_up", ...lu });
+          }
           cancelAllAutopilotTimersForParty(party.id); party.session = exitCombat(party.session);
-          logEvent(party, "combat_end", null, { xpAwarded: 0 });
+          logEvent(party, "combat_end", null, { xpAwarded });
           stabilizeUnconsciousCharacters(party);
           snapshotCharacters(party);
           checkSoftlockRecovery(party);
@@ -5343,6 +5444,22 @@ export function handleEndSession(userId: string, params: { summary: string; comp
   // Validate outcome if provided
   const validOutcomes = ["victory", "tpk", "retreat", "abandoned"];
   const validOutcome = validOutcomes.includes(params.outcome ?? "") ? params.outcome! : null;
+
+  // F-4: award partial XP if DM ends session mid-combat (was 0)
+  if (party.session && party.session.phase === "combat") {
+    const { xpAwarded, levelUps } = awardPartialXP(party);
+    if (xpAwarded > 0) {
+      logEvent(party, "partial_xp_awarded", null, {
+        xpAwarded,
+        reason: "session_end_mid_combat",
+        monstersKilled: party.monsters.filter((m) => !m.isAlive).length,
+      });
+    }
+    for (const lu of levelUps) {
+      logEvent(party, "level_up", null, lu);
+      broadcastToParty(party.id, { type: "level_up", ...lu });
+    }
+  }
 
   if (party.session) {
     party.session = endSessionState(party.session);
