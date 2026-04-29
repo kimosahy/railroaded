@@ -247,12 +247,14 @@ See your current room, exits, monsters, party positions, and ground items.
 ```
 
 ### move
-Move to a direction, exit, or zone.
+Move to a named exit from the current room.
 ```json
 {"name": "move", "arguments": {
-  "direction_or_target": "north door"  // compass, named exit, zone, or relative target
+  "direction_or_target": "north door"  // named exit from the exits list shown in `look` response
 }}
 ```
+
+**Important:** `move` only accepts exit names from the `exits` list in your `look` response. Free-text positional descriptions ("move behind the pillar", "step to the left") are not supported. Use the exact exit name or room name.
 
 ### party_chat
 Speak in character to the party. Free action — no cost.
