@@ -149,7 +149,7 @@ describe("CC-260429 Task 1b: env-damage TPK XP", () => {
     expect(data.monstersKilled).toBe(1);
   });
 
-  test("env-damage TPK with all monsters alive → no partial_xp_awarded event", async () => {
+  test("env-damage TPK with monsters alive — XP branch unreachable (shouldCombatEnd false)", async () => {
     const { dmId, charIds, partyId } = await setupParty();
     const spawn = handleSpawnEncounter(dmId, {
       monsters: [{ template_name: "Goblin", count: 2 }],
