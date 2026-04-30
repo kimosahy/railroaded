@@ -78,7 +78,7 @@ import {
 import {
   getModelRankingState, getPromotionStats, getModelScore,
   recordPromotionAttempt, recordPromotionSuccess, recordPromotionExhausted,
-  recordHandshakePass, recordHandshakeFail,
+  recordHandshakePass, recordHandshakeFail, recordNoPlayersAfterHandshake,
 } from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
@@ -727,6 +727,11 @@ function clearAutoDmTimer(): void {
 
 interface PendingPromotion {
   userId: string;
+  /** DB UUID for the user (null in tests / in-memory mode). Captured at
+   *  promotion time and used to persist role="dm" to DB at handshake
+   *  success ONLY (Fix 1.3 — see Eon AR + Atlas blocker). Pre-handshake
+   *  state is in-memory only and recovers cleanly via startup reconciliation. */
+  dbUserId: string | null;
   characterId: string;
   characterName: string;
   /** Holds the user's QueueEntry while they await handshake.
@@ -764,7 +769,7 @@ let promotionWaveTried = new Set<string>();
  * Returns null if user/queue not found.
  */
 function promoteUserToDm(userId: string): {
-  characterId: string; characterName: string; queueEntry: QueueEntry;
+  characterId: string; characterName: string; queueEntry: QueueEntry; dbUserId: string | null;
 } | null {
   const userInfo = _internal_mutateUserRole(userId, "dm");
   if (!userInfo) return null;
@@ -781,11 +786,12 @@ function promoteUserToDm(userId: string): {
   entry.role = "dm";
   entry.characterId = "";
   // Do NOT push to dmQueue here — held in pendingPromotion until handshake.
+  // Do NOT persist role="dm" to DB here — only at handshake success (Fix 1.3).
 
   const char = characters.get(characterId);
   if (char) char.controllerType = "dm_npc";
 
-  return { characterId, characterName, queueEntry: entry };
+  return { characterId, characterName, queueEntry: entry, dbUserId: userInfo.dbUserId };
 }
 
 /** Reverse promotion. The promoted user's queue entry was held in
@@ -849,6 +855,17 @@ export function handleDmHandshake(userId: string): {
   // tryMatchPartyFallback enforces a hard floor of 2 players (matchmaker.ts:164),
   // so a party never forms with only the DM (Atlas residual #6 verified).
   dmQueue.push(promo.queueEntry);
+
+  // Fix 1.3: persist role="dm" to DB ONLY at handshake success. Pre-handshake
+  // state is in-memory only — restart-as-player fallback is handled by
+  // reconcileOrphanedDmRoles. Fire-and-forget, errors logged.
+  if (promo.dbUserId) {
+    db.update(usersTable).set({ role: "dm" })
+      .where(eq(usersTable.id, promo.dbUserId))
+      .execute()
+      .catch((err) => console.error("[AUTO-DM] DB role persist failed:", err));
+  }
+
   clearMatchmakerWaitTimer();
   const match = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
   if (match) {
@@ -862,6 +879,7 @@ export function handleDmHandshake(userId: string): {
     const idx = dmQueue.findIndex((q) => q.userId === promo.userId);
     if (idx !== -1) dmQueue.splice(idx, 1);
     demoteUserToPlayer(promo.userId, promo.characterId, promo.queueEntry);
+    recordNoPlayersAfterHandshake();
     pushAutoDmLog({
       type: "skipped",
       timestamp: new Date().toISOString(),
@@ -1012,6 +1030,7 @@ function attemptPromotion(attempt: number): void {
 
   pendingPromotion = {
     userId: pick.userId,
+    dbUserId: result.dbUserId,
     characterId: result.characterId,
     characterName: result.characterName,
     queueEntry: result.queueEntry,

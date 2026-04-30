@@ -448,18 +448,28 @@ export function _clearUsersForTest(): void {
 
 /**
  * Mutate a user's role in memory. Used by promoteUserToDm / demoteUserToPlayer
- * in game-manager.ts. Returns username + model identity for telemetry, or
+ * in game-manager.ts. Returns username, model identity, and dbUserId for
+ * telemetry and downstream DB persistence at handshake success time. Returns
  * null if the user does not exist.
+ *
+ * NOTE: this only mutates IN-MEMORY state. DB role persistence happens ONLY
+ * at handshake success (Eon AR + Atlas BLOCKER on Fix 1.3) — pre-handshake
+ * state must remain undoable by restart-as-player fallback.
  */
 export function _internal_mutateUserRole(userId: string, newRole: UserRole): {
-  username: string; modelProvider: string | null; modelName: string | null;
+  username: string; modelProvider: string | null; modelName: string | null; dbUserId: string | null;
 } | null {
   const user = usersById.get(userId);
   if (!user) return null;
   user.role = newRole;
   const byName = usersByUsername.get(user.username);
   if (byName) byName.role = newRole;
-  return { username: user.username, modelProvider: user.modelProvider, modelName: user.modelName };
+  return {
+    username: user.username,
+    modelProvider: user.modelProvider,
+    modelName: user.modelName,
+    dbUserId: user.dbUserId,
+  };
 }
 
 /** Whether a user can be promoted to DM (default true; flag for v1.5 audition gate). */
@@ -475,4 +485,39 @@ export function _internal_getUserModelInfo(userId: string): {
   const user = usersById.get(userId);
   if (!user) return null;
   return { modelProvider: user.modelProvider, modelName: user.modelName };
+}
+
+/**
+ * Startup reconciliation: any user with role="dm" but no active party they
+ * lead is a stale promotion (server killed mid-handshake, manual DB edit,
+ * or any other drift). Reset to player in memory and DB. Belt-and-suspenders
+ * for Fix 1.3 — DB role persistence happens only at handshake success, but
+ * restart edge cases still need a sweep.
+ *
+ * MUST be called AFTER both loadPersistedUsers() and loadPersistedState()
+ * so that `usersById` and `parties` are both populated.
+ */
+export function reconcileOrphanedDmRoles(
+  parties: Map<string, { dmUserId: string | null; session: { isActive: boolean } | null }>,
+): number {
+  let reset = 0;
+  for (const [id, user] of usersById) {
+    if (user.role !== "dm") continue;
+    const hasActiveParty = [...parties.values()].some(
+      (p) => p.dmUserId === id && p.session?.isActive,
+    );
+    if (hasActiveParty) continue;
+    console.warn(`[STARTUP] Orphaned DM role for user ${user.username} — resetting to player`);
+    user.role = "player";
+    const byName = usersByUsername.get(user.username);
+    if (byName) byName.role = "player";
+    if (user.dbUserId) {
+      db.update(usersTable).set({ role: "player" })
+        .where(eq(usersTable.id, user.dbUserId))
+        .execute()
+        .catch((err) => console.error("[STARTUP] DB role reset failed:", err));
+    }
+    reset++;
+  }
+  return reset;
 }

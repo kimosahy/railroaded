@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { config } from "./config.ts";
-import auth, { loadPersistedUsers, loadPersistedSessions } from "./api/auth.ts";
+import auth, { loadPersistedUsers, loadPersistedSessions, reconcileOrphanedDmRoles } from "./api/auth.ts";
 import accountAuth from "./api/account-auth.ts";
 import agentsRouter from "./api/agents.ts";
 import profiles from "./api/profiles.ts";
@@ -14,7 +14,7 @@ import { createWSHandler, createWSData } from "./api/ws.ts";
 import spectator from "./api/spectator.ts";
 import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
-import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs, backfillDefaultAvatars } from "./game/game-manager.ts";
+import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs, backfillDefaultAvatars, getState } from "./game/game-manager.ts";
 import { ipRateLimitMiddleware } from "./api/rate-limit.ts";
 import { initModelRanking } from "./engine/model-ranking.ts";
 
@@ -220,6 +220,12 @@ if (npcCount > 0) console.log(`  Loaded ${npcCount} NPCs from DB`);
 backfillDefaultAvatars().then((n) => {
   if (n > 0) console.log(`  Backfilled ${n} character avatars`);
 }).catch(() => {});
+
+// MF-035 startup reconciliation: clear stale "dm" roles left by mid-handshake
+// crashes, manual DB edits, or any other drift. Must run AFTER both users and
+// parties are loaded.
+const orphanedDmCount = reconcileOrphanedDmRoles(getState().parties);
+if (orphanedDmCount > 0) console.log(`  Reset ${orphanedDmCount} orphaned DM role(s) to player`);
 
 // AA model ranking — load disk cache, refresh from API, schedule 24h interval
 await initModelRanking();

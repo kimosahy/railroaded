@@ -30,6 +30,9 @@ interface AAModelEntry {
 }
 
 let modelScores = new Map<string, number>();
+/** Number of distinct AA entries currently cached. modelScores.size doubles
+ *  this because each entry is indexed by both `slug` and `creator_slug/slug`. */
+let entryCount = 0;
 let medianScore = 0;
 let lastRefresh = 0;
 
@@ -119,7 +122,14 @@ export async function initModelRanking(): Promise<void> {
 
 async function refreshFromAPI(): Promise<void> {
   try {
-    const res = await fetch(AA_API_URL, { headers: { "x-api-key": AA_API_KEY } });
+    // 10s timeout: initModelRanking is awaited before app.listen, so a hang
+    // at startup would block the server from binding (Render restart loop).
+    // The catch below treats AbortError the same as any other fetch error —
+    // stale cache stays, server keeps starting.
+    const res = await fetch(AA_API_URL, {
+      headers: { "x-api-key": AA_API_KEY },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (!res.ok) {
       console.warn(`[AA-RANK] API ${res.status} — keeping stale cache`);
       return;
@@ -165,6 +175,7 @@ async function refreshFromAPI(): Promise<void> {
 
 function applyCache(entries: AAModelEntry[]): void {
   modelScores = new Map();
+  entryCount = entries.length;
   for (const e of entries) {
     // Index by slug — exact match, no fuzzy
     modelScores.set(e.slug.toLowerCase(), e.intelligence_index);
@@ -179,10 +190,12 @@ function applyCache(entries: AAModelEntry[]): void {
       : 0;
 }
 
-/** Expose ranking state for admin queue-state endpoint. */
+/** Expose ranking state for admin queue-state endpoint.
+ *  modelCount is the number of distinct AA entries (NOT modelScores.size,
+ *  which is doubled by the dual slug + creator_slug/slug indexing). */
 export function getModelRankingState() {
   return {
-    modelCount: modelScores.size,
+    modelCount: entryCount,
     medianScore,
     lastRefresh: lastRefresh > 0 ? new Date(lastRefresh).toISOString() : null,
     apiKeyConfigured: AA_API_KEY.length > 0,
@@ -210,11 +223,16 @@ export function recordHandshakePass(): void {
 }
 export function recordHandshakeFail(): void {
   promotionStats.handshakeFailCount++;
+  promotionStats.lastPromotionOutcome = "handshake_timeout";
+}
+export function recordNoPlayersAfterHandshake(): void {
+  promotionStats.lastPromotionOutcome = "no_players_after_handshake";
 }
 
 /** Test-only: reset all internal state. */
 export function _resetModelRankingForTest(): void {
   modelScores = new Map();
+  entryCount = 0;
   medianScore = 0;
   lastRefresh = 0;
   promotionStats.totalAttempts = 0;

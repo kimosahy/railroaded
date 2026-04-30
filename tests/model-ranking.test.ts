@@ -71,8 +71,9 @@ describe("AA model ranking", () => {
   test("(e) state survives between calls (in-process cache)", () => {
     _seedModelRankingForTest(SAMPLE_ENTRIES);
     const state = getModelRankingState();
-    // Each entry indexed by slug + creator_slug/slug → 2x size minimum
-    expect(state.modelCount).toBeGreaterThanOrEqual(SAMPLE_ENTRIES.length);
+    // modelCount reports distinct AA entries (NOT modelScores.size, which is
+    // doubled by the dual slug + creator_slug/slug indexing).
+    expect(state.modelCount).toBe(SAMPLE_ENTRIES.length);
     expect(state.medianScore).toBeGreaterThan(0);
   });
 
