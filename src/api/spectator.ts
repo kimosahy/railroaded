@@ -374,6 +374,11 @@ spectator.get("/journals/:characterId", async (c) => {
     }
   }
 
+  // Sprint P §3.1: non-public characters return an empty journal payload.
+  if (character && character.isPublic === false) {
+    return c.json({ characterId, journals: [], events: [], eventCount: 0 });
+  }
+
   if (character) {
     // In-memory path
     let partyEvents: SessionEvent[] = [];
@@ -405,9 +410,14 @@ spectator.get("/journals/:characterId", async (c) => {
     const [dbChar] = await db.select({
       id: charactersTable.id, name: charactersTable.name, class: charactersTable.class,
       race: charactersTable.race, level: charactersTable.level, partyId: charactersTable.partyId,
+      isPublic: charactersTable.isPublic,
     }).from(charactersTable).where(eq(charactersTable.id, characterId));
 
     if (!dbChar) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1: non-public characters return an empty journal payload.
+    if (dbChar.isPublic === false) {
+      return c.json({ characterId, journals: [], events: [], eventCount: 0 });
+    }
 
     // Try journal_entries first
     const journalRows = await db.select({
@@ -480,9 +490,11 @@ spectator.get("/leaderboard", async (c) => {
     model?: { provider: string; name: string } | null;
   }
 
-  // Merge in-memory + DB characters (dedup by DB id)
+  // Merge in-memory + DB characters (dedup by DB id).
+  // Sprint P §3.1: hide non-public (test/probe) characters in BOTH places.
   const charMap = new Map<string, LeaderboardEntry>();
   for (const [id, char] of state.characters) {
+    if (char.isPublic === false) continue;
     const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id, name: char.name,
@@ -512,7 +524,8 @@ spectator.get("/leaderboard", async (c) => {
       criticalHits: charactersTable.criticalHits,
       timesKnockedOut: charactersTable.timesKnockedOut,
       goldEarned: charactersTable.goldEarned,
-    }).from(charactersTable);
+    }).from(charactersTable)
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
@@ -534,7 +547,8 @@ spectator.get("/leaderboard", async (c) => {
         class: charactersTable.class, race: charactersTable.race,
         level: charactersTable.level, xp: charactersTable.xp,
         avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
-      }).from(charactersTable);
+      }).from(charactersTable)
+        .where(eq(charactersTable.isPublic, true));
 
       for (const ch of coreChars) {
         if (!charMap.has(ch.id)) {
@@ -689,9 +703,11 @@ spectator.get("/characters", async (c) => {
     model?: { provider: string; name: string } | null;
   }
 
-  // Merge in-memory + DB characters (dedup by DB id)
+  // Merge in-memory + DB characters (dedup by DB id).
+  // Sprint P §3.1: hide non-public (test/probe) characters in BOTH places.
   const charMap = new Map<string, CharacterSummary>();
   for (const [id, char] of state.characters) {
+    if (char.isPublic === false) continue;
     const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id,
@@ -724,7 +740,8 @@ spectator.get("/characters", async (c) => {
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
-      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
@@ -765,6 +782,12 @@ spectator.get("/characters/:id", async (c) => {
     for (const [, ch] of state.characters) {
       if (ch.dbCharId === characterId) { char = ch; break; }
     }
+  }
+
+  // Sprint P §3.1: non-public characters return 404 (prevents UUID-guessing
+  // from leaking test character data even when listing endpoints hide them).
+  if (char && char.isPublic === false) {
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
 
   if (char) {
@@ -819,6 +842,7 @@ spectator.get("/characters/:id", async (c) => {
       criticalHits: charactersTable.criticalHits,
       timesKnockedOut: charactersTable.timesKnockedOut,
       goldEarned: charactersTable.goldEarned,
+      isPublic: charactersTable.isPublic,
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
@@ -827,6 +851,8 @@ spectator.get("/characters/:id", async (c) => {
 
     const row = rows[0];
     if (!row) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1: non-public characters return 404 even on direct lookup.
+    if (row.isPublic === false) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
 
     return c.json({
       id: row.id,
@@ -865,6 +891,7 @@ spectator.get("/character-identities", async (c) => {
   const seen = new Set<string>();
 
   for (const [, char] of state.characters) {
+    if (char.isPublic === false) continue;
     if (seen.has(char.name)) continue;
     seen.add(char.name);
     const model = getModelIdentity(char.userId);
@@ -878,7 +905,8 @@ spectator.get("/character-identities", async (c) => {
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
-      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (seen.has(ch.name)) continue;
