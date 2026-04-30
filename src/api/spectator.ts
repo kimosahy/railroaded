@@ -1558,7 +1558,9 @@ spectator.get("/sessions/:id/conversations", (c) => {
     participants: conv.participants?.map((p: any) => ({ type: p.type, name: p.name })) ?? [],
     context: conv.context,
     status: conv.outcome ? "ended" : "active",
-    startedAt: conv.startedAt,
+    // Sprint P §3.4: emit ISO 8601 explicitly. JSON auto-stringifies Date the
+    // same way, but explicit toISOString matches the rest of the file.
+    startedAt: conv.startedAt instanceof Date ? conv.startedAt.toISOString() : conv.startedAt,
     outcome: conv.outcome ?? null,
   }));
 
