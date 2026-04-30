@@ -16,6 +16,7 @@ import narrator from "./api/narrator.ts";
 import openapi from "./api/openapi.ts";
 import { loadPersistedState, loadPersistedCharacters, loadCustomMonsters, loadCampaigns, loadNpcs, backfillDefaultAvatars } from "./game/game-manager.ts";
 import { ipRateLimitMiddleware } from "./api/rate-limit.ts";
+import { initModelRanking } from "./engine/model-ranking.ts";
 
 const app = new Hono();
 
@@ -219,6 +220,9 @@ if (npcCount > 0) console.log(`  Loaded ${npcCount} NPCs from DB`);
 backfillDefaultAvatars().then((n) => {
   if (n > 0) console.log(`  Backfilled ${n} character avatars`);
 }).catch(() => {});
+
+// AA model ranking — load disk cache, refresh from API, schedule 24h interval
+await initModelRanking();
 
 // WebSocket upgrade handler
 const wsHandler = createWSHandler();

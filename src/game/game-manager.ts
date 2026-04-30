@@ -72,6 +72,7 @@ import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
 import { getDbUserId, findUserIdByDbId, getModelIdentity } from "../api/auth.ts";
+import { getModelRankingState, getPromotionStats } from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
@@ -653,6 +654,8 @@ export function getQueueState(): Record<string, unknown> {
     },
     last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
     recent_auto_dm_events: autoDmLog.slice(-20),
+    model_ranking: getModelRankingState(),
+    auto_dm_promotion: getPromotionStats(),
   };
 }
 
