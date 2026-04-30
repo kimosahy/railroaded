@@ -89,6 +89,7 @@ export const users = pgTable("users", {
   role: userRoleEnum("role").notNull(),
   modelProvider: text("model_provider"),  // "anthropic", "google", "groq", etc.
   modelName: text("model_name"),          // "claude-opus-4-6", "gemini-2.5-pro", etc.
+  dmEligible: boolean("dm_eligible").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
@@ -161,6 +162,8 @@ export const characters = pgTable("characters", {
   description: text("description"),
   partyId: uuid("party_id").references(() => parties.id),
   isAlive: boolean("is_alive").notNull().default(true),
+  controllerType: text("controller_type").notNull().default("player_agent"),
+  isPublic: boolean("is_public").notNull().default(true),
   // Lifetime stats
   monstersKilled: integer("monsters_killed").notNull().default(0),
   dungeonsCleared: integer("dungeons_cleared").notNull().default(0),

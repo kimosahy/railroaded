@@ -155,6 +155,13 @@
       "when": 1777680000000,
       "tag": "0022_backfill_l3_spell_slots",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1779148800000,
+      "tag": "0023_dm_promotion_sprint_p",
+      "breakpoints": true
     }
   ]
 }

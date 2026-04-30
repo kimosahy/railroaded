@@ -21,6 +21,7 @@ interface StoredUser {
   dbUserId: string | null; // UUID from users table
   modelProvider: string | null;
   modelName: string | null;
+  dmEligible: boolean;
 }
 
 interface StoredSession {
@@ -90,7 +91,7 @@ auth.post("/register", async (c) => {
 
   // Reserve slot synchronously before async hash — prevents TOCTOU race
   // where concurrent registrations with the same username both pass the check above
-  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null };
+  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null, dmEligible: true };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
 
@@ -188,7 +189,7 @@ auth.post("/admin/login-as", async (c) => {
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
     const id = `user-${userIdCounter++}`;
-    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null };
+    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null, dmEligible: true };
     usersByUsername.set(body.username, user);
     usersById.set(id, user);
     try {
@@ -367,6 +368,7 @@ export async function loadPersistedUsers(): Promise<number> {
         dbUserId: row.id,
         modelProvider: row.modelProvider ?? null,
         modelName: row.modelName ?? null,
+        dmEligible: row.dmEligible ?? true,
       };
       usersByUsername.set(row.username, user);
       usersById.set(id, user);

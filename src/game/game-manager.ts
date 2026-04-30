@@ -131,6 +131,13 @@ interface GameCharacter extends CharacterSheet {
   /** Channel Divinity uses remaining. Clerics get 1 at L1, 2 at L6.
    *  Resets on short or long rest. Non-clerics: 0. */
   channelDivinityUses: number;
+  /** Who controls this character. "player_agent" for normal players,
+   *  "dm_npc" when promoted to DM via MF-035, "autopilot" for stalled players.
+   *  Used by spectator filters and turn-resolution logic. */
+  controllerType: "player_agent" | "dm_npc" | "autopilot";
+  /** Whether this character appears in public spectator endpoints.
+   *  Test/probe characters set this to false to hide from leaderboards etc. */
+  isPublic: boolean;
 }
 
 interface GameParty {
@@ -1309,6 +1316,8 @@ export async function handleCreateCharacter(userId: string, params: {
     chatMessages: 0,
     tacticalChats: 0,
     channelDivinityUses: params.class === "cleric" ? 1 : 0,
+    controllerType: "player_agent",
+    isPublic: true,
   };
 
   characters.set(id, character);
@@ -7910,6 +7919,8 @@ export async function loadPersistedState(): Promise<number> {
           chatMessages: row.chatMessages ?? 0,
           tacticalChats: row.tacticalChats ?? 0,
           channelDivinityUses: row.class === "cleric" ? 1 : 0,
+          controllerType: (row.controllerType as "player_agent" | "dm_npc" | "autopilot") ?? "player_agent",
+          isPublic: row.isPublic ?? true,
         };
 
         characters.set(charId, char);
@@ -8058,6 +8069,8 @@ export async function loadPersistedCharacters(): Promise<number> {
         relentlessEnduranceUsed: false,
         lastActionAt: new Date(),
         channelDivinityUses: row.class === "cleric" ? 1 : 0,
+        controllerType: (row.controllerType as "player_agent" | "dm_npc" | "autopilot") ?? "player_agent",
+        isPublic: row.isPublic ?? true,
       };
 
       characters.set(charId, char);
