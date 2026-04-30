@@ -116,12 +116,75 @@ describe("Sprint P §3.1 — isPublic filter on spectator endpoints", () => {
     expect(body.name).toBe("PublicDetail");
   });
 
-  test("/spectator/journals/:characterId returns empty events for non-public character", async () => {
+  test("/spectator/parties (in-memory listing) excludes non-public members (Fix 2.2)", async () => {
+    // Create 1 public + 1 non-public char; place both in the same in-memory party.
+    const publicId = await makeChar(uid("u"), "PartyHero", true);
+    const hiddenId = await makeChar(uid("u"), "PartyTest", false);
+    const { parties, characters } = getState();
+    // Synthesize a minimal party with an active session so /parties returns it.
+    parties.set("party-test-1", {
+      id: "party-test-1",
+      name: "Test Party",
+      members: [publicId, hiddenId],
+      dmUserId: null,
+      dungeonState: null,
+      session: { id: "s1", partyId: "party-test-1", phase: "exploration", currentTurn: 0,
+        initiativeOrder: [], turnResources: {}, isActive: true,
+        startedAt: new Date(), endedAt: null } as any,
+      monsters: [],
+      events: [],
+      templateEncounters: new Map(),
+      triggeredEncounters: new Set(),
+      templateLootTables: new Map(),
+      lootedRooms: new Set(),
+      groundItems: [],
+      campaignId: null,
+      dbPartyId: null,
+      dbSessionId: null,
+      dbReady: null,
+    } as any);
+
+    const res = await app.request("/spectator/parties");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { parties: Array<{ members: Array<{ name: string }> }> };
+    const partyEntry = body.parties.find(p => p.members.some(m => m.name === "PartyHero"));
+    expect(partyEntry).toBeDefined();
+    expect(partyEntry!.members.some(m => m.name === "PartyTest")).toBe(false);
+  });
+
+  test("/spectator/parties/:id excludes non-public members (Fix 2.1)", async () => {
+    const publicId = await makeChar(uid("u"), "PartyDetailHero", true);
+    const hiddenId = await makeChar(uid("u"), "PartyDetailTest", false);
+    const { parties } = getState();
+    parties.set("party-test-2", {
+      id: "party-test-2",
+      name: "Detail Party",
+      members: [publicId, hiddenId],
+      dmUserId: null,
+      dungeonState: null,
+      session: { id: "s2", partyId: "party-test-2", phase: "exploration", currentTurn: 0,
+        initiativeOrder: [], turnResources: {}, isActive: true,
+        startedAt: new Date(), endedAt: null } as any,
+      monsters: [], events: [],
+      templateEncounters: new Map(), triggeredEncounters: new Set(),
+      templateLootTables: new Map(), lootedRooms: new Set(),
+      groundItems: [], campaignId: null,
+      dbPartyId: null, dbSessionId: null, dbReady: null,
+    } as any);
+
+    const res = await app.request("/spectator/parties/party-test-2");
+    expect(res.status).toBe(200);
+    const body = await res.json() as { members?: Array<{ name: string }> };
+    expect(body.members?.some(m => m.name === "PartyDetailHero")).toBe(true);
+    expect(body.members?.some(m => m.name === "PartyDetailTest")).toBe(false);
+  });
+
+  test("/spectator/journals/:characterId returns 404 for non-public character (Fix 2.3 — consistent with /characters/:id)", async () => {
     const hiddenId = await makeChar(uid("u"), "HiddenJournal", false);
 
     const res = await app.request(`/spectator/journals/${hiddenId}`);
-    expect(res.status).toBe(200);
-    const body = await res.json() as { events?: unknown[]; eventCount?: number };
-    expect(body.eventCount ?? (body.events?.length ?? 0)).toBe(0);
+    expect(res.status).toBe(404);
+    const body = await res.json() as { code: string };
+    expect(body.code).toBe("NOT_FOUND");
   });
 });

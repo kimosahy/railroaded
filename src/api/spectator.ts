@@ -97,19 +97,23 @@ spectator.get("/parties", async (c) => {
     // Skip parties with no active session — they're historical, not live
     if (!party.session) continue;
 
-    const members = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      const model = char ? getModelIdentity(char.userId) : null;
-      return {
-        id: char?.dbCharId ?? charId,
-        name: char?.name ?? "Unknown",
-        class: char?.class ?? "unknown",
-        level: char?.level ?? 1,
-        avatarUrl: char?.avatarUrl ?? null,
-        description: char?.description ?? null,
-        ...(model ? { model } : {}),
-      };
-    });
+    // Sprint P §3.1: filter non-public characters from member listing.
+    const members = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (char?.isPublic === false) return null;
+        const model = char ? getModelIdentity(char.userId) : null;
+        return {
+          id: char?.dbCharId ?? charId,
+          name: char?.name ?? "Unknown",
+          class: char?.class ?? "unknown",
+          level: char?.level ?? 1,
+          avatarUrl: char?.avatarUrl ?? null,
+          description: char?.description ?? null,
+          ...(model ? { model } : {}),
+        };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
 
     let currentRoom: string | null = null;
     if (party.dungeonState) {
@@ -153,14 +157,18 @@ spectator.get("/parties/:id", async (c) => {
 
   if (party) {
     // --- In-memory path (live session) ---
-    const members = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      if (!char) {
-        return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
-      }
-      const model = getModelIdentity(char.userId);
-      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
-    });
+    // Sprint P §3.1: filter non-public characters from member listing.
+    const members = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (!char) {
+          return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
+        }
+        if (char.isPublic === false) return null;
+        const model = getModelIdentity(char.userId);
+        return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
 
     let currentRoom: string | null = null;
     let currentRoomDescription: string | null = null;
@@ -374,9 +382,11 @@ spectator.get("/journals/:characterId", async (c) => {
     }
   }
 
-  // Sprint P §3.1: non-public characters return an empty journal payload.
+  // Sprint P §3.1 (Fix 2.3): non-public characters return 404 — same shape
+  // as /spectator/characters/:id so a UUID-guessing attacker cannot
+  // distinguish "private" from "nonexistent".
   if (character && character.isPublic === false) {
-    return c.json({ characterId, journals: [], events: [], eventCount: 0 });
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
 
   if (character) {
@@ -414,9 +424,10 @@ spectator.get("/journals/:characterId", async (c) => {
     }).from(charactersTable).where(eq(charactersTable.id, characterId));
 
     if (!dbChar) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
-    // Sprint P §3.1: non-public characters return an empty journal payload.
+    // Sprint P §3.1 (Fix 2.3): non-public characters return 404 to match
+    // /spectator/characters/:id. Prevents UUID-guess private/nonexistent leak.
     if (dbChar.isPublic === false) {
-      return c.json({ characterId, journals: [], events: [], eventCount: 0 });
+      return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
     }
 
     // Try journal_entries first
@@ -596,13 +607,21 @@ spectator.get("/leaderboard", async (c) => {
 
   const partyMap = new Map<string, PartyLeaderboardEntry>();
   for (const [partyId, party] of state.parties) {
-    const memberNames = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      return char?.name ?? "Unknown";
-    });
+    // Sprint P §3.1: filter non-public characters from memberNames listing.
+    const memberNames = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (char?.isPublic === false) return null;
+        return char?.name ?? "Unknown";
+      })
+      .filter((n): n is string => n !== null);
+    const visibleCount = party.members.filter((charId) => {
+      const c = state.characters.get(charId);
+      return c?.isPublic !== false;
+    }).length;
     partyMap.set(party.dbPartyId ?? partyId, {
       id: party.dbPartyId ?? partyId, name: party.name,
-      memberNames, memberCount: party.members.length,
+      memberNames, memberCount: visibleCount,
       eventCount: party.events.length, phase: party.session?.phase ?? null,
     });
   }
@@ -615,7 +634,8 @@ spectator.get("/leaderboard", async (c) => {
 
     const dbCharsForParties = await db.select({
       name: charactersTable.name, partyId: charactersTable.partyId,
-    }).from(charactersTable).where(isNotNull(charactersTable.partyId));
+    }).from(charactersTable)
+      .where(and(isNotNull(charactersTable.partyId), eq(charactersTable.isPublic, true)));
 
     const namesByParty = new Map<string, string[]>();
     for (const ch of dbCharsForParties) {
