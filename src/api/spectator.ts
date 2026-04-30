@@ -884,6 +884,71 @@ spectator.get("/characters/:id", async (c) => {
   }
 });
 
+// GET /spectator/characters/:id/sessions — session history for a character.
+// Sprint P §3.3. v1 queries by partyId (no character↔session junction table
+// exists). TODO: when the junction table lands, switch to that for characters
+// that may have been in multiple parties across a campaign.
+spectator.get("/characters/:id/sessions", async (c) => {
+  const characterId = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/i.test(characterId)) {
+    return c.json({ error: "Invalid character ID", code: "BAD_REQUEST" }, 400);
+  }
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 50);
+
+  try {
+    const charRow = await db.select({
+      partyId: charactersTable.partyId,
+      isPublic: charactersTable.isPublic,
+    })
+      .from(charactersTable)
+      .where(eq(charactersTable.id, characterId))
+      .limit(1);
+
+    if (!charRow.length) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1 carry-through: do not leak session history of non-public chars.
+    if (charRow[0]!.isPublic === false) {
+      return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    }
+    const partyId = charRow[0]!.partyId;
+    if (!partyId) {
+      return c.json({ characterId, sessions: [] });
+    }
+
+    const sessions = await db.select({
+      id: gameSessionsTable.id,
+      phase: gameSessionsTable.phase,
+      isActive: gameSessionsTable.isActive,
+      summary: gameSessionsTable.summary,
+      outcome: gameSessionsTable.outcome,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+      partyName: partiesTable.name,
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(eq(gameSessionsTable.partyId, partyId))
+      .orderBy(desc(gameSessionsTable.startedAt))
+      .limit(limit);
+
+    return c.json({
+      characterId,
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        phase: s.phase,
+        isActive: s.isActive,
+        summary: s.summary,
+        outcome: s.outcome,
+        partyName: s.partyName ?? null,
+        startedAt: s.startedAt.toISOString(),
+        endedAt: s.endedAt ? s.endedAt.toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    console.error("[spectator] Character sessions error:", err);
+    return c.json({ error: "Internal error", code: "INTERNAL" }, 500);
+  }
+});
+
 // GET /spectator/character-identities — lightweight identity map (name, avatarUrl, model) for all characters
 spectator.get("/character-identities", async (c) => {
   const state = gm.getState();
