@@ -251,6 +251,15 @@ describe("MF-035 DM promotion", () => {
   });
 
   test("(h) only dm_handshake completes promotion — no other code path", async () => {
+    // Architectural note (Fix 3.4 + Atlas): markDmActed has no path to
+    // checkDmHandshake — that wiring was removed in CC-260430 Task 3. No
+    // party exists pre-handshake (formParty only runs inside handleDmHandshake),
+    // so markDmActed cannot fire for the promoted user; calling it would
+    // no-op on parties.get(undefined). The guard is structural (the bypass
+    // code does not exist), not runtime. A regression would require
+    // re-adding the wiring AND test (a) would fail (party would form
+    // without dm_handshake). This test asserts the structural invariant:
+    // pendingPromotion stays set until handshake, then handshake forms party.
     _seedModelRankingForTest(SAMPLE_RANKINGS);
 
     await setupCandidate("opus-user", "anthropic", "claude-opus-4-7");
@@ -260,12 +269,10 @@ describe("MF-035 DM promotion", () => {
     provisionConductor();
     expect(checkPromotionPending("opus-user").isPending).toBe(true);
 
-    // No party should exist regardless of any other tool calls in this test
-    // (we just verify pendingPromotion is the gate — there's no internal
-    // function to "complete handshake" except handleDmHandshake itself).
+    // Pre-handshake: no party exists, regardless of any other tool calls.
     expect(getState().parties.size).toBe(0);
 
-    // Verify the only path that flips state is handleDmHandshake
+    // Only handshake flips state.
     handleDmHandshake("opus-user");
     expect(getState().parties.size).toBe(1);
   });

@@ -17,6 +17,11 @@ import * as path from "path";
 
 const AA_API_URL = "https://artificialanalysis.ai/api/v2/data/llms/models";
 const AA_API_KEY = process.env.ARTIFICIAL_ANALYSIS_API_KEY ?? "";
+// NOTE: Render's filesystem is ephemeral — cache file is lost on every
+// redeploy, so first startup post-deploy always hits the AA API. Acceptable
+// for v1; the 10s fetch timeout (Fix 1.2) keeps startup unblocked if AA is
+// down. For persistent caching across deploys, attach a Render Disk to /data
+// or use a KV store. v1.5 consideration.
 const CACHE_FILE = path.join(process.cwd(), "data", "aa-model-cache.json");
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** Below this many ranked models, median = 0 (small-sample guard). */
@@ -89,9 +94,14 @@ export function getModelScore(
     return { score: modelScores.get(modelOnly)!, matched: true };
   }
 
-  // No match — median fallback, logged
+  // No match — median fallback. Counter increments unconditionally; the log
+  // line is suppressed when no cache exists at all (e.g. no API key, every
+  // single lookup is unknown — would otherwise produce O(candidates×attempts)
+  // log lines per promotion wave).
   promotionStats.unknownModelFallbacks++;
-  console.log(`[AA-RANK] Unknown model "${identity}" → median fallback (${medianScore})`);
+  if (modelScores.size > 0) {
+    console.log(`[AA-RANK] Unknown model "${identity}" → median fallback (${medianScore})`);
+  }
   return { score: medianScore, matched: false };
 }
 

@@ -669,7 +669,9 @@ export function getQueueState(): Record<string, unknown> {
       autoDmEtaSeconds: autoDmFirstEligibleAt
         ? Math.max(0, Math.ceil((AUTO_DM_DELAY_MS - (Date.now() - autoDmFirstEligibleAt)) / 1000))
         : null,
-      autoDmProvisionEnabled: isDmPromotionEnabled(),
+      // Renamed from autoDmProvisionEnabled (Fix 3.2): MF-035 changed the
+      // semantics from "auto-spawn Conductor" to "promote queued player to DM".
+      dmPromotionEnabled: isDmPromotionEnabled(),
     },
     last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
     recent_auto_dm_events: autoDmLog.slice(-20),
@@ -937,6 +939,14 @@ export function checkPromotionPending(userId: string): {
  * Replaces the old "spawn The Conductor (SYSTEM_DM_ID)" approach (CC-260428).
  *
  * Kept exported so existing tests / direct callers retain their entrypoint.
+ *
+ * Promotion can be disabled two ways:
+ *  - RAILROADED_DM_PROMOTION_ENABLED=false → kill switch, provisionConductor
+ *    no-ops (this is the runtime control — works without restart).
+ *  - RAILROADED_AUTO_DM_DELAY_SECONDS=0 → trigger timer never fires, so
+ *    provisionConductor is never called from the auto-DM path (this prevents
+ *    the timer entirely).
+ * Both are valid; use the kill switch for runtime toggling.
  */
 export function provisionConductor(): void {
   if (!isDmPromotionEnabled()) {
