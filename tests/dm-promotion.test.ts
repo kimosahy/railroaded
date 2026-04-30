@@ -48,10 +48,11 @@ const ENV_KEEP = {
 };
 
 function resetState() {
-  const { playerQueue, dmQueue, characters, parties } = getState();
+  const { playerQueue, dmQueue, characters, charactersByUser, parties } = getState();
   playerQueue.length = 0;
   dmQueue.length = 0;
   characters.clear();
+  charactersByUser.clear();
   parties.clear();
   _resetDmPromotionForTest();
   _clearUsersForTest();
@@ -226,8 +227,11 @@ describe("MF-035 DM promotion", () => {
   test("(g) AutoDmLogEntry includes score, model_identity, time_to_handshake_ms on success", async () => {
     _seedModelRankingForTest(SAMPLE_RANKINGS);
 
+    // Need 3 candidates so 2 players remain after Opus is promoted
+    // (tryMatchPartyFallback floor = 2 players + DM).
     await setupCandidate("opus-user", "anthropic", "claude-opus-4-7");
     await setupCandidate("sonnet-user", "anthropic", "claude-sonnet-4-6");
+    await setupCandidate("haiku-user", "anthropic", "claude-haiku-4-5");
 
     provisionConductor();
 
@@ -251,6 +255,7 @@ describe("MF-035 DM promotion", () => {
 
     await setupCandidate("opus-user", "anthropic", "claude-opus-4-7");
     await setupCandidate("sonnet-user", "anthropic", "claude-sonnet-4-6");
+    await setupCandidate("haiku-user", "anthropic", "claude-haiku-4-5");
 
     provisionConductor();
     expect(checkPromotionPending("opus-user").isPending).toBe(true);
@@ -327,6 +332,7 @@ describe("MF-035 DM promotion", () => {
     _seedModelRankingForTest(SAMPLE_RANKINGS);
     await setupCandidate("opus-user", "anthropic", "claude-opus-4-7");
     await setupCandidate("sonnet-user", "anthropic", "claude-sonnet-4-6");
+    await setupCandidate("haiku-user", "anthropic", "claude-haiku-4-5");
 
     provisionConductor();
     handleDmHandshake("opus-user");

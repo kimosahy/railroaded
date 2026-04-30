@@ -46,10 +46,11 @@ async function makeChar(userId: string, name: string, isPublic: boolean): Promis
 }
 
 function resetState() {
-  const { playerQueue, dmQueue, characters, parties } = getState();
+  const { playerQueue, dmQueue, characters, charactersByUser, parties } = getState();
   playerQueue.length = 0;
   dmQueue.length = 0;
   characters.clear();
+  charactersByUser.clear();
   parties.clear();
   _clearUsersForTest();
 }

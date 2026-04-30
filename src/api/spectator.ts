@@ -1226,12 +1226,10 @@ spectator.get("/sessions/:id", async (c) => {
       .where(eq(sessionEventsTable.sessionId, sessionId))
       .orderBy(asc(sessionEventsTable.createdAt));
 
-    // Fetch narrations.
-    // Sprint P §3.2 verified: filter is session-scoped via eq(sessionId).
-    // Other narration queries audited — /narrations/:sessionId, /featured,
-    // /feed.xml all correctly scope by sessionId. The two genuinely global
-    // queries (stats total count, homepage /narrations recent-feed) are
-    // intentionally cross-session and not in scope.
+    // Fetch narrations. Sprint P §3.2 verified: filter is session-scoped
+    // via eq(sessionId) here and at every other endpoint that should be
+    // session-scoped. Two queries are intentionally cross-session (stats
+    // total count, homepage recent-feed) and not in scope.
     const sessionNarrations = await db.select({
       id: narrationsTable.id,
       content: narrationsTable.content,

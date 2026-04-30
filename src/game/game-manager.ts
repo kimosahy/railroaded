@@ -729,6 +729,11 @@ interface PendingPromotion {
   userId: string;
   characterId: string;
   characterName: string;
+  /** Holds the user's QueueEntry while they await handshake.
+   *  CRITICAL: do NOT place this in dmQueue until handshake succeeds —
+   *  the matchmaker wait-timer would otherwise pick up an unconfirmed DM
+   *  and form a party before handshake passes. */
+  queueEntry: QueueEntry;
   timer: ReturnType<typeof setTimeout> | null;
   attempt: number;
   score: number;
@@ -748,11 +753,19 @@ let pendingPromotion: PendingPromotion | null = null;
 let promotionWaveTried = new Set<string>();
 
 /**
- * Promote a queued player to DM. Mutates user role, moves QueueEntry from
- * playerQueue → dmQueue, flips character.controllerType to "dm_npc".
- * Returns the character details for logging, or null if user/queue not found.
+ * Promote a queued player to DM. Mutates user role, removes from playerQueue,
+ * flips character.controllerType to "dm_npc", and returns the QueueEntry so
+ * the caller can hold it in `pendingPromotion` until handshake succeeds.
+ *
+ * IMPORTANT: this does NOT push to dmQueue. The promoted user remains "in limbo"
+ * (out of both queues) until handleDmHandshake confirms — otherwise the
+ * matchmaker wait-timer could pick up an unconfirmed DM.
+ *
+ * Returns null if user/queue not found.
  */
-function promoteUserToDm(userId: string): { characterId: string; characterName: string } | null {
+function promoteUserToDm(userId: string): {
+  characterId: string; characterName: string; queueEntry: QueueEntry;
+} | null {
   const userInfo = _internal_mutateUserRole(userId, "dm");
   if (!userInfo) return null;
 
@@ -767,25 +780,27 @@ function promoteUserToDm(userId: string): { characterId: string; characterName: 
   const characterName = entry.characterName;
   entry.role = "dm";
   entry.characterId = "";
-  dmQueue.push(entry);
+  // Do NOT push to dmQueue here — held in pendingPromotion until handshake.
 
   const char = characters.get(characterId);
   if (char) char.controllerType = "dm_npc";
 
-  return { characterId, characterName };
+  return { characterId, characterName, queueEntry: entry };
 }
 
-/** Reverse promotion. Used on handshake timeout or no-players-available. */
-function demoteUserToPlayer(userId: string, characterId: string): void {
+/** Reverse promotion. The promoted user's queue entry was held in
+ *  pendingPromotion (not in dmQueue) — we receive it here and push back to
+ *  playerQueue with original characterId restored. */
+function demoteUserToPlayer(
+  userId: string,
+  characterId: string,
+  queueEntry: QueueEntry,
+): void {
   _internal_mutateUserRole(userId, "player");
 
-  const dmIdx = dmQueue.findIndex((q) => q.userId === userId);
-  if (dmIdx !== -1) {
-    const entry = dmQueue.splice(dmIdx, 1)[0]!;
-    entry.role = "player";
-    entry.characterId = characterId;
-    playerQueue.push(entry);
-  }
+  queueEntry.role = "player";
+  queueEntry.characterId = characterId;
+  playerQueue.push(queueEntry);
 
   const char = characters.get(characterId);
   if (char) char.controllerType = "player_agent";
@@ -830,9 +845,10 @@ export function handleDmHandshake(userId: string): {
 
   console.log(`[AUTO-DM] Handshake passed: ${promo.characterName} (${timeToDmAction}ms). Forming party.`);
 
-  // Now form the party — DM is confirmed alive.
+  // Now place the entry in dmQueue and form the party — DM is confirmed alive.
   // tryMatchPartyFallback enforces a hard floor of 2 players (matchmaker.ts:164),
   // so a party never forms with only the DM (Atlas residual #6 verified).
+  dmQueue.push(promo.queueEntry);
   clearMatchmakerWaitTimer();
   const match = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
   if (match) {
@@ -841,9 +857,11 @@ export function handleDmHandshake(userId: string): {
     console.log(`[AUTO-DM] Party formed with promoted DM: ${promo.characterName}`);
   } else {
     // Players left during the handshake window — DM is alive but nobody to
-    // play with. Demote, log the edge case (Atlas residual #1).
+    // play with. Pull the entry back out of dmQueue, demote, log (Atlas residual #1).
     console.warn(`[AUTO-DM] Handshake passed but no players available. Demoting ${promo.characterName}.`);
-    demoteUserToPlayer(promo.userId, promo.characterId);
+    const idx = dmQueue.findIndex((q) => q.userId === promo.userId);
+    if (idx !== -1) dmQueue.splice(idx, 1);
+    demoteUserToPlayer(promo.userId, promo.characterId, promo.queueEntry);
     pushAutoDmLog({
       type: "skipped",
       timestamp: new Date().toISOString(),
@@ -983,12 +1001,20 @@ function attemptPromotion(attempt: number): void {
   const pick = candidates[0]!;
   promotionWaveTried.add(pick.userId);
 
-  // Set sentinel BEFORE promotion so a parallel call hits the race guard.
-  // Timer is assigned after setTimeout below — sentinel covers the window.
+  // Mutate first, then construct pendingPromotion with the QueueEntry the
+  // promotion handed back. The QueueEntry is held in pendingPromotion (not
+  // in dmQueue) until handshake succeeds — see promoteUserToDm comment.
+  const result = promoteUserToDm(pick.userId);
+  if (!result) {
+    attemptPromotion(attempt + 1);
+    return;
+  }
+
   pendingPromotion = {
     userId: pick.userId,
-    characterId: pick.characterId,
-    characterName: pick.characterName,
+    characterId: result.characterId,
+    characterName: result.characterName,
+    queueEntry: result.queueEntry,
     timer: null,
     attempt,
     score: pick.score,
@@ -996,17 +1022,9 @@ function attemptPromotion(attempt: number): void {
     promotedAt: Date.now(),
   };
 
-  const result = promoteUserToDm(pick.userId);
-  if (!result) {
-    pendingPromotion = null;
-    attemptPromotion(attempt + 1);
-    return;
-  }
-
-  // Update with the actual characterId/Name from promotion (defensive — same
-  // values, but promoteUserToDm is the source of truth post-mutation).
-  pendingPromotion.characterId = result.characterId;
-  pendingPromotion.characterName = result.characterName;
+  // Sprint P §3.3 race fix: clear any in-flight matchmaker wait-timer so it
+  // can't form a party with the partial state during the handshake window.
+  clearMatchmakerWaitTimer();
 
   console.log(
     `[AUTO-DM] Promoted ${result.characterName} ` +
@@ -1031,7 +1049,8 @@ function attemptPromotion(attempt: number): void {
     recordHandshakeFail();
 
     // No party was formed yet, so demotion is sufficient cleanup.
-    demoteUserToPlayer(pick.userId, result.characterId);
+    // The queueEntry is held in pendingPromotion (not dmQueue) — pass it in.
+    demoteUserToPlayer(pick.userId, result.characterId, result.queueEntry);
     pendingPromotion = null;
 
     attemptPromotion(attempt + 1);
@@ -8536,5 +8555,5 @@ export function extractStorySpine(
 }
 
 export function getState() {
-  return { characters, parties, playerQueue, dmQueue, campaigns: campaignsMap, clocks, infoItems, npcs: npcsMap };
+  return { characters, charactersByUser, parties, playerQueue, dmQueue, campaigns: campaignsMap, clocks, infoItems, npcs: npcsMap };
 }
