@@ -232,6 +232,20 @@ async function handleToolsCall(
     );
   }
 
+  // Promotion redirect (Atlas residual #4): a promoted agent calling any tool
+  // other than dm_handshake gets a clear PROMOTION_PENDING response. Must run
+  // BEFORE the role check, since the agent's role has already flipped to "dm"
+  // and any old player tool call would otherwise fail with a generic 403.
+  if (toolName !== "dm_handshake") {
+    const promo = gm.checkPromotionPending(userId);
+    if (promo.isPending && promo.redirectResponse) {
+      return success(id, {
+        content: [{ type: "text", text: JSON.stringify({ error: promo.redirectResponse.error, reason_code: promo.redirectResponse.reason_code }) }],
+        isError: true,
+      });
+    }
+  }
+
   if (role === "player" && !isPlayerTool) {
     return error(
       id,
@@ -594,6 +608,10 @@ async function executeToolCall(
       return gm.handleForceSkipTurn(userId, {
         reason: args.reason as string | undefined,
       });
+
+    // --- MF-035 DM promotion handshake ---
+    case "dm_handshake":
+      return gm.handleDmHandshake(userId);
 
     default:
       return { success: false, error: `Tool '${toolName}' has no handler implementation.` };

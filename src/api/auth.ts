@@ -413,3 +413,66 @@ export function _clearSessionsForTest(): void {
   sessionsByToken.clear();
   sessionRenewalTimestamps.clear();
 }
+
+/** Test-only: register a user directly in the in-memory store without
+ *  going through the /register HTTP flow. Used by promotion tests. */
+export function _registerTestUser(opts: {
+  userId: string; username: string; role: UserRole;
+  modelProvider?: string | null; modelName?: string | null; dmEligible?: boolean;
+}): void {
+  const user: StoredUser = {
+    id: opts.userId,
+    username: opts.username,
+    passwordHash: "",
+    role: opts.role,
+    dbUserId: null,
+    modelProvider: opts.modelProvider ?? null,
+    modelName: opts.modelName ?? null,
+    dmEligible: opts.dmEligible ?? true,
+  };
+  usersById.set(opts.userId, user);
+  usersByUsername.set(opts.username, user);
+}
+
+/** Test-only: clear all in-memory users. */
+export function _clearUsersForTest(): void {
+  usersById.clear();
+  usersByUsername.clear();
+}
+
+// === INTERNAL HELPERS — DM promotion only. Do not import in request handlers. ===
+// The `_internal_` prefix signals these mutate or expose private state for the
+// promotion flow (CC-260430 MF-035) and must not be wired into user-facing
+// endpoints. They access the in-memory `usersById` / `usersByUsername` Maps and
+// must live in this file.
+
+/**
+ * Mutate a user's role in memory. Used by promoteUserToDm / demoteUserToPlayer
+ * in game-manager.ts. Returns username + model identity for telemetry, or
+ * null if the user does not exist.
+ */
+export function _internal_mutateUserRole(userId: string, newRole: UserRole): {
+  username: string; modelProvider: string | null; modelName: string | null;
+} | null {
+  const user = usersById.get(userId);
+  if (!user) return null;
+  user.role = newRole;
+  const byName = usersByUsername.get(user.username);
+  if (byName) byName.role = newRole;
+  return { username: user.username, modelProvider: user.modelProvider, modelName: user.modelName };
+}
+
+/** Whether a user can be promoted to DM (default true; flag for v1.5 audition gate). */
+export function _internal_isUserDmEligible(userId: string): boolean {
+  const user = usersById.get(userId);
+  return user ? (user.dmEligible ?? true) : false;
+}
+
+/** Get model identity for AA ranking. Returns null if user does not exist. */
+export function _internal_getUserModelInfo(userId: string): {
+  modelProvider: string | null; modelName: string | null;
+} | null {
+  const user = usersById.get(userId);
+  if (!user) return null;
+  return { modelProvider: user.modelProvider, modelName: user.modelName };
+}

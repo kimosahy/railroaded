@@ -71,8 +71,15 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { db } from "../db/connection.ts";
 import { sessionEvents as sessionEventsTable, parties as partiesTable, gameSessions as gameSessionsTable, characters as charactersTable, customMonsterTemplates as customMonsterTemplatesTable, campaigns as campaignsTable, npcs as npcsTable, npcInteractions as npcInteractionsTable, dmStats as dmStatsTable, users as usersTable, campaignTemplates as campaignTemplatesTable } from "../db/schema.ts";
-import { getDbUserId, findUserIdByDbId, getModelIdentity } from "../api/auth.ts";
-import { getModelRankingState, getPromotionStats } from "../engine/model-ranking.ts";
+import {
+  getDbUserId, findUserIdByDbId, getModelIdentity,
+  _internal_mutateUserRole, _internal_isUserDmEligible, _internal_getUserModelInfo,
+} from "../api/auth.ts";
+import {
+  getModelRankingState, getPromotionStats, getModelScore,
+  recordPromotionAttempt, recordPromotionSuccess, recordPromotionExhausted,
+  recordHandshakePass, recordHandshakeFail,
+} from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
 import { broadcastToParty, sendToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
@@ -286,36 +293,48 @@ let matchmakerWaitTimer: ReturnType<typeof setTimeout> | null = null;
 /** Wallclock of last successful party formation. Exposed via admin queue-state. */
 let lastMatchAt: number | null = null;
 
-/** Auto-DM trigger state (CC-260428 Task 4). When 3+ players have been queued
- *  for AUTO_DM_DELAY_MS with 0 DMs, fire provisionConductor(). Tunable via
- *  RAILROADED_AUTO_DM_DELAY_SECONDS / RAILROADED_AUTO_DM_MIN_PLAYERS. The actual
- *  conductor queue entry is gated by RAILROADED_AUTO_DM_PROVISION (default off
- *  — telemetry-only) so the trigger fires for observability before CoS picks a
- *  provisioning path. */
+/** Auto-DM trigger state. When AUTO_DM_MIN_PLAYERS+ have been queued for
+ *  AUTO_DM_DELAY_MS with 0 DMs, fire provisionConductor() — which now PROMOTES
+ *  the highest-scored eligible player to DM (MF-035) instead of spawning a
+ *  phantom Conductor. Default delay 5 min (Sprint P).
+ *  Disable entirely via RAILROADED_AUTO_DM_DELAY_SECONDS=0.
+ *  Disable promotion specifically via RAILROADED_DM_PROMOTION_ENABLED=false. */
 let autoDmTimer: ReturnType<typeof setTimeout> | null = null;
 let autoDmFirstEligibleAt: number | null = null;
-const AUTO_DM_DELAY_MS = parseInt(process.env.RAILROADED_AUTO_DM_DELAY_SECONDS ?? "60", 10) * 1000;
+const AUTO_DM_DELAY_MS = parseInt(process.env.RAILROADED_AUTO_DM_DELAY_SECONDS ?? "300", 10) * 1000;
 const AUTO_DM_MIN_PLAYERS = parseInt(process.env.RAILROADED_AUTO_DM_MIN_PLAYERS ?? "3", 10);
-/** Read AUTO_DM_PROVISION_ENABLED at call time (not module-load time) so tests
- *  can toggle the env var to exercise both Step 4g (a) provisioned and
- *  (b) skipped paths without spawning a fresh module instance. */
-function isAutoDmProvisionEnabled(): boolean {
-  return process.env.RAILROADED_AUTO_DM_PROVISION === "true";
+
+/** DM promotion kill switch (MF-035). Read at call time so it can be toggled
+ *  without restart for runtime shutoff. Default: enabled. */
+function isDmPromotionEnabled(): boolean {
+  return process.env.RAILROADED_DM_PROMOTION_ENABLED !== "false";
 }
 
-/** Auto-DM telemetry log (B-telemetry). Capped ring buffer of recent trigger
- *  events. Surfaced in getQueueState() as `recent_auto_dm_events` for CoS to
- *  size The Conductor provisioning. Three event types:
- *    - "fired"      → timer expired and re-check passed (about to call provisionConductor)
- *    - "skipped"    → provisionConductor returned without pushing — `reason`
- *                     distinguishes "provision_disabled" (flag off) from
- *                     "duplicate" (Conductor already in queue)
- *    - "provisioned"→ conductor pushed to dmQueue */
+const DM_HANDSHAKE_TIMEOUT_MS = parseInt(
+  process.env.RAILROADED_DM_HANDSHAKE_SECONDS ?? "120", 10) * 1000;
+const MAX_PROMOTION_ATTEMPTS = parseInt(
+  process.env.RAILROADED_DM_PROMOTION_MAX_ATTEMPTS ?? "3", 10);
+
+/** Auto-DM telemetry log. Capped ring buffer surfaced in getQueueState() as
+ *  `recent_auto_dm_events`. Event types:
+ *    - "fired"      → timer expired and re-check passed
+ *    - "skipped"    → provisionConductor returned without promotion; `reason`
+ *                     distinguishes "promotion_disabled", "handshake_in_progress",
+ *                     "no_eligible_candidates", "all_candidates_exhausted",
+ *                     "handshake_timeout", "handshake_passed_but_no_players"
+ *    - "provisioned"→ DM promoted, handshake passed, party formed */
 interface AutoDmLogEntry {
   type: "fired" | "skipped" | "provisioned";
   timestamp: string;
   players_queued: number;
   reason?: string;
+  promoted_user?: string;
+  promoted_character?: string;
+  handshake_passed?: boolean;
+  attempt?: number;
+  score?: number;
+  model_identity?: string;
+  time_to_handshake_ms?: number;
 }
 const autoDmLog: AutoDmLogEntry[] = [];
 const AUTO_DM_LOG_MAX = 100;
@@ -650,7 +669,7 @@ export function getQueueState(): Record<string, unknown> {
       autoDmEtaSeconds: autoDmFirstEligibleAt
         ? Math.max(0, Math.ceil((AUTO_DM_DELAY_MS - (Date.now() - autoDmFirstEligibleAt)) / 1000))
         : null,
-      autoDmProvisionEnabled: isAutoDmProvisionEnabled(),
+      autoDmProvisionEnabled: isDmPromotionEnabled(),
     },
     last_match_at: lastMatchAt ? new Date(lastMatchAt).toISOString() : null,
     recent_auto_dm_events: autoDmLog.slice(-20),
@@ -702,81 +721,328 @@ function clearAutoDmTimer(): void {
   autoDmFirstEligibleAt = null;
 }
 
+// ---------------------------------------------------------------------------
+// MF-035 DM Promotion (CC-260430)
+// ---------------------------------------------------------------------------
+
+interface PendingPromotion {
+  userId: string;
+  characterId: string;
+  characterName: string;
+  timer: ReturnType<typeof setTimeout> | null;
+  attempt: number;
+  score: number;
+  modelIdentity: string;
+  promotedAt: number;
+}
+
+/** When non-null, a player has been promoted to DM and is awaiting their
+ *  dm_handshake call. NO party forms while pending — handshake gates
+ *  party formation. Used as a re-entry sentinel for double-trigger races. */
+let pendingPromotion: PendingPromotion | null = null;
+
+/** UserIds tried in the current promotion wave. Cleared when a wave ends
+ *  (success, exhaustion, or no eligible candidates). Prevents re-picking
+ *  the same candidate after their handshake timeout — the demoted user
+ *  goes back to playerQueue but is filtered out for the rest of this wave. */
+let promotionWaveTried = new Set<string>();
+
 /**
- * Provision The Conductor — pluggable auto-DM execution (CC-260428 Task 4 Step 4b).
- *
- * FEATURE-FLAGGED: Only creates the queue entry when RAILROADED_AUTO_DM_PROVISION=true.
- * When false, logs an autoDmLog "skipped" entry so CoS can see how often sessions
- * would have started, informing provisioning urgency. The trigger always fires
- * (telemetry); only the action is gated.
- *
- * Architecture: Path B (Eon recommendation) — Mercury-style spawn-on-demand.
- * Default: create queue entry. When CoS provides a spawn mechanism, swap the
- * implementation here; the trigger infrastructure does not change.
- *
- * Uses SYSTEM_DM_ID exported from matchmaker.ts — never define a parallel sentinel.
- *
- * Exported for tests: the duplicate-guard branch is unreachable via the timer
- * because checkAutoDmTrigger's re-check returns early whenever dmQueue is
- * non-empty. Direct invocation is the only way to exercise the guard's
- * autoDmLog "skipped" reason="duplicate" telemetry.
+ * Promote a queued player to DM. Mutates user role, moves QueueEntry from
+ * playerQueue → dmQueue, flips character.controllerType to "dm_npc".
+ * Returns the character details for logging, or null if user/queue not found.
  */
-export function provisionConductor(): void {
-  if (!isAutoDmProvisionEnabled()) {
-    pushAutoDmLog({
-      type: "skipped",
-      timestamp: new Date().toISOString(),
-      players_queued: playerQueue.length,
-      reason: "provision_disabled",
-    });
-    console.log(`[AUTO-DM] Trigger fired but RAILROADED_AUTO_DM_PROVISION=false — skipping. Players waiting: ${playerQueue.length}`);
-    return;
+function promoteUserToDm(userId: string): { characterId: string; characterName: string } | null {
+  const userInfo = _internal_mutateUserRole(userId, "dm");
+  if (!userInfo) return null;
+
+  const playerIdx = playerQueue.findIndex((q) => q.userId === userId);
+  if (playerIdx === -1) {
+    _internal_mutateUserRole(userId, "player"); // rollback
+    return null;
   }
 
-  // Duplicate guard: trigger can fire after a previous Conductor was already
-  // queued (e.g. timer race during a queue churn). Don't push twice.
-  // Reuse the "skipped" type with reason="duplicate" so admins querying
-  // /api/v1/admin/queue-state see the prevented duplicate (vs the existing
-  // "provision_disabled" reason). No schema change.
-  if (dmQueue.some((q) => q.userId === SYSTEM_DM_ID)) {
-    pushAutoDmLog({
-      type: "skipped",
-      timestamp: new Date().toISOString(),
-      players_queued: playerQueue.length,
-      reason: "duplicate",
-    });
-    console.log(`[AUTO-DM] Conductor already in queue — skipping duplicate provision`);
-    return;
+  const entry = playerQueue.splice(playerIdx, 1)[0]!;
+  const characterId = entry.characterId;
+  const characterName = entry.characterName;
+  entry.role = "dm";
+  entry.characterId = "";
+  dmQueue.push(entry);
+
+  const char = characters.get(characterId);
+  if (char) char.controllerType = "dm_npc";
+
+  return { characterId, characterName };
+}
+
+/** Reverse promotion. Used on handshake timeout or no-players-available. */
+function demoteUserToPlayer(userId: string, characterId: string): void {
+  _internal_mutateUserRole(userId, "player");
+
+  const dmIdx = dmQueue.findIndex((q) => q.userId === userId);
+  if (dmIdx !== -1) {
+    const entry = dmQueue.splice(dmIdx, 1)[0]!;
+    entry.role = "player";
+    entry.characterId = characterId;
+    playerQueue.push(entry);
   }
 
-  const conductorEntry: QueueEntry = {
-    userId: SYSTEM_DM_ID,
-    characterId: "",
-    characterClass: "fighter", // placeholder — DM has no character
-    characterName: "The Conductor",
-    personality: "",
-    playstyle: "",
-    role: "dm",
-    queuedAt: new Date(),
-  };
+  const char = characters.get(characterId);
+  if (char) char.controllerType = "player_agent";
+}
 
-  dmQueue.push(conductorEntry);
+/**
+ * Handle the dm_handshake tool call — the ONE WAY to complete promotion.
+ *
+ * Architectural note (Atlas BLOCKER-3): autopilot or system events calling
+ * markDmActed must NOT complete the handshake. Only this explicit tool does.
+ */
+export function handleDmHandshake(userId: string): {
+  success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string;
+} {
+  if (!pendingPromotion || pendingPromotion.userId !== userId) {
+    return {
+      success: false,
+      error: "No pending promotion for this user.",
+      reason_code: "WRONG_STATE",
+    };
+  }
+
+  if (pendingPromotion.timer) clearTimeout(pendingPromotion.timer);
+  const promo = pendingPromotion;
+  pendingPromotion = null;
+
+  const timeToDmAction = Date.now() - promo.promotedAt;
+
   pushAutoDmLog({
     type: "provisioned",
     timestamp: new Date().toISOString(),
     players_queued: playerQueue.length,
+    promoted_user: promo.userId,
+    promoted_character: promo.characterName,
+    handshake_passed: true,
+    attempt: promo.attempt,
+    score: promo.score,
+    model_identity: promo.modelIdentity,
+    time_to_handshake_ms: timeToDmAction,
   });
-  console.log(`[AUTO-DM] The Conductor queued (${SYSTEM_DM_ID}). Players waiting: ${playerQueue.length}`);
+  recordHandshakePass();
 
-  // Use tryMatchPartyFallback (floor=2 players + DM), NOT tryMatchParty
-  // (which requires PARTY_SIZE_MIN=4). Auto-DM fires at 3 players, so the
-  // standard matcher would refuse to form a party.
+  console.log(`[AUTO-DM] Handshake passed: ${promo.characterName} (${timeToDmAction}ms). Forming party.`);
+
+  // Now form the party — DM is confirmed alive.
+  // tryMatchPartyFallback enforces a hard floor of 2 players (matchmaker.ts:164),
+  // so a party never forms with only the DM (Atlas residual #6 verified).
   clearMatchmakerWaitTimer();
   const match = tryMatchPartyFallback([...playerQueue, ...dmQueue]);
   if (match) {
     formParty(match);
-    console.log(`[AUTO-DM] Party formed with The Conductor.`);
+    recordPromotionSuccess(promo.userId);
+    console.log(`[AUTO-DM] Party formed with promoted DM: ${promo.characterName}`);
+  } else {
+    // Players left during the handshake window — DM is alive but nobody to
+    // play with. Demote, log the edge case (Atlas residual #1).
+    console.warn(`[AUTO-DM] Handshake passed but no players available. Demoting ${promo.characterName}.`);
+    demoteUserToPlayer(promo.userId, promo.characterId);
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      promoted_user: promo.userId,
+      promoted_character: promo.characterName,
+      reason: "handshake_passed_but_no_players",
+    });
+    return {
+      success: false,
+      error: "Handshake accepted but no players remain in queue. You have been returned to player role.",
+      reason_code: "NO_PLAYERS_AVAILABLE",
+    };
   }
+
+  return {
+    success: true,
+    data: {
+      message: "Handshake complete. You are now The Conductor. Party is forming.",
+      role: "dm",
+      characterDemoted: promo.characterName,
+    },
+  };
+}
+
+/**
+ * Check if a user has a pending DM promotion handshake.
+ * Called from request handlers BEFORE processing any tool call other than
+ * dm_handshake itself. Without this redirect, a promoted agent calling its
+ * old player tools would get a generic 403 "wrong role" error and never
+ * find its way to dm_handshake (Atlas residual #4).
+ */
+export function checkPromotionPending(userId: string): {
+  isPending: boolean;
+  redirectResponse?: { success: false; error: string; reason_code: string };
+} {
+  if (pendingPromotion && pendingPromotion.userId === userId) {
+    return {
+      isPending: true,
+      redirectResponse: {
+        success: false,
+        error: "You have been promoted to DM. Call dm_handshake to confirm before using any other tool.",
+        reason_code: "PROMOTION_PENDING",
+      },
+    };
+  }
+  return { isPending: false };
+}
+
+/**
+ * Promote the highest-scored eligible queued player to DM, then await their
+ * dm_handshake. On timeout, demote and try the next candidate (up to
+ * MAX_PROMOTION_ATTEMPTS). No party forms until handshake passes.
+ *
+ * Replaces the old "spawn The Conductor (SYSTEM_DM_ID)" approach (CC-260428).
+ *
+ * Kept exported so existing tests / direct callers retain their entrypoint.
+ */
+export function provisionConductor(): void {
+  if (!isDmPromotionEnabled()) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "promotion_disabled",
+    });
+    return;
+  }
+
+  // Race guard (Atlas BLOCKER-2): bail before doing any work if a promotion
+  // is already in flight. Two parallel callers will see this sentinel.
+  if (pendingPromotion) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "handshake_in_progress",
+    });
+    return;
+  }
+
+  // Start a fresh wave — empty tried set.
+  promotionWaveTried = new Set<string>();
+  attemptPromotion(1);
+}
+
+function attemptPromotion(attempt: number): void {
+  if (attempt > MAX_PROMOTION_ATTEMPTS) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "all_candidates_exhausted",
+    });
+    recordPromotionExhausted();
+    console.log(`[AUTO-DM] All ${MAX_PROMOTION_ATTEMPTS} attempts failed. Players stay in queue.`);
+    return;
+  }
+
+  recordPromotionAttempt();
+
+  // Score and rank: highest AA score first, tiebreak by queue time.
+  // Skip users already tried in this wave to avoid re-picking timed-out candidates.
+  const candidates = playerQueue
+    .filter((q) => _internal_isUserDmEligible(q.userId) && !promotionWaveTried.has(q.userId))
+    .map((q) => {
+      const modelInfo = _internal_getUserModelInfo(q.userId);
+      const { score, matched } = getModelScore(
+        modelInfo?.modelProvider ?? null,
+        modelInfo?.modelName ?? null,
+      );
+      return {
+        userId: q.userId,
+        characterId: q.characterId,
+        characterName: q.characterName,
+        queuedAt: q.queuedAt,
+        score,
+        matched,
+        modelIdentity: `${modelInfo?.modelProvider ?? "unknown"}/${modelInfo?.modelName ?? "unknown"}`,
+      };
+    })
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return (a.queuedAt?.getTime() ?? 0) - (b.queuedAt?.getTime() ?? 0);
+    });
+
+  if (candidates.length === 0) {
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      reason: "no_eligible_candidates",
+    });
+    return;
+  }
+
+  const pick = candidates[0]!;
+  promotionWaveTried.add(pick.userId);
+
+  // Set sentinel BEFORE promotion so a parallel call hits the race guard.
+  // Timer is assigned after setTimeout below — sentinel covers the window.
+  pendingPromotion = {
+    userId: pick.userId,
+    characterId: pick.characterId,
+    characterName: pick.characterName,
+    timer: null,
+    attempt,
+    score: pick.score,
+    modelIdentity: pick.modelIdentity,
+    promotedAt: Date.now(),
+  };
+
+  const result = promoteUserToDm(pick.userId);
+  if (!result) {
+    pendingPromotion = null;
+    attemptPromotion(attempt + 1);
+    return;
+  }
+
+  // Update with the actual characterId/Name from promotion (defensive — same
+  // values, but promoteUserToDm is the source of truth post-mutation).
+  pendingPromotion.characterId = result.characterId;
+  pendingPromotion.characterName = result.characterName;
+
+  console.log(
+    `[AUTO-DM] Promoted ${result.characterName} ` +
+    `(model: ${pick.modelIdentity}, score: ${pick.score}, matched: ${pick.matched}, ` +
+    `attempt ${attempt}/${MAX_PROMOTION_ATTEMPTS}). Awaiting dm_handshake.`,
+  );
+
+  pendingPromotion.timer = setTimeout(() => {
+    console.log(`[AUTO-DM] Handshake timeout: ${result.characterName} (${DM_HANDSHAKE_TIMEOUT_MS / 1000}s)`);
+
+    pushAutoDmLog({
+      type: "skipped",
+      timestamp: new Date().toISOString(),
+      players_queued: playerQueue.length,
+      promoted_user: pick.userId,
+      promoted_character: result.characterName,
+      reason: "handshake_timeout",
+      attempt,
+      score: pick.score,
+      model_identity: pick.modelIdentity,
+    });
+    recordHandshakeFail();
+
+    // No party was formed yet, so demotion is sufficient cleanup.
+    demoteUserToPlayer(pick.userId, result.characterId);
+    pendingPromotion = null;
+
+    attemptPromotion(attempt + 1);
+  }, DM_HANDSHAKE_TIMEOUT_MS);
+}
+
+/** Test-only: reset DM promotion state. */
+export function _resetDmPromotionForTest(): void {
+  if (pendingPromotion?.timer) clearTimeout(pendingPromotion.timer);
+  pendingPromotion = null;
+  promotionWaveTried = new Set<string>();
 }
 
 /**
