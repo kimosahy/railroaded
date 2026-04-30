@@ -508,14 +508,15 @@ export function reconcileOrphanedDmRoles(
     );
     if (hasActiveParty) continue;
     console.warn(`[STARTUP] Orphaned DM role for user ${user.username} — resetting to player`);
-    user.role = "player";
-    const byName = usersByUsername.get(user.username);
-    if (byName) byName.role = "player";
+    // Single source of truth for role mutation — covers both Maps and
+    // matches the helper used in promote/demote, so no drift if the helper
+    // ever grows additional invariants.
+    _internal_mutateUserRole(id, "player");
     if (user.dbUserId) {
       db.update(usersTable).set({ role: "player" })
         .where(eq(usersTable.id, user.dbUserId))
         .execute()
-        .catch((err) => console.error("[STARTUP] DB role reset failed:", err));
+        .catch((err) => console.error(`[STARTUP] DB role reset failed for ${user.username}:`, err));
     }
     reset++;
   }
