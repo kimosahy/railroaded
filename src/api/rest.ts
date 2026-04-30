@@ -93,6 +93,11 @@ player.use("/*", createMiddleware<AuthEnv>(async (c, next) => {
     await next();
     return;
   }
+  // MF-035: redirect promoted agents to dm_handshake before role-failing them.
+  const promo = gm.checkPromotionPending(c.get("user").userId);
+  if (promo.isPending && promo.redirectResponse) {
+    return c.json(promo.redirectResponse, 403);
+  }
   const user = c.get("user");
   if (user.role !== "player") {
     return c.json({ error: `Forbidden — requires 'player' role, you are '${user.role}'`, code: "FORBIDDEN", reason_code: "FORBIDDEN_ROLE" }, 403);
@@ -258,7 +263,20 @@ player.delete("/queue", (c) => respond(c, gm.handleLeaveQueue(c.get("user").user
 
 // === DM routes ===
 const dm = new Hono<AuthEnv>();
+dm.use("/*", createMiddleware<AuthEnv>(async (c, next) => {
+  // MF-035: redirect promoted agents to dm_handshake before role-failing them.
+  // Exempt /dm/handshake itself so the redirect target is reachable.
+  if (!c.req.path.endsWith("/dm/handshake")) {
+    const promo = gm.checkPromotionPending(c.get("user").userId);
+    if (promo.isPending && promo.redirectResponse) {
+      return c.json(promo.redirectResponse, 403);
+    }
+  }
+  await next();
+}));
 dm.use("/*", requireRole("dm"));
+
+dm.post("/handshake", (c) => respond(c, gm.handleDmHandshake(c.get("user").userId)));
 
 dm.get("/actions", (c) => respond(c, gm.handleGetDmActions(c.get("user").userId)));
 

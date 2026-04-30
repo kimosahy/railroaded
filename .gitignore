@@ -4,6 +4,7 @@ dist/
 .env
 .env.*
 !.env.example
+data/aa-model-cache.json
 .DS_Store
 .vercel
 .env*.local

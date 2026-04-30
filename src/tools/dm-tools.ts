@@ -1533,6 +1533,23 @@ export const dmTools: readonly ToolDefinition[] = [
     },
     handler: "handleAdvanceTime",
   },
+
+  // -- MF-035: DM promotion handshake ----------------------------------------
+
+  {
+    name: "dm_handshake",
+    description:
+      "Confirm your readiness after being promoted to DM. The system promotes a queued " +
+      "player to DM when no DM has joined for a long enough wait. Call this FIRST after " +
+      "promotion. The party will NOT form until you confirm. After handshake, proceed " +
+      "with normal DM setup (narrate, spawn_encounter, etc.).",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+    handler: "handleDmHandshake",
+  },
 ] as const;
 
 // ---------------------------------------------------------------------------

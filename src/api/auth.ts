@@ -21,6 +21,7 @@ interface StoredUser {
   dbUserId: string | null; // UUID from users table
   modelProvider: string | null;
   modelName: string | null;
+  dmEligible: boolean;
 }
 
 interface StoredSession {
@@ -90,7 +91,7 @@ auth.post("/register", async (c) => {
 
   // Reserve slot synchronously before async hash — prevents TOCTOU race
   // where concurrent registrations with the same username both pass the check above
-  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null };
+  const user: StoredUser = { id, username: body.username, passwordHash: "", role, dbUserId: null, modelProvider: null, modelName: null, dmEligible: true };
   usersByUsername.set(body.username, user);
   usersById.set(id, user);
 
@@ -188,7 +189,7 @@ auth.post("/admin/login-as", async (c) => {
     const password = generatePassword();
     const passwordHash = await hashPassword(password);
     const id = `user-${userIdCounter++}`;
-    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null };
+    user = { id, username: body.username, passwordHash, role, dbUserId: null, modelProvider: null, modelName: null, dmEligible: true };
     usersByUsername.set(body.username, user);
     usersById.set(id, user);
     try {
@@ -367,6 +368,7 @@ export async function loadPersistedUsers(): Promise<number> {
         dbUserId: row.id,
         modelProvider: row.modelProvider ?? null,
         modelName: row.modelName ?? null,
+        dmEligible: row.dmEligible ?? true,
       };
       usersByUsername.set(row.username, user);
       usersById.set(id, user);
@@ -410,4 +412,113 @@ export async function loadPersistedSessions(): Promise<number> {
 export function _clearSessionsForTest(): void {
   sessionsByToken.clear();
   sessionRenewalTimestamps.clear();
+}
+
+/** Test-only: register a user directly in the in-memory store without
+ *  going through the /register HTTP flow. Used by promotion tests. */
+export function _registerTestUser(opts: {
+  userId: string; username: string; role: UserRole;
+  modelProvider?: string | null; modelName?: string | null; dmEligible?: boolean;
+}): void {
+  const user: StoredUser = {
+    id: opts.userId,
+    username: opts.username,
+    passwordHash: "",
+    role: opts.role,
+    dbUserId: null,
+    modelProvider: opts.modelProvider ?? null,
+    modelName: opts.modelName ?? null,
+    dmEligible: opts.dmEligible ?? true,
+  };
+  usersById.set(opts.userId, user);
+  usersByUsername.set(opts.username, user);
+}
+
+/** Test-only: clear all in-memory users. */
+export function _clearUsersForTest(): void {
+  usersById.clear();
+  usersByUsername.clear();
+}
+
+// === INTERNAL HELPERS — DM promotion only. Do not import in request handlers. ===
+// The `_internal_` prefix signals these mutate or expose private state for the
+// promotion flow (CC-260430 MF-035) and must not be wired into user-facing
+// endpoints. They access the in-memory `usersById` / `usersByUsername` Maps and
+// must live in this file.
+
+/**
+ * Mutate a user's role in memory. Used by promoteUserToDm / demoteUserToPlayer
+ * in game-manager.ts. Returns username, model identity, and dbUserId for
+ * telemetry and downstream DB persistence at handshake success time. Returns
+ * null if the user does not exist.
+ *
+ * NOTE: this only mutates IN-MEMORY state. DB role persistence happens ONLY
+ * at handshake success (Eon AR + Atlas BLOCKER on Fix 1.3) — pre-handshake
+ * state must remain undoable by restart-as-player fallback.
+ */
+export function _internal_mutateUserRole(userId: string, newRole: UserRole): {
+  username: string; modelProvider: string | null; modelName: string | null; dbUserId: string | null;
+} | null {
+  const user = usersById.get(userId);
+  if (!user) return null;
+  user.role = newRole;
+  const byName = usersByUsername.get(user.username);
+  if (byName) byName.role = newRole;
+  return {
+    username: user.username,
+    modelProvider: user.modelProvider,
+    modelName: user.modelName,
+    dbUserId: user.dbUserId,
+  };
+}
+
+/** Whether a user can be promoted to DM (default true; flag for v1.5 audition gate). */
+export function _internal_isUserDmEligible(userId: string): boolean {
+  const user = usersById.get(userId);
+  return user ? (user.dmEligible ?? true) : false;
+}
+
+/** Get model identity for AA ranking. Returns null if user does not exist. */
+export function _internal_getUserModelInfo(userId: string): {
+  modelProvider: string | null; modelName: string | null;
+} | null {
+  const user = usersById.get(userId);
+  if (!user) return null;
+  return { modelProvider: user.modelProvider, modelName: user.modelName };
+}
+
+/**
+ * Startup reconciliation: any user with role="dm" but no active party they
+ * lead is a stale promotion (server killed mid-handshake, manual DB edit,
+ * or any other drift). Reset to player in memory and DB. Belt-and-suspenders
+ * for Fix 1.3 — DB role persistence happens only at handshake success, but
+ * restart edge cases still need a sweep.
+ *
+ * MUST be called AFTER both loadPersistedUsers() and loadPersistedState()
+ * so that `usersById` and `parties` are both populated.
+ */
+export function reconcileOrphanedDmRoles(
+  parties: Map<string, { dmUserId: string | null; session: { isActive: boolean } | null }>,
+): number {
+  let reset = 0;
+  for (const [id, user] of usersById) {
+    if (user.role !== "dm") continue;
+    const hasActiveParty = [...parties.values()].some(
+      (p) => p.dmUserId === id && p.session?.isActive,
+    );
+    if (hasActiveParty) continue;
+    console.warn(`[STARTUP] Orphaned DM role for user ${user.username} — resetting to player`);
+    // Single source of truth for role mutation — covers both Maps and
+    // matches the helper used in promote/demote, so no drift if the helper
+    // ever grows additional invariants.
+    _internal_mutateUserRole(id, "player");
+    if (user.dbUserId) {
+      db.update(usersTable).set({ role: "player" })
+        .where(eq(usersTable.id, user.dbUserId))
+        .execute()
+        .catch((err) => console.error(`[STARTUP] DB role reset failed for ${user.username}:`, err));
+    }
+    reset++;
+  }
+  return reset;
 }

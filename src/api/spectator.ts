@@ -97,19 +97,23 @@ spectator.get("/parties", async (c) => {
     // Skip parties with no active session — they're historical, not live
     if (!party.session) continue;
 
-    const members = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      const model = char ? getModelIdentity(char.userId) : null;
-      return {
-        id: char?.dbCharId ?? charId,
-        name: char?.name ?? "Unknown",
-        class: char?.class ?? "unknown",
-        level: char?.level ?? 1,
-        avatarUrl: char?.avatarUrl ?? null,
-        description: char?.description ?? null,
-        ...(model ? { model } : {}),
-      };
-    });
+    // Sprint P §3.1: filter non-public characters from member listing.
+    const members = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (char?.isPublic === false) return null;
+        const model = char ? getModelIdentity(char.userId) : null;
+        return {
+          id: char?.dbCharId ?? charId,
+          name: char?.name ?? "Unknown",
+          class: char?.class ?? "unknown",
+          level: char?.level ?? 1,
+          avatarUrl: char?.avatarUrl ?? null,
+          description: char?.description ?? null,
+          ...(model ? { model } : {}),
+        };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
 
     let currentRoom: string | null = null;
     if (party.dungeonState) {
@@ -153,14 +157,18 @@ spectator.get("/parties/:id", async (c) => {
 
   if (party) {
     // --- In-memory path (live session) ---
-    const members = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      if (!char) {
-        return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
-      }
-      const model = getModelIdentity(char.userId);
-      return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
-    });
+    // Sprint P §3.1: filter non-public characters from member listing.
+    const members = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (!char) {
+          return { id: charId, name: "Unknown", class: "unknown", race: "unknown", level: 1, xp: 0, hpCurrent: 0, hpMax: 0, ac: 10, conditions: [] as string[], avatarUrl: null as string | null, description: null as string | null };
+        }
+        if (char.isPublic === false) return null;
+        const model = getModelIdentity(char.userId);
+        return { id: char.dbCharId ?? charId, name: char.name, class: char.class, race: char.race, level: char.level, xp: char.xp, hpCurrent: char.hpCurrent, hpMax: char.hpMax, ac: char.ac, conditions: char.conditions, avatarUrl: char.avatarUrl, description: char.description, ...(model ? { model } : {}) };
+      })
+      .filter((m): m is NonNullable<typeof m> => m !== null);
 
     let currentRoom: string | null = null;
     let currentRoomDescription: string | null = null;
@@ -374,6 +382,13 @@ spectator.get("/journals/:characterId", async (c) => {
     }
   }
 
+  // Sprint P §3.1 (Fix 2.3): non-public characters return 404 — same shape
+  // as /spectator/characters/:id so a UUID-guessing attacker cannot
+  // distinguish "private" from "nonexistent".
+  if (character && character.isPublic === false) {
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+  }
+
   if (character) {
     // In-memory path
     let partyEvents: SessionEvent[] = [];
@@ -405,9 +420,15 @@ spectator.get("/journals/:characterId", async (c) => {
     const [dbChar] = await db.select({
       id: charactersTable.id, name: charactersTable.name, class: charactersTable.class,
       race: charactersTable.race, level: charactersTable.level, partyId: charactersTable.partyId,
+      isPublic: charactersTable.isPublic,
     }).from(charactersTable).where(eq(charactersTable.id, characterId));
 
     if (!dbChar) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1 (Fix 2.3): non-public characters return 404 to match
+    // /spectator/characters/:id. Prevents UUID-guess private/nonexistent leak.
+    if (dbChar.isPublic === false) {
+      return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    }
 
     // Try journal_entries first
     const journalRows = await db.select({
@@ -480,9 +501,11 @@ spectator.get("/leaderboard", async (c) => {
     model?: { provider: string; name: string } | null;
   }
 
-  // Merge in-memory + DB characters (dedup by DB id)
+  // Merge in-memory + DB characters (dedup by DB id).
+  // Sprint P §3.1: hide non-public (test/probe) characters in BOTH places.
   const charMap = new Map<string, LeaderboardEntry>();
   for (const [id, char] of state.characters) {
+    if (char.isPublic === false) continue;
     const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id, name: char.name,
@@ -512,7 +535,8 @@ spectator.get("/leaderboard", async (c) => {
       criticalHits: charactersTable.criticalHits,
       timesKnockedOut: charactersTable.timesKnockedOut,
       goldEarned: charactersTable.goldEarned,
-    }).from(charactersTable);
+    }).from(charactersTable)
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
@@ -534,7 +558,8 @@ spectator.get("/leaderboard", async (c) => {
         class: charactersTable.class, race: charactersTable.race,
         level: charactersTable.level, xp: charactersTable.xp,
         avatarUrl: charactersTable.avatarUrl, description: charactersTable.description,
-      }).from(charactersTable);
+      }).from(charactersTable)
+        .where(eq(charactersTable.isPublic, true));
 
       for (const ch of coreChars) {
         if (!charMap.has(ch.id)) {
@@ -582,13 +607,21 @@ spectator.get("/leaderboard", async (c) => {
 
   const partyMap = new Map<string, PartyLeaderboardEntry>();
   for (const [partyId, party] of state.parties) {
-    const memberNames = party.members.map((charId) => {
-      const char = state.characters.get(charId);
-      return char?.name ?? "Unknown";
-    });
+    // Sprint P §3.1: filter non-public characters from memberNames listing.
+    const memberNames = party.members
+      .map((charId) => {
+        const char = state.characters.get(charId);
+        if (char?.isPublic === false) return null;
+        return char?.name ?? "Unknown";
+      })
+      .filter((n): n is string => n !== null);
+    const visibleCount = party.members.filter((charId) => {
+      const c = state.characters.get(charId);
+      return c?.isPublic !== false;
+    }).length;
     partyMap.set(party.dbPartyId ?? partyId, {
       id: party.dbPartyId ?? partyId, name: party.name,
-      memberNames, memberCount: party.members.length,
+      memberNames, memberCount: visibleCount,
       eventCount: party.events.length, phase: party.session?.phase ?? null,
     });
   }
@@ -601,7 +634,8 @@ spectator.get("/leaderboard", async (c) => {
 
     const dbCharsForParties = await db.select({
       name: charactersTable.name, partyId: charactersTable.partyId,
-    }).from(charactersTable).where(isNotNull(charactersTable.partyId));
+    }).from(charactersTable)
+      .where(and(isNotNull(charactersTable.partyId), eq(charactersTable.isPublic, true)));
 
     const namesByParty = new Map<string, string[]>();
     for (const ch of dbCharsForParties) {
@@ -689,9 +723,11 @@ spectator.get("/characters", async (c) => {
     model?: { provider: string; name: string } | null;
   }
 
-  // Merge in-memory + DB characters (dedup by DB id)
+  // Merge in-memory + DB characters (dedup by DB id).
+  // Sprint P §3.1: hide non-public (test/probe) characters in BOTH places.
   const charMap = new Map<string, CharacterSummary>();
   for (const [id, char] of state.characters) {
+    if (char.isPublic === false) continue;
     const model = getModelIdentity(char.userId);
     charMap.set(char.dbCharId ?? id, {
       id: char.dbCharId ?? id,
@@ -724,7 +760,8 @@ spectator.get("/characters", async (c) => {
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
-      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (!charMap.has(ch.id)) {
@@ -765,6 +802,12 @@ spectator.get("/characters/:id", async (c) => {
     for (const [, ch] of state.characters) {
       if (ch.dbCharId === characterId) { char = ch; break; }
     }
+  }
+
+  // Sprint P §3.1: non-public characters return 404 (prevents UUID-guessing
+  // from leaking test character data even when listing endpoints hide them).
+  if (char && char.isPublic === false) {
+    return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
   }
 
   if (char) {
@@ -819,6 +862,7 @@ spectator.get("/characters/:id", async (c) => {
       criticalHits: charactersTable.criticalHits,
       timesKnockedOut: charactersTable.timesKnockedOut,
       goldEarned: charactersTable.goldEarned,
+      isPublic: charactersTable.isPublic,
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
@@ -827,6 +871,8 @@ spectator.get("/characters/:id", async (c) => {
 
     const row = rows[0];
     if (!row) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1: non-public characters return 404 even on direct lookup.
+    if (row.isPublic === false) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
 
     return c.json({
       id: row.id,
@@ -858,6 +904,71 @@ spectator.get("/characters/:id", async (c) => {
   }
 });
 
+// GET /spectator/characters/:id/sessions — session history for a character.
+// Sprint P §3.3. v1 queries by partyId (no character↔session junction table
+// exists). TODO: when the junction table lands, switch to that for characters
+// that may have been in multiple parties across a campaign.
+spectator.get("/characters/:id/sessions", async (c) => {
+  const characterId = c.req.param("id");
+  if (!/^[0-9a-f-]{36}$/i.test(characterId)) {
+    return c.json({ error: "Invalid character ID", code: "BAD_REQUEST" }, 400);
+  }
+  const limit = Math.min(parseInt(c.req.query("limit") ?? "10", 10), 50);
+
+  try {
+    const charRow = await db.select({
+      partyId: charactersTable.partyId,
+      isPublic: charactersTable.isPublic,
+    })
+      .from(charactersTable)
+      .where(eq(charactersTable.id, characterId))
+      .limit(1);
+
+    if (!charRow.length) return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    // Sprint P §3.1 carry-through: do not leak session history of non-public chars.
+    if (charRow[0]!.isPublic === false) {
+      return c.json({ error: "Character not found", code: "NOT_FOUND" }, 404);
+    }
+    const partyId = charRow[0]!.partyId;
+    if (!partyId) {
+      return c.json({ characterId, sessions: [] });
+    }
+
+    const sessions = await db.select({
+      id: gameSessionsTable.id,
+      phase: gameSessionsTable.phase,
+      isActive: gameSessionsTable.isActive,
+      summary: gameSessionsTable.summary,
+      outcome: gameSessionsTable.outcome,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+      partyName: partiesTable.name,
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(eq(gameSessionsTable.partyId, partyId))
+      .orderBy(desc(gameSessionsTable.startedAt))
+      .limit(limit);
+
+    return c.json({
+      characterId,
+      sessions: sessions.map((s) => ({
+        id: s.id,
+        phase: s.phase,
+        isActive: s.isActive,
+        summary: s.summary,
+        outcome: s.outcome,
+        partyName: s.partyName ?? null,
+        startedAt: s.startedAt.toISOString(),
+        endedAt: s.endedAt ? s.endedAt.toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    console.error("[spectator] Character sessions error:", err);
+    return c.json({ error: "Internal error", code: "INTERNAL" }, 500);
+  }
+});
+
 // GET /spectator/character-identities — lightweight identity map (name, avatarUrl, model) for all characters
 spectator.get("/character-identities", async (c) => {
   const state = gm.getState();
@@ -865,6 +976,7 @@ spectator.get("/character-identities", async (c) => {
   const seen = new Set<string>();
 
   for (const [, char] of state.characters) {
+    if (char.isPublic === false) continue;
     if (seen.has(char.name)) continue;
     seen.add(char.name);
     const model = getModelIdentity(char.userId);
@@ -878,7 +990,8 @@ spectator.get("/character-identities", async (c) => {
       modelProvider: usersTable.modelProvider,
       modelName: usersTable.modelName,
     }).from(charactersTable)
-      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id));
+      .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+      .where(eq(charactersTable.isPublic, true));
 
     for (const ch of dbChars) {
       if (seen.has(ch.name)) continue;
@@ -1133,7 +1246,10 @@ spectator.get("/sessions/:id", async (c) => {
       .where(eq(sessionEventsTable.sessionId, sessionId))
       .orderBy(asc(sessionEventsTable.createdAt));
 
-    // Fetch narrations
+    // Fetch narrations. Sprint P §3.2 verified: filter is session-scoped
+    // via eq(sessionId) here and at every other endpoint that should be
+    // session-scoped. Two queries are intentionally cross-session (stats
+    // total count, homepage recent-feed) and not in scope.
     const sessionNarrations = await db.select({
       id: narrationsTable.id,
       content: narrationsTable.content,
@@ -1460,7 +1576,9 @@ spectator.get("/sessions/:id/conversations", (c) => {
     participants: conv.participants?.map((p: any) => ({ type: p.type, name: p.name })) ?? [],
     context: conv.context,
     status: conv.outcome ? "ended" : "active",
-    startedAt: conv.startedAt,
+    // Sprint P §3.4: emit ISO 8601 explicitly. JSON auto-stringifies Date the
+    // same way, but explicit toISOString matches the rest of the file.
+    startedAt: conv.startedAt instanceof Date ? conv.startedAt.toISOString() : conv.startedAt,
     outcome: conv.outcome ?? null,
   }));
 

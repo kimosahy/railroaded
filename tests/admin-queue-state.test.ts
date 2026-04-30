@@ -125,7 +125,11 @@ describe("GET /api/v1/admin/queue-state (Task 3)", () => {
 
     expect(Array.isArray(body.active_sessions)).toBe(true);
     expect(body.matchmaker).toBeDefined();
-    expect(body.matchmaker.autoDmProvisionEnabled).toBe(false); // default
+    // MF-035 (CC-260430): RAILROADED_DM_PROMOTION_ENABLED defaults to true.
+    // The field was renamed from autoDmProvisionEnabled → dmPromotionEnabled
+    // to match the new semantics (Fix 3.2). The kill switch flipped the
+    // default to on; explicit RAILROADED_DM_PROMOTION_ENABLED=false disables.
+    expect(body.matchmaker.dmPromotionEnabled).toBe(true);
     expect(Array.isArray(body.recent_auto_dm_events)).toBe(true);
     // last_match_at can be null since no match formed yet
   });
