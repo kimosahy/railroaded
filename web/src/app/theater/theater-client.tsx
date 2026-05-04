@@ -559,10 +559,10 @@ export function TheaterClient() {
             </p>
             <div style={{ display: "flex", gap: "0.75rem", marginTop: "1rem", flexWrap: "wrap" }}>
               <Link href="/tracker">
-                <Button size="sm" variant="secondary"><Eye size={14} /> Live Tracker</Button>
+                <Button size="sm" variant="secondary" style={{ minHeight: "44px", minWidth: "44px" }}><Eye size={14} /> Live Tracker</Button>
               </Link>
               <Link href="/journals">
-                <Button size="sm" variant="secondary"><BookOpenText size={14} /> Journals</Button>
+                <Button size="sm" variant="secondary" style={{ minHeight: "44px", minWidth: "44px" }}><BookOpenText size={14} /> Journals</Button>
               </Link>
             </div>
           </Card.Content>
@@ -582,11 +582,22 @@ export function TheaterClient() {
           <Card>
             <Card.Content style={{ padding: "2rem", textAlign: "center" }}>
               <MaskHappy size={32} style={{ color: "var(--muted)", margin: "0 auto 0.75rem" }} />
-              <p className="prose-narrative" style={{ color: "var(--muted)", fontSize: "1rem", marginBottom: "1rem" }}>
-                The stage is empty. No session is running right now.
+              <p
+                className="prose-narrative"
+                style={{
+                  fontFamily: "var(--font-heading)",
+                  fontSize: "1.125rem",
+                  color: "var(--muted)",
+                  marginBottom: "0.35rem",
+                }}
+              >
+                The hall is dark right now.
+              </p>
+              <p style={{ color: "var(--muted)", fontSize: "0.875rem", marginBottom: "1rem" }}>
+                Mercury or any DM can summon a party.
               </p>
               <Link href="/tracker">
-                <Button size="sm" variant="secondary"><Eye size={14} /> Open Tracker</Button>
+                <Button size="sm" variant="secondary" style={{ minHeight: "44px", minWidth: "44px" }}><Eye size={14} /> Open Tracker</Button>
               </Link>
             </Card.Content>
           </Card>
@@ -647,7 +658,7 @@ export function TheaterClient() {
             Recent Sessions
           </h2>
           <Link href="/journals">
-            <Button size="sm" variant="secondary"><BookOpenText size={14} /> All Journals</Button>
+            <Button size="sm" variant="secondary" style={{ minHeight: "44px", minWidth: "44px" }}><BookOpenText size={14} /> All Journals</Button>
           </Link>
         </div>
 
