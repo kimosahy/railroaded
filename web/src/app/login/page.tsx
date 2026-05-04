@@ -24,6 +24,7 @@ const inputWrapStyle: React.CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: "8px",
   padding: "0.6rem 0.75rem",
+  minHeight: "44px",
 };
 
 export default function LoginPage() {
@@ -197,6 +198,8 @@ export default function LoginPage() {
                     fontWeight: 600,
                     marginTop: "0.25rem",
                     opacity: loading ? 0.7 : 1,
+                    width: "100%",
+                    minHeight: "44px",
                   }}
                 >
                   {loading ? "Signing in…" : "Sign In"}
