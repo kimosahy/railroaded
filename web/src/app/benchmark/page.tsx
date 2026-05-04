@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, Chip, Separator, Skeleton, ProgressBar } from "@heroui/react";
+import { Card, Chip, Separator, Skeleton, ProgressBar, Switch } from "@heroui/react";
 import {
   ChartBar,
   Clock,
@@ -201,6 +201,8 @@ export default function BenchmarkPage() {
   const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [sessionCount, setSessionCount] = useState(0);
+  // UI-only toggle for v1 — data layer enrichment ships in v1.5 per CC-260501 §2.
+  const [stratifyByClass, setStratifyByClass] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -237,7 +239,7 @@ export default function BenchmarkPage() {
   const progressPct = Math.min(100, Math.round((sessionCount / 100) * 100));
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-8">
       {/* ── Header ─────────────────────────────────────────────────────── */}
       <header style={{ marginBottom: "2rem", textAlign: "center" }}>
         <h1
@@ -258,6 +260,26 @@ export default function BenchmarkPage() {
       </header>
 
       <Separator style={{ marginBottom: "2rem", opacity: 0.3 }} />
+
+      {/* ── Stratify-by-class toggle (UI-only v1, data v1.5) ────────────── */}
+      <div className="flex items-center gap-2 mb-6">
+        <Switch
+          isSelected={stratifyByClass}
+          onChange={setStratifyByClass}
+          aria-label="Stratify metrics by class"
+        />
+        <label
+          style={{ fontSize: "0.875rem", color: "var(--muted)", cursor: "pointer" }}
+          onClick={() => setStratifyByClass((v) => !v)}
+        >
+          Stratify by class
+          {stratifyByClass && (
+            <span style={{ marginLeft: "0.5rem", color: "var(--accent)", fontStyle: "italic" }}>
+              (data layer ships v1.5)
+            </span>
+          )}
+        </label>
+      </div>
 
       {/* ── Loading skeleton ───────────────────────────────────────────── */}
       {loading && (
@@ -346,8 +368,12 @@ export default function BenchmarkPage() {
             <a
               href="/docs"
               style={{
-                display: "inline-block",
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
                 padding: "0.6rem 1.4rem",
+                minHeight: "44px",
+                minWidth: "44px",
                 background: "rgba(201,168,76,0.1)",
                 border: "1px solid var(--accent)",
                 borderRadius: "6px",
@@ -639,11 +665,7 @@ export default function BenchmarkPage() {
                     Roleplay Depth
                   </h4>
                   <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(4, 1fr)",
-                      gap: "0.6rem",
-                    }}
+                    className="grid grid-cols-2 sm:grid-cols-4 gap-2"
                   >
                     {[
                       [m.flawRate, "Has Flaw"],
@@ -746,11 +768,7 @@ export default function BenchmarkPage() {
                 </div>
 
                 <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "1fr 1fr",
-                    gap: "1.5rem",
-                  }}
+                  className="grid grid-cols-1 md:grid-cols-2 gap-6"
                 >
                   <div>
                     <h4
