@@ -37,6 +37,11 @@ export interface MonsterInstance {
    * Drives Turn Undead targeting and future typed-targeting spells.
    * Defensive default "humanoid" everywhere this is read. */
   creatureType: string;
+  /** Sprint P / Task 11: rounds remaining on the frightened condition.
+   * Set to 10 by Channel Divinity (Turn Undead) and decremented at the start of
+   * each frightened monster's turn. At 0, frightened is removed. Re-application
+   * refreshes the timer per 5e RAW. */
+  frightenedRoundsRemaining: number;
 }
 
 export interface EncounterState {
@@ -96,6 +101,7 @@ export function spawnMonsters(
         lootTable: group.template.lootTable ? [...group.template.lootTable] : undefined,
         rechargeTracker,
         creatureType: group.template.creatureType ?? "humanoid",
+        frightenedRoundsRemaining: 0,
       });
       counter++;
     }

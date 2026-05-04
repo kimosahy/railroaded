@@ -1288,6 +1288,28 @@ function advanceTurnSkipDead(party: GameParty): void {
   }
 
   const nextCombatant = getCurrentCombatant(party.session);
+
+  // Sprint P / Task 11: decrement frightened duration once at the start of a
+  // monster's turn. Applied AFTER the new current combatant is resolved and
+  // BEFORE any monster action handler runs, so each turn ticks exactly once
+  // even if the monster is paralyzed/asleep and never takes an action.
+  if (nextCombatant?.type === "monster") {
+    const monster = party.monsters.find((m) => m.id === nextCombatant.entityId);
+    if (monster && monster.conditions.includes("frightened")) {
+      if ((monster.frightenedRoundsRemaining ?? 10) <= 1) {
+        monster.conditions = removeCondition(monster.conditions, "frightened");
+        monster.frightenedRoundsRemaining = 0;
+        logEvent(party, "condition_removed", monster.id, {
+          monsterName: monster.name,
+          condition: "frightened",
+          reason: "duration_expired",
+        });
+      } else {
+        monster.frightenedRoundsRemaining = (monster.frightenedRoundsRemaining ?? 10) - 1;
+      }
+    }
+  }
+
   resetTurnResources(party, nextCombatant?.entityId ?? "");
   notifyTurnChange(party);
 }
@@ -2578,6 +2600,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
   // D&D 5e: attacks against unconscious/sleeping/paralyzed targets have advantage, and melee hits auto-crit
   const targetIsIncapacitated = target.conditions.includes("unconscious") || target.conditions.includes("asleep") || target.conditions.includes("paralyzed");
+  const isFrightened = monster.conditions.includes("frightened");
 
   const result = resolveAttack({
     attackerAbilityMod: 0,
@@ -2588,6 +2611,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
     bonusToHit: attack.to_hit,
     advantage: targetIsIncapacitated,
+    disadvantage: isFrightened,
     autoCrit: targetIsIncapacitated, // melee attack within 5ft of incapacitated = auto-crit
   });
 
@@ -2665,6 +2689,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         deathSaveFailures: deathResult.deathSaves.failures,
         instantDeath: deathResult.instantDeath,
         dead: isDead,
+        frightened: isFrightened,
+        disadvantageApplied: isFrightened && !targetIsIncapacitated,
       });
 
       advanceTurnSkipDead(party);
@@ -2775,6 +2801,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       monsterName: monster.name, targetName: target.name, attackName: attack.name,
       hit: true, damage: result.totalDamage, damageType: result.damageType,
       critical: result.critical, droppedToZero: hitActuallyDropped,
+      frightened: isFrightened,
+      disadvantageApplied: isFrightened && !targetIsIncapacitated,
     });
 
     advanceTurnSkipDead(party);
@@ -2796,6 +2824,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   logEvent(party, "monster_attack", monster.id, {
     monsterName: monster.name, targetName: target.name, attackName: attack.name,
     hit: false, fumble: result.fumble,
+    frightened: isFrightened,
+    disadvantageApplied: isFrightened && !targetIsIncapacitated,
   });
 
   advanceTurnSkipDead(party);
@@ -3635,12 +3665,10 @@ export function handleChannelDivinity(userId: string, params: {
     const saved = total >= dc;
 
     if (!saved) {
-      // The frightened condition is decorative for now — engine doesn't enforce
-      // disadvantage / "must move away" behavior. Tracks intent so DM agents and
-      // future spectator UI can see the cleric's effect on the encounter.
       if (!monster.conditions.includes("frightened")) {
         monster.conditions.push("frightened");
       }
+      monster.frightenedRoundsRemaining = 10;
     }
 
     results.push({
