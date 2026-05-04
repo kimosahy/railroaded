@@ -84,13 +84,7 @@ function xpProgress(xp: number, level: number): { pct: number; label: string } {
 
 function SkeletonGrid() {
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-        gap: "1rem",
-      }}
-    >
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {Array.from({ length: 6 }).map((_, i) => (
         <Card key={i}>
           <Card.Content style={{ padding: "1.25rem" }}>
@@ -469,13 +463,7 @@ export function CharactersClient() {
 
       {/* Grid */}
       {!loading && !error && filtered.length > 0 && (
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
-            gap: "1rem",
-          }}
-        >
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {filtered.map((c) => (
             <CharacterCard key={c.id} character={c} />
           ))}
