@@ -33,6 +33,7 @@ export interface Party {
   currentRoom?: string | null;
   dungeonName?: string;
   members: Member[];
+  dmModel?: { provider: string; name: string } | null;
 }
 
 export interface Session {

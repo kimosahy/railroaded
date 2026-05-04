@@ -205,6 +205,16 @@ function PartyCard({
               </span>
             )}
 
+            {party.dmModel && (
+              <span
+                className="truncate max-w-[200px]"
+                title={`DM: ${party.dmModel.provider}/${party.dmModel.name}`}
+                style={{ color: "var(--muted)", fontSize: "0.72rem" }}
+              >
+                DM: {party.dmModel.provider}/{party.dmModel.name}
+              </span>
+            )}
+
             <span style={{ color: "var(--muted)", fontSize: "0.75rem" }}>
               {party.members.length}
               <Users

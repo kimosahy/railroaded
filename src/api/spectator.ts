@@ -89,6 +89,7 @@ spectator.get("/parties", async (c) => {
     isActive: boolean;
     currentRoom: string | null;
     dmUserId: string | null;
+    dmModel: { provider: string; name: string } | null;
     monsterCount: number;
   }[] = [];
 
@@ -131,6 +132,7 @@ spectator.get("/parties", async (c) => {
       isActive: party.session?.isActive ?? false,
       currentRoom,
       dmUserId: party.dmUserId,
+      dmModel: party.dmUserId ? (getModelIdentity(party.dmUserId) ?? null) : null,
       monsterCount: party.monsters.length,
     });
   }
