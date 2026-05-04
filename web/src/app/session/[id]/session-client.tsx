@@ -21,6 +21,7 @@ import {
   Users,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
+import { formatTimestamp } from "@/lib/format-time";
 import {
   useCharacterDrawer,
   type SessionSnapshot,
@@ -243,11 +244,6 @@ function eventIcon(type: string) {
 
 function formatDate(iso: string) {
   try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
-  catch { return iso; }
-}
-
-function formatTime(iso: string) {
-  try { return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
   catch { return iso; }
 }
 
@@ -629,7 +625,7 @@ function EventCard({ event }: { event: GameEvent }) {
         <p className="prose-narrative" style={{ fontStyle: "italic", fontSize: "1.05rem", color: "var(--foreground)", lineHeight: 1.8, marginBottom: "0.3rem" }}>
           {summary}
         </p>
-        <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>{formatTime(event.timestamp)}</span>
+        <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>{formatTimestamp(event.timestamp)}</span>
       </div>
     );
   }
@@ -642,7 +638,7 @@ function EventCard({ event }: { event: GameEvent }) {
           <Chip size="sm" variant="soft" color={meta.color}>
             <span style={{ display: "flex", alignItems: "center", gap: "0.2rem" }}>{eventIcon(event.type)} {meta.label}</span>
           </Chip>
-          <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>{formatTime(event.timestamp)}</span>
+          <span style={{ color: "var(--muted)", fontSize: "0.7rem" }}>{formatTimestamp(event.timestamp)}</span>
         </div>
         <p style={{ color: "var(--foreground)", fontSize: "0.9rem", margin: 0 }}>{summary}</p>
       </div>
@@ -667,7 +663,7 @@ function EventCard({ event }: { event: GameEvent }) {
             <Chip size="sm" variant="soft" color={meta.color}>
               <span style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>{eventIcon(event.type)} {meta.label}</span>
             </Chip>
-            <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>{formatTime(event.timestamp)}</span>
+            <span style={{ color: "var(--muted)", fontSize: "0.72rem" }}>{formatTimestamp(event.timestamp)}</span>
           </div>
           <p style={{ color: "var(--foreground)", fontSize: "0.875rem", margin: 0 }}>{summary}</p>
         </div>
@@ -713,7 +709,7 @@ function ReplayControls({
   return (
     <Card style={{ marginBottom: "1rem" }}>
       <Card.Content style={{ padding: "0.75rem 1rem", display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <Button size="sm" variant="outline" onPress={onToggle} style={{ borderRadius: "50%", width: 36, height: 36, minWidth: 36, padding: 0 }}>
+        <Button size="sm" variant="outline" onPress={onToggle} style={{ borderRadius: "50%", width: 44, height: 44, minWidth: 44, padding: 0 }} aria-label={playing ? "Pause replay" : "Play replay"}>
           {playing ? <Pause size={16} /> : <Play size={16} />}
         </Button>
         <input
@@ -904,8 +900,7 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
 
   return (
     <div
-      className="max-w-[1400px] mx-auto px-6 pb-20"
-      style={{ display: "grid", gridTemplateColumns: "1fr 272px", gap: "0 2rem" }}
+      className="max-w-[1400px] mx-auto px-4 md:px-6 pb-20 grid grid-cols-1 md:grid-cols-[1fr_272px] gap-y-0 md:gap-x-8"
     >
       {/* ── Main column ──────────────────────────────────────────────────────── */}
       <div style={{ minWidth: 0 }}>
@@ -1034,7 +1029,7 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
       </div>
 
       {/* ── Sidebar ───────────────────────────────────────────────────────── */}
-      <aside style={{ position: "sticky", top: "64px", maxHeight: "calc(100dvh - 64px)", overflowY: "auto", scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent", paddingTop: "1.5rem", paddingBottom: "2rem" }}>
+      <aside className="md:sticky md:top-16 md:max-h-[calc(100dvh-64px)] md:overflow-y-auto" style={{ scrollbarWidth: "thin", scrollbarColor: "var(--border) transparent", paddingTop: "1.5rem", paddingBottom: "2rem" }}>
         {loadingSession ? (
           <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
             <Skeleton className="h-4 w-24 rounded" />
@@ -1068,7 +1063,7 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
                     {n.content}
                   </p>
                   <p style={{ color: "var(--muted)", fontSize: "0.72rem", marginTop: "0.375rem", marginBottom: 0 }}>
-                    {new Date(n.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    {formatTimestamp(n.createdAt)}
                   </p>
                 </div>
               ))}
