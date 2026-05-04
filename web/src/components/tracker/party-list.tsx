@@ -214,10 +214,15 @@ function PartyCard({
             </span>
           </div>
 
-          <div className="flex flex-wrap gap-1">
-            {party.members.map((m) => (
+          <div className="flex flex-col md:flex-row md:flex-wrap gap-1">
+            {party.members.slice(0, 4).map((m) => (
               <MemberPip key={m.name} member={m} />
             ))}
+            {party.members.length > 4 && (
+              <span style={{ color: "var(--muted)", fontSize: "0.78rem", alignSelf: "center" }}>
+                +{party.members.length - 4} more
+              </span>
+            )}
           </div>
         </Card.Content>
       </Card>
@@ -330,15 +335,20 @@ export function PartyList({
       {loading ? (
         <PartySkeletons />
       ) : parties.length === 0 ? (
-        <div
-          style={{
-            textAlign: "center",
-            padding: "2rem 1rem",
-            color: "var(--muted)",
-            fontSize: "0.9rem",
-          }}
-        >
-          No active parties.
+        <div className="text-center py-12">
+          <p
+            style={{
+              fontFamily: "var(--font-heading)",
+              fontSize: "1.125rem",
+              color: "var(--muted)",
+              marginBottom: "0.35rem",
+            }}
+          >
+            The Conductor is sleeping.
+          </p>
+          <p style={{ fontSize: "0.875rem", color: "var(--muted)" }}>
+            Check back soon.
+          </p>
         </div>
       ) : (
         parties.map((p) => (
