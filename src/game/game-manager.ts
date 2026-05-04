@@ -146,6 +146,9 @@ interface GameCharacter extends CharacterSheet {
   /** Whether this character appears in public spectator endpoints.
    *  Test/probe characters set this to false to hide from leaderboards etc. */
   isPublic: boolean;
+  /** Active concentration spell, if any. Cleared when a new concentration spell is cast,
+   *  on failed CON save after taking damage, on dropping to 0 HP, or on rest. */
+  activeConcentration: { spellName: string; startedAt: number } | null;
 }
 
 interface GameParty {
@@ -1285,6 +1288,28 @@ function advanceTurnSkipDead(party: GameParty): void {
   }
 
   const nextCombatant = getCurrentCombatant(party.session);
+
+  // Sprint P / Task 11: decrement frightened duration once at the start of a
+  // monster's turn. Applied AFTER the new current combatant is resolved and
+  // BEFORE any monster action handler runs, so each turn ticks exactly once
+  // even if the monster is paralyzed/asleep and never takes an action.
+  if (nextCombatant?.type === "monster") {
+    const monster = party.monsters.find((m) => m.id === nextCombatant.entityId);
+    if (monster && monster.conditions.includes("frightened")) {
+      if ((monster.frightenedRoundsRemaining ?? 10) <= 1) {
+        monster.conditions = removeCondition(monster.conditions, "frightened");
+        monster.frightenedRoundsRemaining = 0;
+        logEvent(party, "condition_removed", monster.id, {
+          monsterName: monster.name,
+          condition: "frightened",
+          reason: "duration_expired",
+        });
+      } else {
+        monster.frightenedRoundsRemaining = (monster.frightenedRoundsRemaining ?? 10) - 1;
+      }
+    }
+  }
+
   resetTurnResources(party, nextCombatant?.entityId ?? "");
   notifyTurnChange(party);
 }
@@ -1442,6 +1467,16 @@ function requireConscious(char: GameCharacter): string | null {
     return UNCONSCIOUS_ERROR;
   }
   return null;
+}
+
+/**
+ * Reverse the mechanical effects of a dropped concentration spell.
+ * v1 concentration spells (Mage Armor, Detect Magic) are informational —
+ * effects not tracked mechanically. When mechanical concentration spells
+ * ship (Hold Person, Bless), add condition removal / effect reversal here.
+ */
+function reverseConcentrationEffect(char: GameCharacter, spellName: string): void {
+  console.log(`[CONCENTRATION] ${char.name} lost concentration on ${spellName}`);
 }
 
 /**
@@ -1635,6 +1670,7 @@ export async function handleCreateCharacter(userId: string, params: {
     channelDivinityUses: params.class === "cleric" ? 1 : 0,
     controllerType: "player_agent",
     isPublic: true,
+    activeConcentration: null,
   };
 
   characters.set(id, character);
@@ -2134,6 +2170,7 @@ export function handleGetAvailableActions(userId: string): { success: boolean; d
     data: {
       phase, isYourTurn: isCurrentTurn, availableActions: actions,
       actionRoutes: buildActionRoutes(actions, playerActionRoutes),
+      concentrating: char.activeConcentration?.spellName ?? null,
       ...(turnResourceState ? { turnResources: turnResourceState } : {}),
     },
   };
@@ -2357,8 +2394,40 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         profBonus: 0,
       });
       const dmg = save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total;
+      const hpBeforeConc = t.hpCurrent;
       const { hp, droppedToZero } = applyDamage({ current: t.hpCurrent, max: t.hpMax, temp: 0 }, dmg);
       t.hpCurrent = hp.current;
+
+      const damageDealt = hpBeforeConc - t.hpCurrent;
+      if (t.activeConcentration && damageDealt > 0 && t.hpCurrent > 0) {
+        const concDC = Math.max(10, Math.floor(damageDealt / 2));
+        const conMod = abilityModifier(t.abilityScores.con);
+        const saveResult = roll("1d20");
+        const totalSave = saveResult.total + conMod;
+        const maintained = totalSave >= concDC;
+        if (!maintained) {
+          logEvent(party, "concentration_dropped", t.id, {
+            casterName: t.name,
+            droppedSpell: t.activeConcentration.spellName,
+            reason: "damage_concentration_save_failed",
+            dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+          });
+          broadcastToParty(party.id, {
+            type: "concentration_dropped",
+            characterName: t.name,
+            droppedSpell: t.activeConcentration.spellName,
+            reason: "damage_concentration_save_failed",
+          });
+          reverseConcentrationEffect(t, t.activeConcentration.spellName);
+          t.activeConcentration = null;
+        } else {
+          logEvent(party, "concentration_maintained", t.id, {
+            casterName: t.name,
+            spell: t.activeConcentration.spellName,
+            dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+          });
+        }
+      }
 
       let actuallyDropped = droppedToZero;
       if (droppedToZero && checkRelentlessEndurance(t)) {
@@ -2368,6 +2437,21 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         t.timesKnockedOut++;
         t.conditions = handleDropToZero(t.conditions);
         t.deathSaves = resetDeathSaves();
+        if (t.activeConcentration) {
+          logEvent(party, "concentration_dropped", t.id, {
+            casterName: t.name,
+            droppedSpell: t.activeConcentration.spellName,
+            reason: "dropped_to_zero",
+          });
+          broadcastToParty(party.id, {
+            type: "concentration_dropped",
+            characterName: t.name,
+            droppedSpell: t.activeConcentration.spellName,
+            reason: "dropped_to_zero",
+          });
+          reverseConcentrationEffect(t, t.activeConcentration.spellName);
+          t.activeConcentration = null;
+        }
         broadcastToParty(party.id, {
           type: "character_down",
           characterId: t.id, characterName: t.name,
@@ -2417,8 +2501,40 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     });
     const damageRoll = roll(attack.damage);
     const dmg = save.success ? Math.floor(damageRoll.total / 2) : damageRoll.total;
+    const hpBeforeConc = target.hpCurrent;
     const { hp, droppedToZero } = applyDamage({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, dmg);
     target.hpCurrent = hp.current;
+
+    const damageDealt = hpBeforeConc - target.hpCurrent;
+    if (target.activeConcentration && damageDealt > 0 && target.hpCurrent > 0) {
+      const concDC = Math.max(10, Math.floor(damageDealt / 2));
+      const conMod = abilityModifier(target.abilityScores.con);
+      const saveResult = roll("1d20");
+      const totalSave = saveResult.total + conMod;
+      const maintained = totalSave >= concDC;
+      if (!maintained) {
+        logEvent(party, "concentration_dropped", target.id, {
+          casterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "damage_concentration_save_failed",
+          dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+        });
+        broadcastToParty(party.id, {
+          type: "concentration_dropped",
+          characterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "damage_concentration_save_failed",
+        });
+        reverseConcentrationEffect(target, target.activeConcentration.spellName);
+        target.activeConcentration = null;
+      } else {
+        logEvent(party, "concentration_maintained", target.id, {
+          casterName: target.name,
+          spell: target.activeConcentration.spellName,
+          dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+        });
+      }
+    }
 
     let saveActuallyDropped = droppedToZero;
     if (droppedToZero && checkRelentlessEndurance(target)) {
@@ -2428,6 +2544,21 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
+      if (target.activeConcentration) {
+        logEvent(party, "concentration_dropped", target.id, {
+          casterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "dropped_to_zero",
+        });
+        broadcastToParty(party.id, {
+          type: "concentration_dropped",
+          characterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "dropped_to_zero",
+        });
+        reverseConcentrationEffect(target, target.activeConcentration.spellName);
+        target.activeConcentration = null;
+      }
       broadcastToParty(party.id, {
         type: "character_down",
         characterId: target.id, characterName: target.name,
@@ -2469,6 +2600,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
 
   // D&D 5e: attacks against unconscious/sleeping/paralyzed targets have advantage, and melee hits auto-crit
   const targetIsIncapacitated = target.conditions.includes("unconscious") || target.conditions.includes("asleep") || target.conditions.includes("paralyzed");
+  const isFrightened = monster.conditions.includes("frightened");
 
   const result = resolveAttack({
     attackerAbilityMod: 0,
@@ -2479,6 +2611,7 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
     damageAbilityMod: parseInt(attack.damage.match(/[+-]\d+$/)?.[0] ?? "0", 10),
     bonusToHit: attack.to_hit,
     advantage: targetIsIncapacitated,
+    disadvantage: isFrightened,
     autoCrit: targetIsIncapacitated, // melee attack within 5ft of incapacitated = auto-crit
   });
 
@@ -2556,6 +2689,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
         deathSaveFailures: deathResult.deathSaves.failures,
         instantDeath: deathResult.instantDeath,
         dead: isDead,
+        frightened: isFrightened,
+        disadvantageApplied: isFrightened && !targetIsIncapacitated,
       });
 
       advanceTurnSkipDead(party);
@@ -2577,11 +2712,43 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       };
     }
 
+    const hpBeforeConc = target.hpCurrent;
     const { hp, droppedToZero } = applyDamage(
       { current: target.hpCurrent, max: target.hpMax, temp: 0 },
       result.totalDamage
     );
     target.hpCurrent = hp.current;
+
+    const damageDealt = hpBeforeConc - target.hpCurrent;
+    if (target.activeConcentration && damageDealt > 0 && target.hpCurrent > 0) {
+      const concDC = Math.max(10, Math.floor(damageDealt / 2));
+      const conMod = abilityModifier(target.abilityScores.con);
+      const saveResult = roll("1d20");
+      const totalSave = saveResult.total + conMod;
+      const maintained = totalSave >= concDC;
+      if (!maintained) {
+        logEvent(party, "concentration_dropped", target.id, {
+          casterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "damage_concentration_save_failed",
+          dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+        });
+        broadcastToParty(party.id, {
+          type: "concentration_dropped",
+          characterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "damage_concentration_save_failed",
+        });
+        reverseConcentrationEffect(target, target.activeConcentration.spellName);
+        target.activeConcentration = null;
+      } else {
+        logEvent(party, "concentration_maintained", target.id, {
+          casterName: target.name,
+          spell: target.activeConcentration.spellName,
+          dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+        });
+      }
+    }
 
     let hitActuallyDropped = droppedToZero;
     if (droppedToZero && checkRelentlessEndurance(target)) {
@@ -2591,6 +2758,22 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       target.timesKnockedOut++;
       target.conditions = handleDropToZero(target.conditions);
       target.deathSaves = resetDeathSaves();
+
+      if (target.activeConcentration) {
+        logEvent(party, "concentration_dropped", target.id, {
+          casterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "dropped_to_zero",
+        });
+        broadcastToParty(party.id, {
+          type: "concentration_dropped",
+          characterName: target.name,
+          droppedSpell: target.activeConcentration.spellName,
+          reason: "dropped_to_zero",
+        });
+        reverseConcentrationEffect(target, target.activeConcentration.spellName);
+        target.activeConcentration = null;
+      }
 
       broadcastToParty(party.id, {
         type: "character_down",
@@ -2618,6 +2801,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
       monsterName: monster.name, targetName: target.name, attackName: attack.name,
       hit: true, damage: result.totalDamage, damageType: result.damageType,
       critical: result.critical, droppedToZero: hitActuallyDropped,
+      frightened: isFrightened,
+      disadvantageApplied: isFrightened && !targetIsIncapacitated,
     });
 
     advanceTurnSkipDead(party);
@@ -2639,6 +2824,8 @@ export function handleMonsterAttack(userId: string, params: { monster_id: string
   logEvent(party, "monster_attack", monster.id, {
     monsterName: monster.name, targetName: target.name, attackName: attack.name,
     hit: false, fumble: result.fumble,
+    frightened: isFrightened,
+    disadvantageApplied: isFrightened && !targetIsIncapacitated,
   });
 
   advanceTurnSkipDead(party);
@@ -2775,6 +2962,29 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 
   // Update spell slots
   char.spellSlots = result.remainingSlots;
+
+  // Concentration: casting a new concentration spell drops any existing concentration.
+  if (spell.isConcentration) {
+    if (char.activeConcentration) {
+      const droppedSpell = char.activeConcentration.spellName;
+      logEvent(party, "concentration_dropped", char.id, {
+        casterName: char.name,
+        droppedSpell,
+        newSpell: spell.name,
+        reason: "new_concentration_cast",
+      });
+      if (party) {
+        broadcastToParty(party.id, {
+          type: "concentration_dropped",
+          characterName: char.name,
+          droppedSpell,
+          reason: "new_concentration_cast",
+        });
+      }
+      reverseConcentrationEffect(char, droppedSpell);
+    }
+    char.activeConcentration = { spellName: spell.name, startedAt: Date.now() };
+  }
 
   // --- Sleep spell: HP-pool mechanic, does NOT deal damage ---
   if (spell.name === "Sleep" && result.totalEffect && party) {
@@ -3353,6 +3563,7 @@ export function handleShortRest(userId: string): { success: boolean; data?: Reco
   if (char.class === "cleric") {
     char.channelDivinityUses = 1;
   }
+  char.activeConcentration = null;
 
   return {
     success: true,
@@ -3393,6 +3604,7 @@ export function handleLongRest(userId: string): { success: boolean; data?: Recor
   if (char.class === "cleric") {
     char.channelDivinityUses = 1;
   }
+  char.activeConcentration = null;
   // Clear conditions (unconscious, stable, etc.) but preserve "dead" — though we already block dead above
   char.conditions = char.conditions.filter((c) => c === "dead");
 
@@ -3453,12 +3665,10 @@ export function handleChannelDivinity(userId: string, params: {
     const saved = total >= dc;
 
     if (!saved) {
-      // The frightened condition is decorative for now — engine doesn't enforce
-      // disadvantage / "must move away" behavior. Tracks intent so DM agents and
-      // future spectator UI can see the cleric's effect on the encounter.
       if (!monster.conditions.includes("frightened")) {
         monster.conditions.push("frightened");
       }
+      monster.frightenedRoundsRemaining = 10;
     }
 
     results.push({
@@ -5229,11 +5439,43 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
     };
   }
 
+  const hpBeforeConc = char.hpCurrent;
   const { hp, droppedToZero } = applyDamage(
     { current: char.hpCurrent, max: char.hpMax, temp: 0 },
     dmgRoll.total
   );
   char.hpCurrent = hp.current;
+
+  const damageDealt = hpBeforeConc - char.hpCurrent;
+  if (char.activeConcentration && damageDealt > 0 && char.hpCurrent > 0) {
+    const concDC = Math.max(10, Math.floor(damageDealt / 2));
+    const conMod = abilityModifier(char.abilityScores.con);
+    const saveResult = roll("1d20");
+    const totalSave = saveResult.total + conMod;
+    const maintained = totalSave >= concDC;
+    if (!maintained) {
+      logEvent(party, "concentration_dropped", char.id, {
+        casterName: char.name,
+        droppedSpell: char.activeConcentration.spellName,
+        reason: "damage_concentration_save_failed",
+        dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+      });
+      broadcastToParty(party.id, {
+        type: "concentration_dropped",
+        characterName: char.name,
+        droppedSpell: char.activeConcentration.spellName,
+        reason: "damage_concentration_save_failed",
+      });
+      reverseConcentrationEffect(char, char.activeConcentration.spellName);
+      char.activeConcentration = null;
+    } else {
+      logEvent(party, "concentration_maintained", char.id, {
+        casterName: char.name,
+        spell: char.activeConcentration.spellName,
+        dc: concDC, roll: saveResult.total, total: totalSave, conMod,
+      });
+    }
+  }
 
   let envActuallyDropped = droppedToZero;
   if (droppedToZero && checkRelentlessEndurance(char)) {
@@ -5244,29 +5486,42 @@ export function handleDealEnvironmentDamage(userId: string, params: { player_id?
     char.conditions = handleDropToZero(char.conditions);
     char.deathSaves = resetDeathSaves();
 
-    const party = getPartyForCharacter(char.id);
-    if (party) {
+    if (char.activeConcentration) {
+      logEvent(party, "concentration_dropped", char.id, {
+        casterName: char.name,
+        droppedSpell: char.activeConcentration.spellName,
+        reason: "dropped_to_zero",
+      });
       broadcastToParty(party.id, {
+        type: "concentration_dropped",
+        characterName: char.name,
+        droppedSpell: char.activeConcentration.spellName,
+        reason: "dropped_to_zero",
+      });
+      reverseConcentrationEffect(char, char.activeConcentration.spellName);
+      char.activeConcentration = null;
+    }
+
+    broadcastToParty(party.id, {
+      type: "character_down",
+      characterId: char.id,
+      characterName: char.name,
+      cause: `environment (${damageType})`,
+      message: `${char.name} has fallen unconscious from ${damageType} damage!`,
+    });
+
+    if (party.dmUserId) {
+      sendToUser(party.dmUserId, {
         type: "character_down",
         characterId: char.id,
         characterName: char.name,
         cause: `environment (${damageType})`,
-        message: `${char.name} has fallen unconscious from ${damageType} damage!`,
+        hpMax: char.hpMax,
+        message: `${char.name} has dropped to 0 HP from ${damageType} damage!`,
       });
-
-      if (party.dmUserId) {
-        sendToUser(party.dmUserId, {
-          type: "character_down",
-          characterId: char.id,
-          characterName: char.name,
-          cause: `environment (${damageType})`,
-          hpMax: char.hpMax,
-          message: `${char.name} has dropped to 0 HP from ${damageType} damage!`,
-        });
-      }
-
-      checkAllPcsDownObservability(party);
     }
+
+    checkAllPcsDownObservability(party);
   }
 
   return {
@@ -8238,6 +8493,7 @@ export async function loadPersistedState(): Promise<number> {
           channelDivinityUses: row.class === "cleric" ? 1 : 0,
           controllerType: (row.controllerType as "player_agent" | "dm_npc" | "autopilot") ?? "player_agent",
           isPublic: row.isPublic ?? true,
+          activeConcentration: null,
         };
 
         characters.set(charId, char);
@@ -8388,6 +8644,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         channelDivinityUses: row.class === "cleric" ? 1 : 0,
         controllerType: (row.controllerType as "player_agent" | "dm_npc" | "autopilot") ?? "player_agent",
         isPublic: row.isPublic ?? true,
+        activeConcentration: null,
       };
 
       characters.set(charId, char);
