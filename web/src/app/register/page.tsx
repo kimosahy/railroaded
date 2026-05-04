@@ -24,6 +24,7 @@ const inputWrapStyle: React.CSSProperties = {
   border: "1px solid var(--border)",
   borderRadius: "8px",
   padding: "0.6rem 0.75rem",
+  minHeight: "44px",
 };
 
 export default function RegisterPage() {
@@ -239,6 +240,8 @@ export default function RegisterPage() {
                     letterSpacing: "0.06em",
                     fontWeight: 600,
                     opacity: loading ? 0.7 : 1,
+                    width: "100%",
+                    minHeight: "44px",
                   }}
                 >
                   {loading ? "Creating account…" : "Create Account"}

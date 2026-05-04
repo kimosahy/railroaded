@@ -33,6 +33,7 @@ export interface Party {
   currentRoom?: string | null;
   dungeonName?: string;
   members: Member[];
+  dmModel?: { provider: string; name: string } | null;
 }
 
 export interface Session {
@@ -334,10 +335,17 @@ export function TrackerClient() {
 
   // ── Derived state ─────────────────────────────────────────────────────────────
 
+  // Dedupe: sessions for currently-live parties appear under the live PartyCard.
+  // Hide their active sessions from the global "Past Sessions" list when no
+  // specific party is selected (CC-260501 §4d). When a party IS selected, show
+  // its full session history regardless of liveness.
+  const livePartyIds = new Set(parties.map((p) => p.id));
+
   const filteredSessions = sessions.filter((s) => {
     if (selectedPartyId && s.partyId !== selectedPartyId) return false;
     if (statusFilter === "active" && !s.isActive) return false;
     if (statusFilter === "completed" && s.isActive) return false;
+    if (!selectedPartyId && livePartyIds.has(s.partyId) && s.isActive) return false;
     return true;
   });
 
@@ -346,29 +354,20 @@ export function TrackerClient() {
   const hasFilters = !!(selectedPartyId || selectedSessionId);
 
   // ── Layout ────────────────────────────────────────────────────────────────────
+  // Desktop (>=1024px): 3-col grid with sticky sidebars (300px / 1fr / 300px).
+  // Mobile / tablet: single-column stack — sidebars sit above main content,
+  // not sticky, so the page scrolls naturally on small screens.
 
   const sidebarStyle: React.CSSProperties = {
-    position: "sticky",
-    top: "64px",
-    maxHeight: "calc(100dvh - 64px)",
-    overflowY: "auto",
-    scrollbarWidth: "thin",
-    scrollbarColor: "var(--border) transparent",
     paddingTop: "1.5rem",
   };
 
   return (
     <div
-      className="max-w-[1700px] mx-auto px-8 pb-16"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "300px 1fr 300px",
-        gridTemplateRows: "auto 1fr",
-        gap: "0 1.5rem",
-      }}
+      className="max-w-[1700px] mx-auto px-4 md:px-8 pb-16 grid grid-cols-1 lg:grid-cols-[300px_1fr_300px] lg:grid-rows-[auto_1fr] gap-y-0 lg:gap-x-6"
     >
       {/* ── Col 1: Party + session sidebar ─────────────────────────────────── */}
-      <div style={{ gridColumn: "1", gridRow: "1 / -1", ...sidebarStyle }}>
+      <div className="lg:col-start-1 lg:row-span-full lg:sticky lg:top-16 lg:max-h-[calc(100dvh-64px)] lg:overflow-y-auto" style={sidebarStyle}>
         <QueueStatusPanel />
         <PartyList
           parties={parties}
@@ -387,8 +386,8 @@ export function TrackerClient() {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header
-        className="flex items-start justify-between flex-wrap gap-3"
-        style={{ gridColumn: "2", gridRow: "1", paddingTop: "1.5rem", paddingBottom: "0.5rem" }}
+        className="flex items-start justify-between flex-wrap gap-3 lg:col-start-2 lg:row-start-1"
+        style={{ paddingTop: "1.5rem", paddingBottom: "0.5rem" }}
       >
         <div>
           <div className="flex items-center" style={{ gap: "8px", marginBottom: "0.25rem" }}>
@@ -459,12 +458,9 @@ export function TrackerClient() {
 
       {/* ── Col 2, Row 2: Event feed ─────────────────────────────────── */}
       <div
+        className="flex flex-col lg:col-start-2 lg:row-start-2"
         style={{
-          gridColumn: "2",
-          gridRow: "2",
           minHeight: "calc(100dvh - 64px - 6rem)",
-          display: "flex",
-          flexDirection: "column",
         }}
       >
         {selectedSession && (
@@ -499,7 +495,7 @@ export function TrackerClient() {
       </div>
 
       {/* ── Col 3: Narrator panel ───────────────────────────────────────────── */}
-      <div style={{ gridColumn: "3", gridRow: "1 / -1", ...sidebarStyle }}>
+      <div className="lg:col-start-3 lg:row-span-full lg:sticky lg:top-16 lg:max-h-[calc(100dvh-64px)] lg:overflow-y-auto" style={sidebarStyle}>
         <NarratorPanel narrations={narrations} loading={loadingNarrations} />
       </div>
     </div>

@@ -23,6 +23,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
+import { formatTimestamp } from "@/lib/format-time";
 import { useCharacterDrawer } from "./character-drawer-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -126,10 +127,7 @@ function formatEventLabel(type: string): string {
 function formatEventTime(iso?: string): string {
   if (!iso) return "";
   try {
-    return new Date(iso).toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    return formatTimestamp(iso);
   } catch {
     return "";
   }

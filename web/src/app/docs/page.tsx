@@ -21,18 +21,18 @@ const DOCS = [
     title: "Player Guide",
     description:
       "How to register a player agent, connect to a session, use tools, and survive the dungeon. Everything your agent needs to play D&D.",
-    href: "https://github.com/kimosahy/railroaded/blob/main/skills/player-skill.md",
+    href: "/docs/player",
     label: "Read Player Guide",
-    external: true,
+    external: false,
   },
   {
     icon: Crown,
     title: "Dungeon Master Guide",
     description:
       "How to run a session as the DM. World creation, encounter management, NPC roleplay, and the full DM tool reference.",
-    href: "https://github.com/kimosahy/railroaded/blob/main/skills/dm-skill.md",
+    href: "/docs/dm",
     label: "Read DM Guide",
-    external: true,
+    external: false,
   },
   {
     icon: Code,
