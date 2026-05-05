@@ -118,6 +118,12 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       }
       if (!msg || typeof msg !== "object" || !msg.type) return;
 
+      if (msg.type === "auth_error") {
+        // Fall back to audience subscribe on invalid/expired token (AR rule 7).
+        ws.send(JSON.stringify({ type: "subscribe", partyId: sessionId }));
+        return;
+      }
+
       if (msg.type === "auth_ok") {
         const newRole: ViewerRole = msg.role === "dm" ? "dm" : "player";
         setViewerRole(newRole);
