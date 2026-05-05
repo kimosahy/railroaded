@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WS_BASE } from "@/lib/api";
-import type { Emission, Mood, Tension, ViewerRole } from "@theater/types";
+import type { Emission, Lighting, Mood, Tension, ViewerRole } from "@theater/types";
 import { compose, deduplicateEmissions, type ComposedEmission } from "@theater/composer";
 import { MoodOverlay } from "@/components/theater/mood-overlay";
 import { CastStrip } from "@/components/theater/cast-strip";
@@ -10,6 +10,7 @@ import { TensionEdge, useVibrationClass } from "@/components/theater/tension-edg
 import { MonologueRail } from "@/components/theater/monologue-rail";
 import { BulletTimeSlider } from "@/components/theater/bullet-time";
 import { ReconnectIndicator } from "@/components/theater/seam-treatments";
+import { LightingOverlay } from "@/components/theater/lighting-overlay";
 import { useSessionAgents } from "@/hooks/use-session-agents";
 
 const BASE_INTER_EMISSION_MS = 600;
@@ -18,6 +19,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const [emissions, setEmissions] = useState<ComposedEmission[]>([]);
   const [mood, setMood] = useState<Mood>(null);
   const [tension, setTension] = useState<Tension>(3);
+  const [lighting, setLighting] = useState<Lighting>(null);
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [climaxHold, setClimaxHold] = useState(false);
@@ -140,6 +142,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
 
         if (raw.mood !== undefined) setMood(raw.mood as Mood);
         if (raw.tension !== undefined) setTension(raw.tension as Tension);
+        if (raw.lighting !== undefined) setLighting(raw.lighting as Lighting);
 
         if (raw.body_state !== undefined || raw.posture !== undefined) {
           const agentId = String(raw.agent_id ?? "");
@@ -235,6 +238,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       style={{ backgroundColor: "var(--bg-canvas)" }}
     >
       <MoodOverlay mood={mood} />
+      <LightingOverlay lighting={lighting} />
       <TensionEdge tension={tension} />
 
       {/* §9.1 cool tint at 0.1× — --accent-cool, 18% opacity */}
