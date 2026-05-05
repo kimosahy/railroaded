@@ -1,9 +1,23 @@
 "use client";
+import { useMemo } from "react";
 import type { ComposedEmission } from "@theater/composer";
+import type { EmissionTrack } from "@theater/types";
 import { EmissionText } from "./emission-text";
 import { SceneImage } from "./scene-image";
 import { InterruptionFlash, InterruptionGap, truncateInterrupted } from "./interruption";
 import type { AgentInfo } from "@/hooks/use-session-agents";
+
+// §5.1 within-beat track sort order.
+const TRACK_PRIORITY: Record<EmissionTrack, number> = {
+  narration: 0,
+  action: 1,
+  dialogue: 2,
+  thought: 3,
+  internal_monologue: 4,
+};
+
+const BEAT_WINDOW_MS = 2000; // §5.1 group emissions within 2s
+const BEAT_GRACE_MS = 200;   // §5.1 finalize delay before render to prevent reshuffle (ATLAS-024 minor 2)
 
 // §5.1 within-beat track stacking (narration→action→dialogue→thought) deferred to CC Doc 12.
 // V1 renders sequentially by timestamp.
@@ -16,11 +30,59 @@ interface TimelineProps {
 }
 
 export function Timeline({ emissions, agents }: TimelineProps) {
-  const sorted = [...emissions].sort(
-    (a, b) =>
-      new Date(a.emission.timestamp).getTime() -
-      new Date(b.emission.timestamp).getTime()
-  );
+  // §5.1 track stacking within beats: group emissions into 2s beats keyed by
+  // the first emission's timestamp; sort within each beat by track priority
+  // (narration → action → dialogue → thought → internal_monologue).
+  const sorted = useMemo(() => {
+    const byTime = [...emissions].sort(
+      (a, b) =>
+        new Date(a.emission.timestamp).getTime() -
+        new Date(b.emission.timestamp).getTime()
+    );
+
+    // Beat finalization grace: don't reshuffle the most recent beat for
+    // BEAT_GRACE_MS after its newest emission to avoid visible re-orderings.
+    const now = Date.now();
+
+    const result: ComposedEmission[] = [];
+    let beat: ComposedEmission[] = [];
+    let beatStart = 0;
+    const flush = () => {
+      // Determine if the beat is "live" (within grace window) — if so, render
+      // in arrival order; otherwise sort by track priority.
+      const lastTs = beat.length
+        ? new Date(beat[beat.length - 1].emission.timestamp).getTime()
+        : 0;
+      if (now - lastTs >= BEAT_GRACE_MS) {
+        beat.sort((a, b) => {
+          const pa = TRACK_PRIORITY[a.emission.track] ?? 99;
+          const pb = TRACK_PRIORITY[b.emission.track] ?? 99;
+          if (pa !== pb) return pa - pb;
+          // Stable secondary by timestamp.
+          return new Date(a.emission.timestamp).getTime() - new Date(b.emission.timestamp).getTime();
+        });
+      }
+      result.push(...beat);
+      beat = [];
+    };
+    for (const e of byTime) {
+      const ts = new Date(e.emission.timestamp).getTime();
+      if (!beat.length) {
+        beat.push(e);
+        beatStart = ts;
+        continue;
+      }
+      if (ts - beatStart <= BEAT_WINDOW_MS) {
+        beat.push(e);
+      } else {
+        flush();
+        beat.push(e);
+        beatStart = ts;
+      }
+    }
+    if (beat.length) flush();
+    return result;
+  }, [emissions]);
 
   return (
     <div className="space-y-6 max-w-prose mx-auto">
