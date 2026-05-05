@@ -34,6 +34,9 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const beatTypeRef = useRef<BeatType>(null);
   beatTypeRef.current = beatType;
 
+  // §12.1 DM typing cue — driven by ws `dm_typing` event (V1.1 backend follow-up).
+  const [dmTyping, setDmTyping] = useState(false);
+
   // §9.4 DM audience state
   const [hiddenInfo, setHiddenInfo] = useState<string | null>(null);
   const [foreshadow, setForeshadow] = useState<{ text: string; remaining: number } | null>(null);
@@ -228,6 +231,14 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         return;
       }
 
+      if (msg.type === "dm_typing") {
+        // §12.1 DM typing cue — backend WS event V1.1 follow-up. Component
+        // ready; degrades gracefully (cue never shows) until backend ships.
+        const data = msg.data as { active?: boolean } | undefined;
+        setDmTyping(!!data?.active);
+        return;
+      }
+
       if (msg.type === "theater_emission_update" && msg.data) {
         const update = msg.data as { emission_id?: string } & Record<string, unknown>;
         if (!update.emission_id) return;
@@ -359,6 +370,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         agentStates={agentStates}
         confessionalSubjectId={confessionalSubject}
         dmFourthWallActive={dmFourthWallActive}
+        dmTyping={dmTyping}
       />
       <BulletTimeSlider speed={playbackSpeed} onSpeedChange={handleSpeedChange} />
     </div>
