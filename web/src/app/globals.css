@@ -169,6 +169,10 @@ html {
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
 
+/* §12.1 DM typing cue — 1.5Hz blink (667ms step-end) */
+@keyframes dm-typing-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.animate-dm-typing-blink { animation: dm-typing-blink 667ms step-end infinite; }
+
 /* §7.5 scene cut transitions */
 @keyframes cross-fade-200 { from { opacity: 0; } to { opacity: 1; } }
 .animate-cross-fade-200 { animation: cross-fade-200 200ms ease-out; }

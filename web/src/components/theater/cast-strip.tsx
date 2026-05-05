@@ -1,6 +1,8 @@
 "use client";
 import type { BodyState, Posture, ViewerRole } from "@theater/types";
 import type { AgentInfo } from "@/hooks/use-session-agents";
+import { FEATURED_SCALE, DIMMED_SCALE, DIMMED_BRIGHTNESS, CAST_TRANSITION_MS, CAST_EXIT_MS } from "./casting";
+import { HumanDmTypingCue } from "./seam-treatments";
 
 // §4.6 VERBATIM — scale, transform, placement
 function postureTransform(posture: Posture): string {
@@ -61,9 +63,28 @@ interface CastStripProps {
   agents: Map<string, AgentInfo>;
   viewerRole: ViewerRole;
   agentStates: Map<string, { bodyState: string | null; posture: string | null }>;
+  /** §7.6 spotlight: featured character scaled 1.2×, others 0.8× + brightness 0.7. */
+  featuredCharacterId?: string | null;
+  /** §7.6 exit: 1.5s fade + scale 1.0→0.9 on the named agent. */
+  exitingAgentId?: string | null;
+  /** §9.4 confessional: subject 1.0, others 20% opacity. */
+  confessionalSubjectId?: string | null;
+  /** §9.4 fourth-wall: DM avatar mirror flip 400ms. */
+  dmFourthWallActive?: boolean;
+  /** §12.1 typing cue: typewriter SVG blink (1.5Hz) on DM avatar. */
+  dmTyping?: boolean;
 }
 
-export function CastStrip({ agents, viewerRole, agentStates }: CastStripProps) {
+export function CastStrip({
+  agents,
+  viewerRole,
+  agentStates,
+  featuredCharacterId,
+  exitingAgentId,
+  confessionalSubjectId,
+  dmFourthWallActive,
+  dmTyping,
+}: CastStripProps) {
   // §11.1: avatars of all players + DM. DM avatar anchors §9.4 fourth-wall mirror flip + §12.1 typing cue.
   const cast: CastMember[] = Array.from(agents.entries())
     .filter(([, a]) => a.role === "player" || a.role === "dm")
@@ -88,29 +109,67 @@ export function CastStrip({ agents, viewerRole, agentStates }: CastStripProps) {
   const renderMember = (member: CastMember, positionClass: string) => {
     const treatment = bodyStateTreatment(member.bodyState);
 
-    // §6.4 hidden: suppress entirely on player UI
+    // §6.4 hidden: V1 suppresses for ALL players (not just non-participants).
+    // Full spec requires Mercury §14 `participants_in_scene: agent_id[]` field.
+    // When that field ships: if (hidden && !participantsInScene.includes(viewerAgentId)) suppress.
     if (treatment.suppressOnPlayerUI && viewerRole === "player") return null;
 
     // §6.4 unconscious: force prone posture
     const effectivePosture: Posture = member.bodyState === "unconscious" ? "prone" : member.posture;
 
+    // §7.6 spotlight scale + dim
+    const isFeatured = featuredCharacterId === member.agentId;
+    const hasFeatured = !!featuredCharacterId;
+    const isDimmed = hasFeatured && !isFeatured;
+    const isExiting = exitingAgentId === member.agentId;
+
+    // §9.4 confessional opacity
+    const isConfessionalSubject = confessionalSubjectId === member.agentId;
+    const hasConfessional = !!confessionalSubjectId;
+    const confessionalOpacity = hasConfessional && !isConfessionalSubject ? 0.2 : 1;
+
+    // §9.4 fourth-wall: DM avatar mirror flip
+    const isDm = agents.get(member.agentId)?.role === "dm";
+    const fourthWallTransform = dmFourthWallActive && isDm ? "scaleX(-1) " : "";
+
+    // Compose transforms (posture + casting scale + exit + fourth-wall mirror)
+    const castingScale = isFeatured ? FEATURED_SCALE : isDimmed ? DIMMED_SCALE : 1;
+    const exitScale = isExiting ? 0.9 : 1;
+    const finalScale = castingScale * exitScale;
+    const postureT = postureTransform(effectivePosture);
+    const baseTransform = postureT === "none" ? "" : `${postureT} `;
+    const composedTransform = `${fourthWallTransform}${baseTransform}scale(${finalScale})`;
+
+    const baseBrightness = isDimmed ? DIMMED_BRIGHTNESS : 1;
     const filter =
-      [postureFilter(effectivePosture), treatment.filter]
+      [
+        postureFilter(effectivePosture),
+        treatment.filter,
+        baseBrightness !== 1 ? `brightness(${baseBrightness})` : "",
+      ]
         .filter((f) => f && f !== "none")
         .join(" ") || "none";
+
+    const transitionDuration = isExiting ? CAST_EXIT_MS : CAST_TRANSITION_MS;
 
     return (
       <div
         key={member.agentId}
-        className={`flex flex-col items-center gap-1 transition-all duration-[400ms] ${positionClass}`}
+        className={`flex flex-col items-center gap-1 ${positionClass}`}
+        style={{
+          opacity: isExiting ? 0 : confessionalOpacity,
+          transition: `opacity ${transitionDuration}ms ease-out`,
+        }}
       >
         <div
           className={`w-14 h-14 rounded-full overflow-hidden relative ${treatment.className} ${treatment.animation ?? ""}`}
           style={{
-            transform: postureTransform(effectivePosture),
+            transform: composedTransform,
             filter,
+            transition: `transform ${transitionDuration}ms ease-out, filter ${transitionDuration}ms ease-out`,
           }}
         >
+          {isDm && dmTyping && <HumanDmTypingCue />}
           {member.avatarUrl ? (
             /* eslint-disable-next-line @next/next/no-img-element */
             <img
