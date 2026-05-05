@@ -1,23 +1,21 @@
 "use client";
 import type { SceneData, SceneType } from "@theater/types";
 
-// §7.3 frame sizing per scene type.
+// §7.3 frame sizing + entrance animation per scene type.
 function frameClasses(type: SceneType): string {
   switch (type) {
     case "establishing":
-      // Full-bleed background.
-      return "fixed inset-0 z-0 w-screen h-screen";
+      return "fixed inset-0 z-0 w-screen h-screen animate-fade-up";
     case "beat":
-      return "relative w-full max-w-3xl aspect-video my-4";
+      return "relative w-full max-w-3xl aspect-video my-4 animate-slide-up";
     case "insert":
-      // Small inset, top-right.
-      return "absolute top-4 right-4 w-48 h-48 rounded-md overflow-hidden";
+      return "absolute top-4 right-4 w-[30%] aspect-video rounded-md overflow-hidden animate-quick-zoom";
     case "reveal":
-      return "relative w-full max-w-3xl aspect-video my-4 animate-freeze-drop";
+      return "fixed inset-0 z-0 w-screen h-screen animate-freeze-drop";
     case "reaction":
-      return "relative w-32 h-32 my-2 rounded-full overflow-hidden";
+      return "relative w-[40%] mx-auto aspect-[4/5] my-2 rounded overflow-hidden";
     case "mood-reskin":
-      return "fixed inset-0 z-0 w-screen h-screen opacity-80";
+      return "fixed inset-0 z-0 w-screen h-screen opacity-80 animate-cross-fade";
     default:
       return "relative w-full max-w-3xl aspect-video my-4";
   }
