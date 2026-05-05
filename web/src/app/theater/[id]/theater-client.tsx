@@ -12,7 +12,15 @@ import { BulletTimeSlider } from "@/components/theater/bullet-time";
 import { ReconnectIndicator } from "@/components/theater/seam-treatments";
 import { LightingOverlay } from "@/components/theater/lighting-overlay";
 import { BEAT_TYPE_PACING } from "@/components/theater/structure";
-import type { BeatType } from "@theater/types";
+import {
+  FourthWallRibbon,
+  ConfessionalOverlay,
+  HiddenInfoSidebar,
+  ForeshadowPip,
+  RecapCard,
+  fourthWallDurationMs,
+} from "@/components/theater/dm-audience";
+import type { BeatType, RecapEntry } from "@theater/types";
 import { useSessionAgents } from "@/hooks/use-session-agents";
 
 const BASE_INTER_EMISSION_MS = 600;
@@ -25,6 +33,14 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const [beatType, setBeatType] = useState<BeatType>(null);
   const beatTypeRef = useRef<BeatType>(null);
   beatTypeRef.current = beatType;
+
+  // §9.4 DM audience state
+  const [hiddenInfo, setHiddenInfo] = useState<string | null>(null);
+  const [foreshadow, setForeshadow] = useState<{ text: string; remaining: number } | null>(null);
+  const [confessionalSubject, setConfessionalSubject] = useState<string | null>(null);
+  const [dmFourthWallActive, setDmFourthWallActive] = useState(false);
+  const [recapEntries, setRecapEntries] = useState<RecapEntry[] | null>(null);
+  const sceneImagesRef = useRef<Map<string, string>>(new Map());
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [climaxHold, setClimaxHold] = useState(false);
@@ -152,6 +168,39 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         if (raw.tension !== undefined) setTension(raw.tension as Tension);
         if (raw.lighting !== undefined) setLighting(raw.lighting as Lighting);
         if (raw.beat_type !== undefined) setBeatType(raw.beat_type as BeatType);
+
+        // §9.4 DM audience surfaces — hidden_information, foreshadow,
+        // audience_aside (fourth-wall / confessional), recap_card.
+        if (raw.hidden_information) setHiddenInfo(raw.hidden_information as string);
+        if (raw.foreshadow) {
+          setForeshadow({ text: raw.foreshadow as string, remaining: 5 });
+        } else {
+          // Decrement remaining on each subsequent emission; clear at 0.
+          setForeshadow((prev) =>
+            prev && prev.remaining > 1
+              ? { ...prev, remaining: prev.remaining - 1 }
+              : null
+          );
+        }
+        const aside = raw.audience_aside as { kind: "fourth-wall" | "confessional"; subject_agent_id: string } | undefined;
+        if (aside?.kind === "fourth-wall") {
+          setDmFourthWallActive(true);
+          // AR rule 14: ribbon stays for emission duration + 2s.
+          const contentLen = (raw.content as string | undefined)?.length ?? 100;
+          const dur = fourthWallDurationMs(contentLen, raw.pacing as string | null | undefined);
+          window.setTimeout(() => setDmFourthWallActive(false), dur);
+        } else if (aside?.kind === "confessional") {
+          setConfessionalSubject(aside.subject_agent_id ?? null);
+          window.setTimeout(() => setConfessionalSubject(null), 8000);
+        }
+        if (raw.recap_card) {
+          setRecapEntries(raw.recap_card as RecapEntry[]);
+        }
+        // Track scene image URLs for RecapCard lookup.
+        const sceneObj = raw.scene as (typeof raw.scene & { image_url?: string }) | undefined;
+        if (sceneObj?.image_url && raw.turn_id) {
+          sceneImagesRef.current.set(raw.turn_id as string, sceneObj.image_url);
+        }
 
         if (raw.body_state !== undefined || raw.posture !== undefined) {
           const agentId = String(raw.agent_id ?? "");
@@ -287,11 +336,29 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
+      {viewerRole === "audience" && hiddenInfo && <HiddenInfoSidebar info={hiddenInfo} />}
+      {viewerRole === "audience" && foreshadow && (
+        <ForeshadowPip text={foreshadow.text} remaining={foreshadow.remaining} />
+      )}
+      {viewerRole === "audience" && confessionalSubject && <ConfessionalOverlay active />}
+      {viewerRole === "audience" && (
+        <FourthWallRibbon active={dmFourthWallActive} />
+      )}
+      {viewerRole === "audience" && recapEntries && recapEntries.length > 0 && (
+        <RecapCard
+          entries={recapEntries}
+          sceneImages={sceneImagesRef.current}
+          onComplete={() => setRecapEntries(null)}
+        />
+      )}
+
       <CastStrip
         sessionId={sessionId}
         agents={agents}
         viewerRole={viewerRole}
         agentStates={agentStates}
+        confessionalSubjectId={confessionalSubject}
+        dmFourthWallActive={dmFourthWallActive}
       />
       <BulletTimeSlider speed={playbackSpeed} onSpeedChange={handleSpeedChange} />
     </div>

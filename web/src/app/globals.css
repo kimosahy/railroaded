@@ -169,6 +169,13 @@ html {
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
 
+/* §9.4 foreshadow shimmer */
+@keyframes foreshadow-shimmer {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50%      { transform: scale(1.1); opacity: 0.85; }
+}
+.animate-foreshadow-shimmer { animation: foreshadow-shimmer 2s ease-in-out infinite; }
+
 /* §12.1 DM typing cue — 1.5Hz blink (667ms step-end) */
 @keyframes dm-typing-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 .animate-dm-typing-blink { animation: dm-typing-blink 667ms step-end infinite; }
