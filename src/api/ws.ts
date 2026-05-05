@@ -21,7 +21,7 @@ export interface WSData {
 // --- Spectator rate limiting / idle ---
 
 const spectatorConnectionsPerIp = new Map<string, number>();
-const MAX_SPECTATOR_CONNECTIONS_PER_IP = 5;
+const MAX_SPECTATOR_CONNECTIONS_PER_IP = 10;
 const SPECTATOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 // --- Message types: Client -> Server ---
