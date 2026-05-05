@@ -37,6 +37,20 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   // §12.1 DM typing cue — driven by ws `dm_typing` event (V1.1 backend follow-up).
   const [dmTyping, setDmTyping] = useState(false);
 
+  // §9.1 auto-slow Bullet Time. Default ON. Manual interaction → 30s cooldown.
+  const [autoSlow, setAutoSlow] = useState(true);
+  const [manualOverrideUntil, setManualOverrideUntil] = useState(0);
+  const [lastSceneAt, setLastSceneAt] = useState(Date.now());
+
+  // AR rule 13: tick timer for time-based auto-slow triggers (e.g. exposition→1.5×
+  // when no scene for >8s). Without this, the auto-target only fires on emission
+  // arrival, not on time elapsed since last scene.
+  const [tickCount, setTickCount] = useState(0);
+  useEffect(() => {
+    const interval = window.setInterval(() => setTickCount((n) => n + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
   // §9.4 DM audience state
   const [hiddenInfo, setHiddenInfo] = useState<string | null>(null);
   const [foreshadow, setForeshadow] = useState<{ text: string; remaining: number } | null>(null);
@@ -211,6 +225,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         if (sceneObj?.image_url && raw.turn_id) {
           sceneImagesRef.current.set(raw.turn_id as string, sceneObj.image_url);
         }
+        if (sceneObj) setLastSceneAt(Date.now());
 
         if (raw.body_state !== undefined || raw.posture !== undefined) {
           const agentId = String(raw.agent_id ?? "");
@@ -300,6 +315,25 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       wsRef.current?.close();
     };
   }, [connectWs]);
+
+  // §9.1 auto-slow rules:
+  //   tension >= 7 → auto-target 0.2×
+  //   beat_type === "exposition" with no scene for >8s → auto-target 1.5×
+  // Manual interaction disables for 30s. Auto-slow can target 1.5× even though
+  // 1.5× is NOT a manual detent (AR rule 3).
+  useEffect(() => {
+    if (!autoSlow) return;
+    if (Date.now() < manualOverrideUntil) return;
+    if (tension >= 7) {
+      handleSpeedChange(0.2);
+      return;
+    }
+    if (beatType === "exposition" && Date.now() - lastSceneAt > 8000) {
+      handleSpeedChange(1.5);
+    }
+    // tickCount is in deps so the effect re-runs every second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tension, beatType, autoSlow, manualOverrideUntil, lastSceneAt, tickCount]);
 
   // Climax desaturate-snap — edge-detector on transition INTO tension=10 (AR rule 2)
   const lastWasClimaxRef = useRef(false);
@@ -443,7 +477,13 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         dmFourthWallActive={dmFourthWallActive}
         dmTyping={dmTyping}
       />
-      <BulletTimeSlider speed={playbackSpeed} onSpeedChange={handleSpeedChange} />
+      <BulletTimeSlider
+        speed={playbackSpeed}
+        onSpeedChange={handleSpeedChange}
+        autoSlow={autoSlow}
+        onAutoSlowToggle={setAutoSlow}
+        onManualInteraction={() => setManualOverrideUntil(Date.now() + 30000)}
+      />
     </div>
   );
 }
