@@ -11,6 +11,8 @@ import { MonologueRail } from "@/components/theater/monologue-rail";
 import { BulletTimeSlider } from "@/components/theater/bullet-time";
 import { ReconnectIndicator } from "@/components/theater/seam-treatments";
 import { LightingOverlay } from "@/components/theater/lighting-overlay";
+import { BEAT_TYPE_PACING } from "@/components/theater/structure";
+import type { BeatType } from "@theater/types";
 import { useSessionAgents } from "@/hooks/use-session-agents";
 
 const BASE_INTER_EMISSION_MS = 600;
@@ -20,6 +22,9 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const [mood, setMood] = useState<Mood>(null);
   const [tension, setTension] = useState<Tension>(3);
   const [lighting, setLighting] = useState<Lighting>(null);
+  const [beatType, setBeatType] = useState<BeatType>(null);
+  const beatTypeRef = useRef<BeatType>(null);
+  beatTypeRef.current = beatType;
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [climaxHold, setClimaxHold] = useState(false);
@@ -71,7 +76,10 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
     let raf = 0;
     const tick = (ts: number) => {
       if (!lastDrainRef.current) lastDrainRef.current = ts;
-      const interval = BASE_INTER_EMISSION_MS / playbackSpeedRef.current;
+      // §7.5 / AR rule 1: interval = BASE / (speed * BEAT_TYPE_PACING).
+      // exposition (0.85) → longer pauses; climax (1.15) → shorter pauses.
+      const beatRate = beatTypeRef.current ? BEAT_TYPE_PACING[beatTypeRef.current] : 1;
+      const interval = BASE_INTER_EMISSION_MS / (playbackSpeedRef.current * beatRate);
       if (ts - lastDrainRef.current >= interval && incomingQueueRef.current.length > 0) {
         const next = incomingQueueRef.current.shift();
         if (next) {
@@ -143,6 +151,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         if (raw.mood !== undefined) setMood(raw.mood as Mood);
         if (raw.tension !== undefined) setTension(raw.tension as Tension);
         if (raw.lighting !== undefined) setLighting(raw.lighting as Lighting);
+        if (raw.beat_type !== undefined) setBeatType(raw.beat_type as BeatType);
 
         if (raw.body_state !== undefined || raw.posture !== undefined) {
           const agentId = String(raw.agent_id ?? "");

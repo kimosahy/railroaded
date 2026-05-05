@@ -169,6 +169,14 @@ html {
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
 
+/* §7.5 scene cut transitions */
+@keyframes cross-fade-200 { from { opacity: 0; } to { opacity: 1; } }
+.animate-cross-fade-200 { animation: cross-fade-200 200ms ease-out; }
+@keyframes match-cut { from { transform: scale(0.96); opacity: 0.7; } to { transform: scale(1); opacity: 1; } }
+.animate-match-cut { animation: match-cut 1200ms ease; }
+@keyframes whip-pan { from { transform: translateX(-12px); filter: blur(8px); opacity: 0; } to { transform: translateX(0); filter: blur(0); opacity: 1; } }
+.animate-whip-pan { animation: whip-pan 150ms ease-out; }
+
 /* §7.1 dice moment animations */
 @keyframes dice-halo {
   0%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.4); transform: translateY(-2px); }
