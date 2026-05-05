@@ -11,3 +11,5 @@ export async function fetchSpectator<T>(path: string, revalidate = 30): Promise<
 }
 
 export { API_BASE };
+
+export const WS_BASE = API_BASE.replace(/^http/, "ws");
