@@ -130,14 +130,6 @@ html {
 .animate-letter-rotate { animation: letter-rotate 300ms ease-in-out; }
 .animate-raspy-jitter { animation: raspy-jitter 250ms linear infinite; }
 
-/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) */
-@media (prefers-reduced-motion: reduce) {
-  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
-  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
-  .animate-raspy-jitter, .animate-bounce {
-    animation: none !important;
-  }
-}
 
 /* ============================================================
    Theater page — body state, climax flash, tension vibration,
@@ -214,9 +206,14 @@ html {
   border: none;
 }
 
+/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) — consolidated */
 @media (prefers-reduced-motion: reduce) {
+  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
+  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
+  .animate-raspy-jitter, .animate-bounce,
   .animate-exhausted-blink, .animate-alert-pulse,
-  .animate-tension-vibrate, .theater-climax-flash, .animate-freeze-drop {
+  .animate-tension-vibrate, .theater-climax-flash, .animate-freeze-drop,
+  .animate-fade-up, .animate-slide-up, .animate-quick-zoom, .animate-cross-fade {
     animation: none !important;
   }
   .theater { animation: none !important; }
