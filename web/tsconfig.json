@@ -19,7 +19,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@theater/*": ["../src/theater/*"]
     }
   },
   "include": [

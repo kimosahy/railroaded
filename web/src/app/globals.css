@@ -82,3 +82,11 @@ html {
   border-color: var(--border) !important;
   background: var(--overlay) !important;
 }
+
+/* ============================================================
+   Theater typography — MF-040 §3.1
+   Surface-scoped exception per MF-041: theater pages only.
+   ============================================================ */
+.font-theater-heading { font-family: var(--font-theater-heading), 'Bodoni Moda', 'Bodoni 72', Didot, Georgia, serif; }
+.font-theater-ui { font-family: var(--font-theater-ui), 'Inter Display', 'Inter', system-ui, sans-serif; }
+.font-theater-prose { font-family: var(--font-theater-prose), 'Cormorant Garamond', 'Adobe Caslon Pro', Georgia, serif; }

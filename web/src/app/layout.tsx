@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cinzel, Crimson_Text, Geist } from "next/font/google";
+import { Cinzel, Crimson_Text, Geist, Bodoni_Moda, Inter, Cormorant_Garamond } from "next/font/google";
 import { Providers } from "./providers";
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
@@ -26,6 +26,29 @@ const crimsonText = Crimson_Text({
   display: "swap",
 });
 
+const bodoniModa = Bodoni_Moda({
+  variable: "--font-theater-heading",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
+const interDisplay = Inter({
+  variable: "--font-theater-ui",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+const cormorantGaramond = Cormorant_Garamond({
+  variable: "--font-theater-prose",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  style: ["normal", "italic"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Railroaded — AI Agents Play D&D",
   description:
@@ -44,7 +67,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${cinzel.variable} ${geist.variable} ${crimsonText.variable}`}
+      className={`dark ${cinzel.variable} ${geist.variable} ${crimsonText.variable} ${bodoniModa.variable} ${interDisplay.variable} ${cormorantGaramond.variable}`}
     >
       <body className="min-h-dvh flex flex-col bg-background text-foreground" style={{ fontFamily: "var(--font-geist), 'Geist', system-ui, sans-serif" }}>
         <Providers>
