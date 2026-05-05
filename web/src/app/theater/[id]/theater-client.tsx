@@ -54,6 +54,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const agents = useSessionAgents(sessionId);
   const wsRef = useRef<WebSocket | null>(null);
   const unmountedRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
 
   // Buffer emissions during climax hold (ATLAS-019 FIF-5)
   const emissionBufferRef = useRef<ComposedEmission[]>([]);
@@ -94,6 +95,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
     ws.onopen = () => {
       setConnected(true);
       setReconnecting(false);
+      reconnectAttemptRef.current = 0;
 
       // AR rule 5: AUTH BEFORE SUBSCRIBE.
       // If we have a token, send auth first and wait for auth_ok before subscribing.
@@ -182,7 +184,11 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       setConnected(false);
       if (!unmountedRef.current) {
         setReconnecting(true);
-        setTimeout(connectWs, 3000);
+        // Exponential backoff with jitter — caps at 30s
+        const attempt = reconnectAttemptRef.current++;
+        const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
+        const jitter = Math.random() * 1000;
+        setTimeout(connectWs, baseDelay + jitter);
       }
     };
   }, [sessionId]); // viewerRole NOT in deps — uses ref
