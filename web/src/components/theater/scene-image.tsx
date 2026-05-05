@@ -24,21 +24,41 @@ function frameClasses(type: SceneType): string {
 export function SceneImage({ scene }: { scene: SceneData }) {
   const imageUrl = (scene as SceneData & { image_url?: string }).image_url ?? null;
   const cls = frameClasses(scene.type);
+
+  // §7.4 / §12.1 continuity drift pip — renders when scene.continuity_drift === true.
+  // The field does NOT yet exist in Mercury §14 SceneData; until Mercury §14 v2.4
+  // ships `continuity_drift?: boolean`, this pip remains dormant. Component is
+  // ready; the field producer is upstream.
+  const driftPip = (scene as SceneData & { continuity_drift?: boolean }).continuity_drift === true ? (
+    <span
+      className="absolute top-2 left-2 text-[10px] font-theater-ui px-1 rounded z-10"
+      style={{ color: "var(--accent-coral)", backgroundColor: "var(--bg-canvas)" }}
+      aria-label="continuity drift"
+    >
+      ⚠ continuity
+    </span>
+  ) : null;
+
   if (!imageUrl) {
     // Placeholder slot while image is being generated upstream.
     return (
       <div
-        className={`${cls} bg-[var(--bg-frame)] border border-[var(--border-faint)]`}
+        className={`${cls} bg-[var(--bg-frame)] border border-[var(--border-faint)] relative`}
         aria-label="Scene image loading"
-      />
+      >
+        {driftPip}
+      </div>
     );
   }
   return (
-    /* eslint-disable-next-line @next/next/no-img-element */
-    <img
-      src={imageUrl}
-      alt={scene.image_prompt ?? "Scene"}
-      className={`${cls} object-cover`}
-    />
+    <div className={`${cls} relative overflow-hidden`}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageUrl}
+        alt={scene.image_prompt ?? "Scene"}
+        className="w-full h-full object-cover"
+      />
+      {driftPip}
+    </div>
   );
 }
