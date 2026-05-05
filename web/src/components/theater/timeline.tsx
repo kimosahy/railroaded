@@ -5,7 +5,17 @@ import type { EmissionTrack } from "@theater/types";
 import { EmissionText } from "./emission-text";
 import { SceneImage } from "./scene-image";
 import { InterruptionFlash, InterruptionGap, truncateInterrupted } from "./interruption";
+import { ParseErrorPip, BackfillWrapper, DelayedPip } from "./seam-treatments";
 import type { AgentInfo } from "@/hooks/use-session-agents";
+
+// §12.1 ParseErrorPip filtering: only render for ERROR-level warnings
+// (Unclosed, without matching, Unknown pacing/scene). Custom-tone informational
+// warnings are logged-only (AR rule 15).
+const ERROR_WARNING_RE = /Unclosed|without matching|Unknown (pacing|scene)/;
+
+// §12.1 backfill / delayed thresholds.
+const BACKFILL_THRESHOLD_MS = 800;
+const DELAYED_THRESHOLD_MS = 2000;
 
 // §5.1 within-beat track sort order.
 const TRACK_PRIORITY: Record<EmissionTrack, number> = {
@@ -142,6 +152,21 @@ function EmissionBlock({
   const previousWasInterrupted =
     !!emission.interrupting && !!previous && previous.emission.emission_id === emission.interrupting;
 
+  // §12.1 seam treatments.
+  const errorWarnings = composed.warnings.filter((w) => ERROR_WARNING_RE.test(w));
+  const emissionTs = new Date(emission.timestamp).getTime();
+  const arrivalTs = Date.now();
+  const ageMs = arrivalTs - emissionTs;
+  // Out-of-order: this emission's timestamp is older than the previous's by
+  // BACKFILL_THRESHOLD_MS to DELAYED_THRESHOLD_MS — render through BackfillWrapper.
+  const previousTs = previous ? new Date(previous.emission.timestamp).getTime() : null;
+  const isBackfill =
+    previousTs !== null &&
+    emissionTs < previousTs &&
+    previousTs - emissionTs >= BACKFILL_THRESHOLD_MS &&
+    previousTs - emissionTs <= DELAYED_THRESHOLD_MS;
+  const isDelayed = ageMs > DELAYED_THRESHOLD_MS;
+
   const inner = (
     <div className="relative">
       {emission.scene && <SceneImage scene={emission.scene} />}
@@ -153,6 +178,7 @@ function EmissionBlock({
           style={{ color: "var(--text-secondary)" }}
         >
           {charName}
+          {isDelayed && <DelayedPip />}
         </span>
       )}
 
@@ -163,9 +189,16 @@ function EmissionBlock({
       ) : (
         <EmissionText emission={emission} />
       )}
+
+      {errorWarnings.length > 0 && <ParseErrorPip message={errorWarnings.join("; ")} />}
     </div>
   );
 
+  let wrapped: React.ReactNode = inner;
+  if (isBackfill) {
+    wrapped = <BackfillWrapper>{inner}</BackfillWrapper>;
+  }
+
   // §4.4: 12px gap between interrupted and interrupting emission.
-  return previousWasInterrupted ? <InterruptionGap>{inner}</InterruptionGap> : inner;
+  return previousWasInterrupted ? <InterruptionGap>{wrapped}</InterruptionGap> : <>{wrapped}</>;
 }
