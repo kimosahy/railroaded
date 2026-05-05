@@ -36,10 +36,15 @@ export function getToneStyle(tone: Tone): ToneStyle {
 }
 
 export function ToneRenderer({ tone, baseSize, children }: {
-  tone: Tone; baseSize: number; children: React.ReactNode;
+  tone: Tone;
+  /** AR rule 5: baseSize is the FINAL resolved rem value
+   *  (baseline.sizeRem × tone.sizeMultiplier × address.sizeMultiplier).
+   *  ToneRenderer no longer multiplies — it only applies weight/color/animation. */
+  baseSize: number;
+  children: React.ReactNode;
 }) {
   const style = getToneStyle(tone);
-  const fontSize = baseSize * style.sizeMultiplier;
+  const fontSize = baseSize;
 
   let content: React.ReactNode = children;
   if (style.wrapping === "soft-brackets") {

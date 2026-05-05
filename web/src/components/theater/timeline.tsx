@@ -56,6 +56,9 @@ function EmissionBlock({
     emission.track === "action" ||
     emission.track === "thought";
 
+  // §4.3 to-self: skip name tag (AddressRenderer config sets nameTag: "hidden").
+  const suppressForAddress = emission.address === "to-self";
+
   // §5.2: collapse if same agent within 2s of previous emission (ATLAS-019 minor 2)
   const collapseTag =
     !!showNameTag &&
@@ -71,7 +74,7 @@ function EmissionBlock({
       {emission.scene && <SceneImage scene={emission.scene} />}
 
       {/* §5.2 timeline name tag: 10.5px / 0.22em / --text-secondary */}
-      {showNameTag && !collapseTag && (
+      {showNameTag && !collapseTag && !suppressForAddress && (
         <span
           className="block text-[10.5px] uppercase tracking-[0.22em] mb-0.5 font-theater-ui"
           style={{ color: "var(--text-secondary)" }}
