@@ -172,6 +172,6 @@ export function fourthWallDurationMs(
   contentLength: number,
   pacing: string | null | undefined
 ): number {
-  const pacingMs = (pacing && PACING_SPEEDS[pacing]) ?? PACING_SPEEDS.normal;
+  const pacingMs: number = (pacing ? PACING_SPEEDS[pacing] : undefined) ?? PACING_SPEEDS.normal;
   return pacingMs * contentLength + 2000;
 }
