@@ -169,6 +169,19 @@ html {
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
 
+/* §7.1 dice moment animations */
+@keyframes dice-halo {
+  0%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.4); transform: translateY(-2px); }
+  50%      { box-shadow: 0 0 28px rgba(212,175,55,0.8); transform: translateY(2px); }
+}
+.animate-dice-halo { animation: dice-halo 1200ms ease-in-out infinite; }
+
+@keyframes dice-spin {
+  0%   { transform: rotateZ(0deg) rotateX(0deg); }
+  100% { transform: rotateZ(720deg) rotateX(360deg); }
+}
+.animate-dice-spin { animation: dice-spin 800ms linear; }
+
 /* §6.3 lighting overlays */
 @keyframes torchlit-flicker {
   0%, 100% { opacity: 1; }
