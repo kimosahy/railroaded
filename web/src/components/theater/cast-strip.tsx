@@ -109,9 +109,15 @@ export function CastStrip({
   const renderMember = (member: CastMember, positionClass: string) => {
     const treatment = bodyStateTreatment(member.bodyState);
 
-    // §6.4 hidden: V1 suppresses for ALL players (not just non-participants).
+    // §6.4 hidden — DOCUMENTED V1 DEVIATION (AR rule 17).
+    // Spec: hidden body_state should be suppressed for NON-PARTICIPANTS only;
+    // participants in the scene see the hidden character normally.
+    // V1 behavior: hidden is suppressed for ALL players regardless of scene
+    // participation. This is a known approximation, code unchanged.
     // Full spec requires Mercury §14 `participants_in_scene: agent_id[]` field.
-    // When that field ships: if (hidden && !participantsInScene.includes(viewerAgentId)) suppress.
+    // When that field ships, gate becomes:
+    //   if (hidden && !participantsInScene.includes(viewerAgentId)) suppress;
+    // Until then: suppress on all player UIs (current behavior).
     if (treatment.suppressOnPlayerUI && viewerRole === "player") return null;
 
     // §6.4 unconscious: force prone posture
