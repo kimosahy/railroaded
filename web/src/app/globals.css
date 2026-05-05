@@ -159,12 +159,13 @@ html {
 }
 .animate-tension-vibrate { animation: tension-vibrate 125ms linear infinite; }
 
-/* §6.2/§9.1 climax desaturate-snap — fires once on transition INTO tension=10 */
+/* §6.2/§9.1 climax desaturate-snap — step function: instant desaturate,
+   250ms hold (20% of 1250ms), instant snap, 1000ms held. NOT a linear gradient. */
 @keyframes climax-flash {
-  0%   { filter: saturate(1); }
-  20%  { filter: saturate(0.3); }
-  40%  { filter: saturate(0.3); }
-  100% { filter: saturate(1); }
+  0%     { filter: saturate(0.3); }
+  20%    { filter: saturate(0.3); }
+  20.01% { filter: saturate(1); }
+  100%   { filter: saturate(1); }
 }
 .theater-climax-flash { animation: climax-flash 1250ms ease-out forwards; }
 
