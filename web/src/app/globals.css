@@ -90,3 +90,23 @@ html {
 .font-theater-heading { font-family: var(--font-theater-heading), 'Bodoni Moda', 'Bodoni 72', Didot, Georgia, serif; }
 .font-theater-ui { font-family: var(--font-theater-ui), 'Inter Display', 'Inter', system-ui, sans-serif; }
 .font-theater-prose { font-family: var(--font-theater-prose), 'Cormorant Garamond', 'Adobe Caslon Pro', Georgia, serif; }
+
+/* ============================================================
+   Theater color tokens — MF-040 §3.4 VERBATIM.
+   Names and hex values from spec. Do NOT rename or convert to OKLCH.
+   ============================================================ */
+:root {
+  --bg-canvas: #060504;
+  --bg-frame: #0b0a08;
+  --bg-rail: #08070550;
+  --text-primary: #e8e2d4;
+  --text-secondary: #a09280;
+  --text-faded: #807868;
+  --text-ghost: rgba(232,226,212,0.45);
+  --accent-gold: #d4af37;
+  --accent-amber: #bf8a2e;
+  --accent-coral: #d65b31;
+  --accent-red: #a32d2d;
+  --accent-cool: #3a5872;
+  --border-faint: rgba(212,175,55,0.16);
+}
