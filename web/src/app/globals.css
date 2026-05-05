@@ -110,3 +110,31 @@ html {
   --accent-cool: #3a5872;
   --border-faint: rgba(212,175,55,0.16);
 }
+
+/* ============================================================
+   Theater tone animations — MF-040 §4.1
+   ============================================================ */
+@keyframes reveal-fade { from { opacity: 0; } to { opacity: 0.6; } }
+@keyframes bouncy-reveal { from { transform: translateY(-2px); } to { transform: translateY(0); } }
+@keyframes screen-pulse { 0% { background: radial-gradient(circle, rgba(212,175,55,0.1) 0%, transparent 70%); } 100% { background: transparent; } }
+@keyframes brief-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes fade-tail { to { opacity: 0; } }
+@keyframes letter-rotate { 0%,100% { transform: rotate(0deg); } 25% { transform: rotate(4deg); } 75% { transform: rotate(-4deg); } }
+@keyframes raspy-jitter { 0%,100% { transform: translateX(0); } 50% { transform: translateX(0.5px); } }
+
+.animate-reveal-fade { animation: reveal-fade 600ms ease-out; }
+.animate-bouncy-reveal { animation: bouncy-reveal 200ms ease-out; }
+.animate-screen-pulse { animation: screen-pulse 280ms ease-out; }
+.animate-brief-shake { animation: brief-shake 200ms ease-out 3; }
+.animate-fade-tail { animation: fade-tail 300ms ease-out forwards; }
+.animate-letter-rotate { animation: letter-rotate 300ms ease-in-out; }
+.animate-raspy-jitter { animation: raspy-jitter 250ms linear infinite; }
+
+/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) */
+@media (prefers-reduced-motion: reduce) {
+  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
+  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
+  .animate-raspy-jitter, .animate-bounce {
+    animation: none !important;
+  }
+}
