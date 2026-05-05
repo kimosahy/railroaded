@@ -186,3 +186,252 @@ web/package-lock.json                           (Task 9, regenerated)
 ```
 
 9 commits — one per task — all on `atlas/sprint-p-frontend`.
+
+---
+
+# CC-260504-THEATER-CORE — Theater Rendering Engine (v3)
+
+**Branch:** `atlas/theater-core`
+**Scope:** Tasks 1-10 — emission types, parser, normalizer, composer, rendering components, fonts, color tokens, fixtures.
+**Builder:** Atlas (Ram)
+**Date:** 2026-05-05
+**Base:** `origin/main` at `0d7ce3f` (no rebase)
+**PR:** [#21](https://github.com/kimosahy/railroaded/pull/21) — open, hold for Atlas QA + Ram sign-off
+
+---
+
+## Summary
+
+10 tasks landed as 10 commits, one per task. All 105 theater unit + integration
+tests pass (497 expects). `npx tsc --noEmit` clean for both backend
+(`tsconfig.json`) and `web/tsconfig.json`. `npx next build` from `web/` succeeds —
+all 25 pages prerender, no theater token bleed onto Cinzel/Crimson Text/Geist
+surfaces. Greenfield engine — zero blast radius to existing pages.
+
+---
+
+## Per-task verification
+
+### Task 1 — Emission types ✅
+- `src/theater/types.ts` (NEW) — Mercury §14 envelope + player/DM emission
+  fields, `SceneData`, `SessionSetup`, `SeatChoice`, all enums.
+- `tensionRange()` boundaries verbatim per MF §6.2: `t≤3 calm`, `t≤6 rising`,
+  `t≤9 high`, else `climax`.
+- `normalizeTrack()` aliases Mercury `monologue` → `internal_monologue`; falls
+  back to `dialogue` for unknown values.
+- `TONE_PRESETS` exported readonly tuple of 11 canonical tones.
+- 12 tests covering all boundary values (0,3,4,6,7,9,10) + alias + fallback.
+
+### Task 2 — Inline markup parser (3 formats) ✅
+- `src/theater/parser.ts` (NEW) — `parseInlineMarkup(content)` returns
+  `{ spans: ContentSpan[], warnings: string[] }`.
+- All three MF §2.2 formats parse: bare-tag `[whisper]`, colon `[pacing:hesitant]`,
+  equals `[tone=growl]`. Plus `[hedge]` → `confidence:low`.
+- Closing tags match by tag name, so `[/whisper]` does NOT close `[tone=whisper]` —
+  emits unmatched-closer + unclosed-opener warnings (test case (j)).
+- `TAG_REGEX` is declared inside the function body to keep `g`-flag `lastIndex`
+  state from leaking between invocations (test case (k)).
+- `findLastIndex` replaced with manual reverse loop because backend
+  `tsconfig.json` targets ES2022 (`findLastIndex` is ES2023).
+- 11 tests — exceeds the ≥9 acceptance gate.
+
+### Task 3 — Normalizer (no-mutation) ✅
+- `src/theater/normalizer.ts` (NEW) — `normalizeEmission(raw)` returns
+  `{ emission, warnings }` without touching the input. Idempotent across calls.
+- Validates pacing (unknown → `normal` + warning), tension (clamped to `[0,10]`,
+  rounded), scene type (clones scene before fallback to `beat`). Custom (non-preset)
+  tones pass through with a warning.
+- Forward-compat: unknown fields preserved per Mercury §14.6.
+- Exports `applySpanOverrides()` and `FALLBACK_DEFAULTS`.
+- 9 tests — exceeds the ≥6 acceptance gate.
+
+### Task 4 — Theater fonts + `@theater/*` alias ✅
+- `web/src/app/layout.tsx` — added `Bodoni_Moda`, `Inter`, `Cormorant_Garamond`
+  via `next/font/google`, exposing CSS vars `--font-theater-heading`,
+  `--font-theater-ui`, `--font-theater-prose`. Existing Cinzel/Crimson Text/Geist
+  untouched (MF-STD-001/002 unaffected).
+- `web/src/app/globals.css` — added `.font-theater-heading`, `.font-theater-ui`,
+  `.font-theater-prose` utility classes. Surface-scoped per MF-041 — non-theater
+  pages unchanged.
+- `web/tsconfig.json` — added `@theater/*` path alias → `../src/theater/*`.
+  Single source of truth for backend + frontend imports; no file duplication.
+
+### Task 5 — MF §3.4 color tokens + 3-layer MoodOverlay ✅
+- `web/src/app/globals.css` — 13 MF §3.4 tokens at `:root`, hex VERBATIM:
+  `--bg-canvas:#060504`, `--bg-frame:#0b0a08`, `--bg-rail:#08070550`,
+  `--text-primary:#e8e2d4`, `--text-secondary:#a09280`, `--text-faded:#807868`,
+  `--text-ghost:rgba(232,226,212,0.45)`, `--accent-gold:#d4af37`,
+  `--accent-amber:#bf8a2e`, `--accent-coral:#d65b31`, `--accent-red:#a32d2d`,
+  `--accent-cool:#3a5872`, `--border-faint:rgba(212,175,55,0.16)`. Names NOT
+  renamed to `--theater-*`. Hex NOT converted to OKLCH.
+- `web/src/components/theater/mood-overlay.tsx` (NEW) — 3-layer overlay
+  (hue + saturation/contrast filter + vignette) with 800ms cross-fade. All 7
+  MF §3.5 mood hexes verbatim. Anger uses `contrast(1.2)` (`contrastDelta:20`),
+  not saturate. Dread declares `accentPreserve: ["--accent-gold","--accent-red"]`.
+- 8 tests covering all 7 mood hex values + anger contrast invariant + dread
+  accentPreserve list.
+
+### Task 6 — Track baselines + tone renderer + animations ✅
+- `web/src/components/theater/track-baseline.tsx` (NEW) — `TrackBaseline`
+  component + `TRACK_BASELINES` record per MF §3.1: action 0.875rem italic
+  prose, dialogue 1.125rem UI, thought 0.875rem italic 0.5 opacity, narration
+  1.0rem Bodoni heading 0.9 opacity, internal_monologue 0.8125rem italic UI
+  0.7 opacity.
+- `web/src/components/theater/tone-renderer.tsx` (NEW) — `ToneRenderer` with
+  RELATIVE sizing: `fontSize = baseSize × sizeMultiplier`. All 11 MF §4.1 presets
+  — whisper soft-brackets, sigh trailing-ellipsis, mutter lowercase,
+  shout uppercase, growl `#a08858`, excited `var(--accent-gold)`. `DEFAULT_TONE`
+  for custom non-preset tones.
+- `web/src/app/globals.css` — 7 keyframe animations (`reveal-fade`,
+  `bouncy-reveal`, `screen-pulse`, `brief-shake`, `fade-tail`, `letter-rotate`,
+  `raspy-jitter`) plus a `prefers-reduced-motion: reduce` block that nukes all
+  kinetic animations including `.animate-bounce`.
+- 26 tests — relative sizing math (whisper at dialogue → 0.84375rem, yell at
+  action → 1.1375rem, shout at dialogue → 1.6875rem), parameterized over all
+  11 presets, transform/wrapping/colour assertions, TRACK_BASELINES shape.
+
+### Task 7 — PacingReveal (rAF) + EmissionText ✅
+- `web/src/components/theater/pacing-engine.tsx` (NEW) — `PacingReveal` uses
+  `requestAnimationFrame`, NOT setTimeout per char. Instant fallback when
+  `prefers-reduced-motion: reduce`, `pacing == null`, or `text.length > 400`.
+  Speed table verbatim: rushed 15, normal 35, deliberate 60, hesitant 80,
+  staccato 25 ms/char. Punctuation multipliers 3-8×. Staccato word pause 120ms.
+  `paceScale` prop multiplies per-char delay.
+- `web/src/components/theater/emission-text.tsx` (NEW) — single integration
+  point: `TrackBaseline → ToneRenderer → PacingReveal`. `PACE_SCALE` table
+  maps `growl → 1.4×` per MF §4.1.
+- **Note on commit ordering:** The CC has `EmissionText` inside Task 6 (Step 6e)
+  but `EmissionText` imports `PacingReveal` (Task 7). Committing 6 first would
+  leave a broken import, so `EmissionText` ships in Task 7's commit alongside
+  `PacingReveal`. No spec semantics changed.
+- 12 tests — all 5 pacing speeds, period/ellipsis/comma multipliers, staccato
+  word pause, INSTANT_THRESHOLD, growl paceScale.
+
+### Task 8 — Composer with two-layer viewer gating ✅
+- `src/theater/composer.ts` (NEW) — `compose(raw, viewerRole)` 10-step pipeline:
+  normalize → parse spans → Layer 1 visibility → conflict resolution → Layer 2
+  field-stripping. Returns `ComposedEmission { emission, spans, warnings,
+  viewerRole, visible, producedAudienceContent }`.
+- **Layer 1 (`isVisibleToViewer`)** hides emissions whose CONTENT is itself
+  viewer-scoped: `internal_monologue` (audience-only), `audience_aside`
+  (audience-only — both `confessional` and `fourth-wall` kinds).
+- **Layer 2 (`stripAnnotationsForViewer`)** keeps the emission visible but
+  removes audience-only annotation FIELDS per role:
+  - `player` → `foreshadow`, `hidden_information`, `recap_card` all stripped;
+    `content` text intact.
+  - `dm` → `foreshadow` + `recap_card` stripped; `hidden_information` PRESERVED
+    (operational awareness).
+  - `audience` → keeps everything.
+- Conflict resolution: `interrupting + whisper` → tone reset to `normal` on a
+  cloned emission (input never mutated).
+- `producedAudienceContent` flag named per ATLAS-017 minor #3 to reflect
+  pre-strip state.
+- `deduplicateEmissions()` filters by `emission_id`.
+- 13 tests — exceeds the ≥6 acceptance gate; covers both visibility layers,
+  per-role field-stripping with hidden_information-preserved-for-DM invariant,
+  conflict resolution, no-mutation across all 3 roles, producedAudienceContent
+  flag, and dedup.
+
+### Task 9 — Seam treatments ✅
+- `web/src/components/theater/seam-treatments.tsx` (NEW) — five inline
+  components per MF §12.1: `LoadingShimmer` (in-flight emission placeholder),
+  `ThinkingDots` (3-dot agent indicator with `animate-bounce`),
+  `ParseErrorPip` (coral pip with hover tooltip for parser warnings),
+  `ReconnectIndicator` (top-right WS-reconnect badge), `BackfillWrapper`
+  (0.75 opacity wrapper for historical emissions).
+- Uses MF §3.4 tokens end-to-end (`--bg-frame`, `--accent-coral`,
+  `--text-secondary`, `--border-faint`). No new keyframes — reuses Tailwind
+  defaults; reduce-motion already covered for `.animate-bounce`.
+
+### Task 10 — Fixtures + integration ✅
+- `src/theater/fixtures/sample-emissions.ts` (NEW) — `SAMPLE_SESSION` plus
+  16 emissions covering ALL 11 tone presets, ALL 4 address modes (`to-self`,
+  `aside`, `to-party`, `to-NPC`), both audience aside kinds (`confessional`,
+  `fourth-wall`), `body_state: "hidden"`, all 3 inline markup formats, plus
+  `foreshadow`/`hidden_information`/`recap_card` annotation combos and a
+  climax beat with `tension: 10`.
+- `tests/theater-integration.test.ts` (NEW) — 14 cases / 263 assertions:
+  fixture coverage assertions (all tone presets present, all address modes
+  present, both aside kinds, hidden body_state, all 3 markup formats),
+  per-role compose() runs (zero crashes, spans non-empty, role echoed),
+  Layer 1 gating across monologues + asides, Layer 2 stripping with
+  hidden_information-preserved-for-DM and content-text-never-lost-for-player,
+  body_state: hidden does NOT trigger Layer 1, dedup against (16 × 3 roles)
+  input, no-mutation under iteration.
+
+---
+
+## Carried forward (not in scope for this branch)
+
+- **`accentPreserve` honoring for dread mood** — deferred to CC Doc 10
+  (theater-page) where the content wrapper exists. The data structure carries
+  the field (`MoodTint.accentPreserve: string[]`) and the dread tint sets
+  `["--accent-gold", "--accent-red"]`; `MoodOverlay` has a TODO comment
+  noting that the override-pass-through belongs in the theater layout.
+- **`body_state: "hidden"` viewer-role gating** — deferred to CC Doc 10
+  (CastStrip component). Composer correctly does NOT gate on `body_state`;
+  hidden body state is information about an actor in-world, not an
+  audience-only annotation. The cast-strip layout is the right boundary for
+  whether a hidden actor's tile is rendered or shimmered to other players.
+  Integration test "Hidden body_state emissions are still visible" pins this
+  invariant.
+
+---
+
+## Acceptance gates
+
+| Gate | Result |
+|------|--------|
+| `tsc --noEmit -p tsconfig.json` (backend, theater files only) | 0 errors |
+| `npx tsc --noEmit` (web) | 0 errors |
+| `bun test tests/theater-*.test.ts` (8 files) | 105 pass / 0 fail / 497 expects |
+| Parser test count | 11 (≥ 9 required) |
+| Normalizer test count | 9 (≥ 6 required) |
+| Composer test count | 13 (≥ 6 required) |
+| Tone parameterized over 11 presets | yes |
+| `tensionRange` boundaries (0,3,4,6,7,9,10) | all covered |
+| Integration: every fixture × every ViewerRole | zero crashes, gating holds |
+| `npx next build` (web) | 25/25 pages, theater pages compile, non-theater unchanged |
+| Branch base | `origin/main` at `0d7ce3f` — no rebase needed |
+
+---
+
+## Deviations summary (for CC review)
+
+| # | What | Why | Risk |
+|---|------|-----|------|
+| 1 | `EmissionText` ships in Task 7's commit instead of Task 6's | `EmissionText` imports `PacingReveal` (Task 7); committing Task 6 with it first would leave a broken import | None — no spec semantics changed |
+| 2 | Parser uses manual reverse `for` loop instead of `findLastIndex` | Backend `tsconfig.json` targets ES2022; `findLastIndex` is ES2023 | None — behavior identical |
+| 3 | Dread `accentPreserve` declared but not wired to render | Override-pass-through belongs in CC Doc 10's theater layout (acknowledged in spec) | None — TODO comment surfaces this for downstream |
+| 4 | ESLint flags two React 19 strict-mode patterns in `pacing-engine.tsx` (`onCompleteRef.current = onComplete` during render; `setRevealed(text.length)` inside effect) | Code is verbatim from CC's "v1 fixes already applied" block; canonical React mutable-callback-ref pattern; ESLint not part of CI or acceptance gate; `next build` passes | Low — surfaced for QA awareness; if React 19 StrictMode causes runtime double-invocation issues during CC Doc 10 integration, the fix is well-known (`useEffect(() => { ref.current = cb; })`) and reversible without changing the spec contract |
+
+---
+
+## Files changed
+
+```
+src/theater/types.ts                                  (NEW, Task 1)
+src/theater/parser.ts                                 (NEW, Task 2)
+src/theater/normalizer.ts                             (NEW, Task 3)
+src/theater/composer.ts                               (NEW, Task 8)
+src/theater/fixtures/sample-emissions.ts              (NEW, Task 10)
+web/src/app/layout.tsx                                (Task 4, fonts)
+web/src/app/globals.css                               (Tasks 4-6, fonts + tokens + animations)
+web/tsconfig.json                                     (Task 4, @theater/* alias)
+web/src/components/theater/mood-overlay.tsx           (NEW, Task 5)
+web/src/components/theater/track-baseline.tsx         (NEW, Task 6)
+web/src/components/theater/tone-renderer.tsx          (NEW, Task 6)
+web/src/components/theater/pacing-engine.tsx          (NEW, Task 7)
+web/src/components/theater/emission-text.tsx          (NEW, Task 7)
+web/src/components/theater/seam-treatments.tsx        (NEW, Task 9)
+tests/theater-types.test.ts                           (NEW, Task 1)
+tests/theater-parser.test.ts                          (NEW, Task 2)
+tests/theater-normalizer.test.ts                      (NEW, Task 3)
+tests/theater-mood-overlay.test.ts                    (NEW, Task 5)
+tests/theater-tone.test.ts                            (NEW, Task 6)
+tests/theater-pacing.test.ts                          (NEW, Task 7)
+tests/theater-composer.test.ts                        (NEW, Task 8)
+tests/theater-integration.test.ts                     (NEW, Task 10)
+```
+
+10 commits — one per task — all on `atlas/theater-core`.

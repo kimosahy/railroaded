@@ -82,3 +82,59 @@ html {
   border-color: var(--border) !important;
   background: var(--overlay) !important;
 }
+
+/* ============================================================
+   Theater typography — MF-040 §3.1
+   Surface-scoped exception per MF-041: theater pages only.
+   ============================================================ */
+.font-theater-heading { font-family: var(--font-theater-heading), 'Bodoni Moda', 'Bodoni 72', Didot, Georgia, serif; }
+.font-theater-ui { font-family: var(--font-theater-ui), 'Inter Display', 'Inter', system-ui, sans-serif; }
+.font-theater-prose { font-family: var(--font-theater-prose), 'Cormorant Garamond', 'Adobe Caslon Pro', Georgia, serif; }
+
+/* ============================================================
+   Theater color tokens — MF-040 §3.4 VERBATIM.
+   Names and hex values from spec. Do NOT rename or convert to OKLCH.
+   ============================================================ */
+:root {
+  --bg-canvas: #060504;
+  --bg-frame: #0b0a08;
+  --bg-rail: #08070550;
+  --text-primary: #e8e2d4;
+  --text-secondary: #a09280;
+  --text-faded: #807868;
+  --text-ghost: rgba(232,226,212,0.45);
+  --accent-gold: #d4af37;
+  --accent-amber: #bf8a2e;
+  --accent-coral: #d65b31;
+  --accent-red: #a32d2d;
+  --accent-cool: #3a5872;
+  --border-faint: rgba(212,175,55,0.16);
+}
+
+/* ============================================================
+   Theater tone animations — MF-040 §4.1
+   ============================================================ */
+@keyframes reveal-fade { from { opacity: 0; } to { opacity: 0.6; } }
+@keyframes bouncy-reveal { from { transform: translateY(-2px); } to { transform: translateY(0); } }
+@keyframes screen-pulse { 0% { background: radial-gradient(circle, rgba(212,175,55,0.1) 0%, transparent 70%); } 100% { background: transparent; } }
+@keyframes brief-shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+@keyframes fade-tail { to { opacity: 0; } }
+@keyframes letter-rotate { 0%,100% { transform: rotate(0deg); } 25% { transform: rotate(4deg); } 75% { transform: rotate(-4deg); } }
+@keyframes raspy-jitter { 0%,100% { transform: translateX(0); } 50% { transform: translateX(0.5px); } }
+
+.animate-reveal-fade { animation: reveal-fade 600ms ease-out; }
+.animate-bouncy-reveal { animation: bouncy-reveal 200ms ease-out; }
+.animate-screen-pulse { animation: screen-pulse 280ms ease-out; }
+.animate-brief-shake { animation: brief-shake 200ms ease-out 3; }
+.animate-fade-tail { animation: fade-tail 300ms ease-out forwards; }
+.animate-letter-rotate { animation: letter-rotate 300ms ease-in-out; }
+.animate-raspy-jitter { animation: raspy-jitter 250ms linear infinite; }
+
+/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) */
+@media (prefers-reduced-motion: reduce) {
+  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
+  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
+  .animate-raspy-jitter, .animate-bounce {
+    animation: none !important;
+  }
+}
