@@ -11,3 +11,6 @@ export async function fetchSpectator<T>(path: string, revalidate = 30): Promise<
 }
 
 export { API_BASE };
+
+// Derive WS URL from API_BASE (https → wss, http → ws). Idempotent across parallel branches.
+export const WS_BASE = API_BASE.replace(/^http/, "ws");

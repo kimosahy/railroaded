@@ -138,3 +138,75 @@ html {
     animation: none !important;
   }
 }
+
+/* ============================================================
+   Theater page — body state, climax flash, tension vibration,
+   bullet time slider thumb. MF-040 §6.2, §6.4, §9.1.
+   ============================================================ */
+
+/* §6.4 body state animations */
+@keyframes exhausted-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+@keyframes alert-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+.animate-exhausted-blink { animation: exhausted-blink 3s ease-in-out infinite; }
+.animate-alert-pulse { animation: alert-pulse 800ms ease-in-out infinite; }
+
+/* §6.2 tension edge pulse + viewport vibration (high tension 7-9, 8Hz = 125ms) */
+@keyframes tension-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes tension-vibrate {
+  0%,100% { transform: translateX(0); }
+  25%     { transform: translateX(-1px); }
+  75%     { transform: translateX(1px); }
+}
+.animate-tension-vibrate { animation: tension-vibrate 125ms linear infinite; }
+
+/* §6.2/§9.1 climax desaturate-snap — fires once on transition INTO tension=10 */
+@keyframes climax-flash {
+  0%   { filter: saturate(1); }
+  20%  { filter: saturate(0.3); }
+  40%  { filter: saturate(0.3); }
+  100% { filter: saturate(1); }
+}
+.theater-climax-flash { animation: climax-flash 1250ms ease-out forwards; }
+
+/* §7.3 reveal — freeze-drop */
+@keyframes freeze-drop {
+  0% { transform: translateY(-12px); opacity: 0; }
+  60% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+.animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
+
+/* §9.1 Bullet Time slider thumb — 4px wide, 24px tall */
+.bullet-time-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--border-faint);
+  border-radius: 2px;
+  outline: none;
+}
+.bullet-time-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4px;
+  height: 24px;
+  background: var(--accent-gold);
+  border-radius: 1px;
+  cursor: pointer;
+}
+.bullet-time-slider::-moz-range-thumb {
+  width: 4px;
+  height: 24px;
+  background: var(--accent-gold);
+  border-radius: 1px;
+  cursor: pointer;
+  border: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-exhausted-blink, .animate-alert-pulse,
+  .animate-tension-vibrate, .theater-climax-flash, .animate-freeze-drop {
+    animation: none !important;
+  }
+  .theater { animation: none !important; }
+}
