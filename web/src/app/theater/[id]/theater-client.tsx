@@ -21,7 +21,7 @@ import {
   fourthWallDurationMs,
 } from "@/components/theater/dm-audience";
 import type { BeatType, RecapEntry } from "@theater/types";
-import { useSessionAgents } from "@/hooks/use-session-agents";
+import { useSessionAgents, useSessionMeta } from "@/hooks/use-session-agents";
 
 const BASE_INTER_EMISSION_MS = 600;
 
@@ -78,6 +78,13 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   viewerRoleRef.current = viewerRole;
 
   const agents = useSessionAgents(sessionId);
+  const sessionMeta = useSessionMeta(sessionId);
+
+  // §11.1 dynamic session status: live | paused | ended.
+  const [sessionStatus, setSessionStatus] = useState<"live" | "paused" | "ended">("live");
+
+  // §11.1 join/leave system messages — V1.1 backend follow-up.
+  const [systemMessages, setSystemMessages] = useState<{ id: string; text: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const unmountedRef = useRef(false);
   const reconnectAttemptRef = useRef(0);
@@ -231,6 +238,26 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         return;
       }
 
+      if (msg.type === "session_status") {
+        // §11.1 dynamic status pip — V1.1 backend follow-up.
+        const data = msg.data as { status?: "live" | "paused" | "ended" } | undefined;
+        if (data?.status) setSessionStatus(data.status);
+        return;
+      }
+
+      if (msg.type === "agent_joined" || msg.type === "agent_left") {
+        const data = msg.data as { agent_name?: string } | undefined;
+        const verb = msg.type === "agent_joined" ? "joined" : "left";
+        if (data?.agent_name) {
+          const id = `${msg.type}-${Date.now()}-${Math.random()}`;
+          setSystemMessages((prev) => [
+            ...prev,
+            { id, text: `${data.agent_name} ${verb} the session` },
+          ]);
+        }
+        return;
+      }
+
       if (msg.type === "dm_typing") {
         // §12.1 DM typing cue — backend WS event V1.1 follow-up. Component
         // ready; degrades gracefully (cue never shows) until backend ships.
@@ -321,16 +348,50 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
 
       <ReconnectIndicator visible={!connected && reconnecting} />
 
-      {/* §11.1 status pip — top-right (V1 placeholder; wire to sessionStatus later) */}
+      {/* §11.1 session header — title + S{season}:E{episode} */}
+      {sessionMeta.title && (
+        <div className="fixed top-4 left-4 z-20 font-theater-ui">
+          <span
+            className="text-[15px] font-medium"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {sessionMeta.title}
+          </span>
+          {sessionMeta.season !== null && sessionMeta.episode !== null && (
+            <span
+              className="text-[11px] font-medium uppercase tracking-[0.22em] ml-2"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              S{sessionMeta.season}:E{sessionMeta.episode}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* §11.1 dynamic status pip — top-right */}
       <div
         className="fixed top-4 right-4 z-20 flex items-center gap-2 font-theater-ui text-[11px] uppercase"
-        style={{ color: "var(--text-faded)" }}
+        style={{
+          color:
+            sessionStatus === "live"
+              ? "var(--accent-gold)"
+              : sessionStatus === "paused"
+              ? "var(--text-faded)"
+              : "var(--text-secondary)",
+        }}
       >
         <span
-          className="w-2 h-2 rounded-full animate-pulse"
-          style={{ backgroundColor: "var(--accent-gold)" }}
+          className={`w-2 h-2 rounded-full ${sessionStatus === "live" ? "animate-pulse" : ""}`}
+          style={{
+            backgroundColor:
+              sessionStatus === "live"
+                ? "var(--accent-gold)"
+                : sessionStatus === "paused"
+                ? "var(--text-faded)"
+                : "var(--text-secondary)",
+          }}
         />
-        <span>Live</span>
+        <span>{sessionStatus === "live" ? "Live" : sessionStatus === "paused" ? "Paused" : "Ended"}</span>
       </div>
 
       <div className="flex h-screen">
@@ -340,6 +401,16 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
             agents={agents}
             playbackSpeed={playbackSpeed}
           />
+          {/* §11.1 join/leave system messages */}
+          {systemMessages.map((m) => (
+            <div
+              key={m.id}
+              className="font-theater-ui text-[11px] italic text-center my-2"
+              style={{ color: "var(--text-faded)" }}
+            >
+              {m.text}
+            </div>
+          ))}
         </div>
 
         {viewerRole === "audience" && monologueEmissions.length > 0 && (
