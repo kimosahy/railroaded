@@ -60,6 +60,31 @@ export function ReconnectIndicator({ visible }: { visible: boolean }) {
   );
 }
 
+/** §12.1 DelayedPip — small marker for emissions arriving >2s late. */
+export function DelayedPip() {
+  return (
+    <span
+      className="text-[10px] font-theater-ui ml-1"
+      style={{ color: "var(--text-faded)" }}
+    >
+      · delayed
+    </span>
+  );
+}
+
+/** §12.1 HumanDmTypingCue — typewriter SVG, 1.5Hz blink (667ms step-end).
+ *  Mounted next to DM avatar in CastStrip when ws emits dm_typing. */
+export function HumanDmTypingCue() {
+  return (
+    <div className="absolute -top-2 -right-1 animate-dm-typing-blink">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <rect x="2" y="3" width="10" height="8" rx="1" stroke="var(--accent-gold)" strokeWidth="1.5" fill="none" />
+        <rect x="4" y="1" width="6" height="3" rx="0.5" stroke="var(--accent-gold)" strokeWidth="1" fill="none" />
+      </svg>
+    </div>
+  );
+}
+
 /** §12.1 BackfillWrapper — wraps backfilled (historical) emissions on the
  *  rail with a slightly faded look so live emissions stand out. */
 export function BackfillWrapper({ children }: { children: React.ReactNode }) {

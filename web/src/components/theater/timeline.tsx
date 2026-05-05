@@ -1,8 +1,33 @@
 "use client";
+import { useMemo } from "react";
 import type { ComposedEmission } from "@theater/composer";
+import type { EmissionTrack } from "@theater/types";
 import { EmissionText } from "./emission-text";
 import { SceneImage } from "./scene-image";
+import { InterruptionFlash, InterruptionGap, truncateInterrupted } from "./interruption";
+import { ParseErrorPip, BackfillWrapper, DelayedPip } from "./seam-treatments";
 import type { AgentInfo } from "@/hooks/use-session-agents";
+
+// §12.1 ParseErrorPip filtering: only render for ERROR-level warnings
+// (Unclosed, without matching, Unknown pacing/scene). Custom-tone informational
+// warnings are logged-only (AR rule 15).
+const ERROR_WARNING_RE = /Unclosed|without matching|Unknown (pacing|scene)/;
+
+// §12.1 backfill / delayed thresholds.
+const BACKFILL_THRESHOLD_MS = 800;
+const DELAYED_THRESHOLD_MS = 2000;
+
+// §5.1 within-beat track sort order.
+const TRACK_PRIORITY: Record<EmissionTrack, number> = {
+  narration: 0,
+  action: 1,
+  dialogue: 2,
+  thought: 3,
+  internal_monologue: 4,
+};
+
+const BEAT_WINDOW_MS = 2000; // §5.1 group emissions within 2s
+const BEAT_GRACE_MS = 200;   // §5.1 finalize delay before render to prevent reshuffle (ATLAS-024 minor 2)
 
 // §5.1 within-beat track stacking (narration→action→dialogue→thought) deferred to CC Doc 12.
 // V1 renders sequentially by timestamp.
@@ -15,11 +40,59 @@ interface TimelineProps {
 }
 
 export function Timeline({ emissions, agents }: TimelineProps) {
-  const sorted = [...emissions].sort(
-    (a, b) =>
-      new Date(a.emission.timestamp).getTime() -
-      new Date(b.emission.timestamp).getTime()
-  );
+  // §5.1 track stacking within beats: group emissions into 2s beats keyed by
+  // the first emission's timestamp; sort within each beat by track priority
+  // (narration → action → dialogue → thought → internal_monologue).
+  const sorted = useMemo(() => {
+    const byTime = [...emissions].sort(
+      (a, b) =>
+        new Date(a.emission.timestamp).getTime() -
+        new Date(b.emission.timestamp).getTime()
+    );
+
+    // Beat finalization grace: don't reshuffle the most recent beat for
+    // BEAT_GRACE_MS after its newest emission to avoid visible re-orderings.
+    const now = Date.now();
+
+    const result: ComposedEmission[] = [];
+    let beat: ComposedEmission[] = [];
+    let beatStart = 0;
+    const flush = () => {
+      // Determine if the beat is "live" (within grace window) — if so, render
+      // in arrival order; otherwise sort by track priority.
+      const lastTs = beat.length
+        ? new Date(beat[beat.length - 1].emission.timestamp).getTime()
+        : 0;
+      if (now - lastTs >= BEAT_GRACE_MS) {
+        beat.sort((a, b) => {
+          const pa = TRACK_PRIORITY[a.emission.track] ?? 99;
+          const pb = TRACK_PRIORITY[b.emission.track] ?? 99;
+          if (pa !== pb) return pa - pb;
+          // Stable secondary by timestamp.
+          return new Date(a.emission.timestamp).getTime() - new Date(b.emission.timestamp).getTime();
+        });
+      }
+      result.push(...beat);
+      beat = [];
+    };
+    for (const e of byTime) {
+      const ts = new Date(e.emission.timestamp).getTime();
+      if (!beat.length) {
+        beat.push(e);
+        beatStart = ts;
+        continue;
+      }
+      if (ts - beatStart <= BEAT_WINDOW_MS) {
+        beat.push(e);
+      } else {
+        flush();
+        beat.push(e);
+        beatStart = ts;
+      }
+    }
+    if (beat.length) flush();
+    return result;
+  }, [emissions]);
 
   return (
     <div className="space-y-6 max-w-prose mx-auto">
@@ -56,6 +129,9 @@ function EmissionBlock({
     emission.track === "action" ||
     emission.track === "thought";
 
+  // §4.3 to-self: skip name tag (AddressRenderer config sets nameTag: "hidden").
+  const suppressForAddress = emission.address === "to-self";
+
   // §5.2: collapse if same agent within 2s of previous emission (ATLAS-019 minor 2)
   const collapseTag =
     !!showNameTag &&
@@ -66,21 +142,63 @@ function EmissionBlock({
         new Date(previous.emission.timestamp).getTime()
     ) <= 2000;
 
-  return (
+  // §4.4 interruption: emissions with `interrupting` set are themselves the
+  // interrupter — but per spec, the PREVIOUS emission's last word becomes "—".
+  // Detect this by checking if NEXT emission has interrupting === this.emission_id.
+  const wasInterrupted = !!emission.interrupting; // emission was interrupted by another
+
+  // The previous emission was interrupted if the current emission's `interrupting`
+  // points at it. We need the previous emission_id check.
+  const previousWasInterrupted =
+    !!emission.interrupting && !!previous && previous.emission.emission_id === emission.interrupting;
+
+  // §12.1 seam treatments.
+  const errorWarnings = composed.warnings.filter((w) => ERROR_WARNING_RE.test(w));
+  const emissionTs = new Date(emission.timestamp).getTime();
+  const arrivalTs = Date.now();
+  const ageMs = arrivalTs - emissionTs;
+  // Out-of-order: this emission's timestamp is older than the previous's by
+  // BACKFILL_THRESHOLD_MS to DELAYED_THRESHOLD_MS — render through BackfillWrapper.
+  const previousTs = previous ? new Date(previous.emission.timestamp).getTime() : null;
+  const isBackfill =
+    previousTs !== null &&
+    emissionTs < previousTs &&
+    previousTs - emissionTs >= BACKFILL_THRESHOLD_MS &&
+    previousTs - emissionTs <= DELAYED_THRESHOLD_MS;
+  const isDelayed = ageMs > DELAYED_THRESHOLD_MS;
+
+  const inner = (
     <div className="relative">
       {emission.scene && <SceneImage scene={emission.scene} />}
 
       {/* §5.2 timeline name tag: 10.5px / 0.22em / --text-secondary */}
-      {showNameTag && !collapseTag && (
+      {showNameTag && !collapseTag && !suppressForAddress && (
         <span
           className="block text-[10.5px] uppercase tracking-[0.22em] mb-0.5 font-theater-ui"
           style={{ color: "var(--text-secondary)" }}
         >
           {charName}
+          {isDelayed && <DelayedPip />}
         </span>
       )}
 
-      <EmissionText emission={emission} />
+      {wasInterrupted ? (
+        <InterruptionFlash>
+          <span>{truncateInterrupted(emission.content)}</span>
+        </InterruptionFlash>
+      ) : (
+        <EmissionText emission={emission} />
+      )}
+
+      {errorWarnings.length > 0 && <ParseErrorPip message={errorWarnings.join("; ")} />}
     </div>
   );
+
+  let wrapped: React.ReactNode = inner;
+  if (isBackfill) {
+    wrapped = <BackfillWrapper>{inner}</BackfillWrapper>;
+  }
+
+  // §4.4: 12px gap between interrupted and interrupting emission.
+  return previousWasInterrupted ? <InterruptionGap>{wrapped}</InterruptionGap> : <>{wrapped}</>;
 }

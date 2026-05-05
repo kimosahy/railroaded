@@ -69,15 +69,15 @@ function nextClose(ws: WebSocket): Promise<{ code: number; reason: string }> {
 }
 
 describe("spectator WebSocket — IP rate limit", () => {
-  test("6th connection from same IP rejected with 4029", async () => {
+  test("11th connection from same IP rejected with 4029 (MAX_SPECTATOR_CONNECTIONS_PER_IP=10)", async () => {
     _resetWSState();
     const sockets: WebSocket[] = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 10; i++) {
       sockets.push(await openSocket());
     }
 
-    const sixth = new WebSocket(url());
-    const closeInfo = await nextClose(sixth);
+    const eleventh = new WebSocket(url());
+    const closeInfo = await nextClose(eleventh);
     expect(closeInfo.code).toBe(4029);
     expect(closeInfo.reason).toMatch(/Too many spectator/);
 

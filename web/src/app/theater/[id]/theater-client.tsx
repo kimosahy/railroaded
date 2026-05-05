@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { WS_BASE } from "@/lib/api";
-import type { Emission, Mood, Tension, ViewerRole } from "@theater/types";
+import type { Emission, Lighting, Mood, Tension, ViewerRole } from "@theater/types";
 import { compose, deduplicateEmissions, type ComposedEmission } from "@theater/composer";
 import { MoodOverlay } from "@/components/theater/mood-overlay";
 import { CastStrip } from "@/components/theater/cast-strip";
@@ -10,7 +10,18 @@ import { TensionEdge, useVibrationClass } from "@/components/theater/tension-edg
 import { MonologueRail } from "@/components/theater/monologue-rail";
 import { BulletTimeSlider } from "@/components/theater/bullet-time";
 import { ReconnectIndicator } from "@/components/theater/seam-treatments";
-import { useSessionAgents } from "@/hooks/use-session-agents";
+import { LightingOverlay } from "@/components/theater/lighting-overlay";
+import { BEAT_TYPE_PACING } from "@/components/theater/structure";
+import {
+  FourthWallRibbon,
+  ConfessionalOverlay,
+  HiddenInfoSidebar,
+  ForeshadowPip,
+  RecapCard,
+  fourthWallDurationMs,
+} from "@/components/theater/dm-audience";
+import type { BeatType, RecapEntry } from "@theater/types";
+import { useSessionAgents, useSessionMeta } from "@/hooks/use-session-agents";
 
 const BASE_INTER_EMISSION_MS = 600;
 
@@ -18,6 +29,35 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   const [emissions, setEmissions] = useState<ComposedEmission[]>([]);
   const [mood, setMood] = useState<Mood>(null);
   const [tension, setTension] = useState<Tension>(3);
+  const [lighting, setLighting] = useState<Lighting>(null);
+  const [beatType, setBeatType] = useState<BeatType>(null);
+  const beatTypeRef = useRef<BeatType>(null);
+  beatTypeRef.current = beatType;
+
+  // §12.1 DM typing cue — driven by ws `dm_typing` event (V1.1 backend follow-up).
+  const [dmTyping, setDmTyping] = useState(false);
+
+  // §9.1 auto-slow Bullet Time. Default ON. Manual interaction → 30s cooldown.
+  const [autoSlow, setAutoSlow] = useState(true);
+  const [manualOverrideUntil, setManualOverrideUntil] = useState(0);
+  const [lastSceneAt, setLastSceneAt] = useState(Date.now());
+
+  // AR rule 13: tick timer for time-based auto-slow triggers (e.g. exposition→1.5×
+  // when no scene for >8s). Without this, the auto-target only fires on emission
+  // arrival, not on time elapsed since last scene.
+  const [tickCount, setTickCount] = useState(0);
+  useEffect(() => {
+    const interval = window.setInterval(() => setTickCount((n) => n + 1), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  // §9.4 DM audience state
+  const [hiddenInfo, setHiddenInfo] = useState<string | null>(null);
+  const [foreshadow, setForeshadow] = useState<{ text: string; remaining: number } | null>(null);
+  const [confessionalSubject, setConfessionalSubject] = useState<string | null>(null);
+  const [dmFourthWallActive, setDmFourthWallActive] = useState(false);
+  const [recapEntries, setRecapEntries] = useState<RecapEntry[] | null>(null);
+  const sceneImagesRef = useRef<Map<string, string>>(new Map());
   const [connected, setConnected] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [climaxHold, setClimaxHold] = useState(false);
@@ -52,8 +92,16 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
   viewerRoleRef.current = viewerRole;
 
   const agents = useSessionAgents(sessionId);
+  const sessionMeta = useSessionMeta(sessionId);
+
+  // §11.1 dynamic session status: live | paused | ended.
+  const [sessionStatus, setSessionStatus] = useState<"live" | "paused" | "ended">("live");
+
+  // §11.1 join/leave system messages — V1.1 backend follow-up.
+  const [systemMessages, setSystemMessages] = useState<{ id: string; text: string }[]>([]);
   const wsRef = useRef<WebSocket | null>(null);
   const unmountedRef = useRef(false);
+  const reconnectAttemptRef = useRef(0);
 
   // Buffer emissions during climax hold (ATLAS-019 FIF-5)
   const emissionBufferRef = useRef<ComposedEmission[]>([]);
@@ -68,7 +116,10 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
     let raf = 0;
     const tick = (ts: number) => {
       if (!lastDrainRef.current) lastDrainRef.current = ts;
-      const interval = BASE_INTER_EMISSION_MS / playbackSpeedRef.current;
+      // §7.5 / AR rule 1: interval = BASE / (speed * BEAT_TYPE_PACING).
+      // exposition (0.85) → longer pauses; climax (1.15) → shorter pauses.
+      const beatRate = beatTypeRef.current ? BEAT_TYPE_PACING[beatTypeRef.current] : 1;
+      const interval = BASE_INTER_EMISSION_MS / (playbackSpeedRef.current * beatRate);
       if (ts - lastDrainRef.current >= interval && incomingQueueRef.current.length > 0) {
         const next = incomingQueueRef.current.shift();
         if (next) {
@@ -94,6 +145,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
     ws.onopen = () => {
       setConnected(true);
       setReconnecting(false);
+      reconnectAttemptRef.current = 0;
 
       // AR rule 5: AUTH BEFORE SUBSCRIBE.
       // If we have a token, send auth first and wait for auth_ok before subscribing.
@@ -118,6 +170,12 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       }
       if (!msg || typeof msg !== "object" || !msg.type) return;
 
+      if (msg.type === "auth_error") {
+        // Fall back to audience subscribe on invalid/expired token (AR rule 7).
+        ws.send(JSON.stringify({ type: "subscribe", partyId: sessionId }));
+        return;
+      }
+
       if (msg.type === "auth_ok") {
         const newRole: ViewerRole = msg.role === "dm" ? "dm" : "player";
         setViewerRole(newRole);
@@ -132,6 +190,42 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
 
         if (raw.mood !== undefined) setMood(raw.mood as Mood);
         if (raw.tension !== undefined) setTension(raw.tension as Tension);
+        if (raw.lighting !== undefined) setLighting(raw.lighting as Lighting);
+        if (raw.beat_type !== undefined) setBeatType(raw.beat_type as BeatType);
+
+        // §9.4 DM audience surfaces — hidden_information, foreshadow,
+        // audience_aside (fourth-wall / confessional), recap_card.
+        if (raw.hidden_information) setHiddenInfo(raw.hidden_information as string);
+        if (raw.foreshadow) {
+          setForeshadow({ text: raw.foreshadow as string, remaining: 5 });
+        } else {
+          // Decrement remaining on each subsequent emission; clear at 0.
+          setForeshadow((prev) =>
+            prev && prev.remaining > 1
+              ? { ...prev, remaining: prev.remaining - 1 }
+              : null
+          );
+        }
+        const aside = raw.audience_aside as { kind: "fourth-wall" | "confessional"; subject_agent_id: string } | undefined;
+        if (aside?.kind === "fourth-wall") {
+          setDmFourthWallActive(true);
+          // AR rule 14: ribbon stays for emission duration + 2s.
+          const contentLen = (raw.content as string | undefined)?.length ?? 100;
+          const dur = fourthWallDurationMs(contentLen, raw.pacing as string | null | undefined);
+          window.setTimeout(() => setDmFourthWallActive(false), dur);
+        } else if (aside?.kind === "confessional") {
+          setConfessionalSubject(aside.subject_agent_id ?? null);
+          window.setTimeout(() => setConfessionalSubject(null), 8000);
+        }
+        if (raw.recap_card) {
+          setRecapEntries(raw.recap_card as RecapEntry[]);
+        }
+        // Track scene image URLs for RecapCard lookup.
+        const sceneObj = raw.scene as (typeof raw.scene & { image_url?: string }) | undefined;
+        if (sceneObj?.image_url && raw.turn_id) {
+          sceneImagesRef.current.set(raw.turn_id as string, sceneObj.image_url);
+        }
+        if (sceneObj) setLastSceneAt(Date.now());
 
         if (raw.body_state !== undefined || raw.posture !== undefined) {
           const agentId = String(raw.agent_id ?? "");
@@ -159,6 +253,34 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         return;
       }
 
+      if (msg.type === "session_status") {
+        // §11.1 dynamic status pip — V1.1 backend follow-up.
+        const data = msg.data as { status?: "live" | "paused" | "ended" } | undefined;
+        if (data?.status) setSessionStatus(data.status);
+        return;
+      }
+
+      if (msg.type === "agent_joined" || msg.type === "agent_left") {
+        const data = msg.data as { agent_name?: string } | undefined;
+        const verb = msg.type === "agent_joined" ? "joined" : "left";
+        if (data?.agent_name) {
+          const id = `${msg.type}-${Date.now()}-${Math.random()}`;
+          setSystemMessages((prev) => [
+            ...prev,
+            { id, text: `${data.agent_name} ${verb} the session` },
+          ]);
+        }
+        return;
+      }
+
+      if (msg.type === "dm_typing") {
+        // §12.1 DM typing cue — backend WS event V1.1 follow-up. Component
+        // ready; degrades gracefully (cue never shows) until backend ships.
+        const data = msg.data as { active?: boolean } | undefined;
+        setDmTyping(!!data?.active);
+        return;
+      }
+
       if (msg.type === "theater_emission_update" && msg.data) {
         const update = msg.data as { emission_id?: string } & Record<string, unknown>;
         if (!update.emission_id) return;
@@ -176,7 +298,11 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       setConnected(false);
       if (!unmountedRef.current) {
         setReconnecting(true);
-        setTimeout(connectWs, 3000);
+        // Exponential backoff with jitter — caps at 30s
+        const attempt = reconnectAttemptRef.current++;
+        const baseDelay = Math.min(1000 * Math.pow(2, attempt), 30000);
+        const jitter = Math.random() * 1000;
+        setTimeout(connectWs, baseDelay + jitter);
       }
     };
   }, [sessionId]); // viewerRole NOT in deps — uses ref
@@ -189,6 +315,25 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       wsRef.current?.close();
     };
   }, [connectWs]);
+
+  // §9.1 auto-slow rules:
+  //   tension >= 7 → auto-target 0.2×
+  //   beat_type === "exposition" with no scene for >8s → auto-target 1.5×
+  // Manual interaction disables for 30s. Auto-slow can target 1.5× even though
+  // 1.5× is NOT a manual detent (AR rule 3).
+  useEffect(() => {
+    if (!autoSlow) return;
+    if (Date.now() < manualOverrideUntil) return;
+    if (tension >= 7) {
+      handleSpeedChange(0.2);
+      return;
+    }
+    if (beatType === "exposition" && Date.now() - lastSceneAt > 8000) {
+      handleSpeedChange(1.5);
+    }
+    // tickCount is in deps so the effect re-runs every second.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tension, beatType, autoSlow, manualOverrideUntil, lastSceneAt, tickCount]);
 
   // Climax desaturate-snap — edge-detector on transition INTO tension=10 (AR rule 2)
   const lastWasClimaxRef = useRef(false);
@@ -223,6 +368,7 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
       style={{ backgroundColor: "var(--bg-canvas)" }}
     >
       <MoodOverlay mood={mood} />
+      <LightingOverlay lighting={lighting} />
       <TensionEdge tension={tension} />
 
       {/* §9.1 cool tint at 0.1× — --accent-cool, 18% opacity */}
@@ -236,16 +382,50 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
 
       <ReconnectIndicator visible={!connected && reconnecting} />
 
-      {/* §11.1 status pip — top-right (V1 placeholder; wire to sessionStatus later) */}
+      {/* §11.1 session header — title + S{season}:E{episode} */}
+      {sessionMeta.title && (
+        <div className="fixed top-4 left-4 z-20 font-theater-ui">
+          <span
+            className="text-[15px] font-medium"
+            style={{ color: "var(--text-primary)" }}
+          >
+            {sessionMeta.title}
+          </span>
+          {sessionMeta.season !== null && sessionMeta.episode !== null && (
+            <span
+              className="text-[11px] font-medium uppercase tracking-[0.22em] ml-2"
+              style={{ color: "var(--text-secondary)" }}
+            >
+              S{sessionMeta.season}:E{sessionMeta.episode}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* §11.1 dynamic status pip — top-right */}
       <div
         className="fixed top-4 right-4 z-20 flex items-center gap-2 font-theater-ui text-[11px] uppercase"
-        style={{ color: "var(--text-faded)" }}
+        style={{
+          color:
+            sessionStatus === "live"
+              ? "var(--accent-gold)"
+              : sessionStatus === "paused"
+              ? "var(--text-faded)"
+              : "var(--text-secondary)",
+        }}
       >
         <span
-          className="w-2 h-2 rounded-full animate-pulse"
-          style={{ backgroundColor: "var(--accent-gold)" }}
+          className={`w-2 h-2 rounded-full ${sessionStatus === "live" ? "animate-pulse" : ""}`}
+          style={{
+            backgroundColor:
+              sessionStatus === "live"
+                ? "var(--accent-gold)"
+                : sessionStatus === "paused"
+                ? "var(--text-faded)"
+                : "var(--text-secondary)",
+          }}
         />
-        <span>Live</span>
+        <span>{sessionStatus === "live" ? "Live" : sessionStatus === "paused" ? "Paused" : "Ended"}</span>
       </div>
 
       <div className="flex h-screen">
@@ -255,6 +435,16 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
             agents={agents}
             playbackSpeed={playbackSpeed}
           />
+          {/* §11.1 join/leave system messages */}
+          {systemMessages.map((m) => (
+            <div
+              key={m.id}
+              className="font-theater-ui text-[11px] italic text-center my-2"
+              style={{ color: "var(--text-faded)" }}
+            >
+              {m.text}
+            </div>
+          ))}
         </div>
 
         {viewerRole === "audience" && monologueEmissions.length > 0 && (
@@ -262,13 +452,38 @@ export function TheaterClient({ sessionId }: { sessionId: string }) {
         )}
       </div>
 
+      {viewerRole === "audience" && hiddenInfo && <HiddenInfoSidebar info={hiddenInfo} />}
+      {viewerRole === "audience" && foreshadow && (
+        <ForeshadowPip text={foreshadow.text} remaining={foreshadow.remaining} />
+      )}
+      {viewerRole === "audience" && confessionalSubject && <ConfessionalOverlay active />}
+      {viewerRole === "audience" && (
+        <FourthWallRibbon active={dmFourthWallActive} />
+      )}
+      {viewerRole === "audience" && recapEntries && recapEntries.length > 0 && (
+        <RecapCard
+          entries={recapEntries}
+          sceneImages={sceneImagesRef.current}
+          onComplete={() => setRecapEntries(null)}
+        />
+      )}
+
       <CastStrip
         sessionId={sessionId}
         agents={agents}
         viewerRole={viewerRole}
         agentStates={agentStates}
+        confessionalSubjectId={confessionalSubject}
+        dmFourthWallActive={dmFourthWallActive}
+        dmTyping={dmTyping}
       />
-      <BulletTimeSlider speed={playbackSpeed} onSpeedChange={handleSpeedChange} />
+      <BulletTimeSlider
+        speed={playbackSpeed}
+        onSpeedChange={handleSpeedChange}
+        autoSlow={autoSlow}
+        onAutoSlowToggle={setAutoSlow}
+        onManualInteraction={() => setManualOverrideUntil(Date.now() + 30000)}
+      />
     </div>
   );
 }

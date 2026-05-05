@@ -31,7 +31,7 @@ import {
   npcs as npcsTable,
 } from "../db/schema.ts";
 import { getModelIdentity } from "./auth.ts";
-import { getSessionSetup } from "../theater/setup-store.ts";
+import { getSessionSetup, getEmissionHistory } from "../theater/setup-store.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
 /** Sanitize a session summary for public display — strips QA/debug markers and
@@ -1447,6 +1447,17 @@ spectator.get("/sessions/:id/setup", (c) => {
     return c.json({ error: "Setup not available", code: "NOT_FOUND" }, 404);
   }
   return c.json(setup);
+});
+
+// GET /spectator/sessions/:id/emissions — Director's Cut emission history (CC Task 14a-pre).
+// Backend stores every emission via storeEmission(partyId, emission) called from
+// broadcastTheaterEmission() in ws.ts; this endpoint serves the array.
+// Director's Cut Watch button fetches from this endpoint, NOT from in-memory state.
+spectator.get("/sessions/:id/emissions", (c) => {
+  const sessionId = c.req.param("id");
+  // partyId === sessionId for theater storage (single in-memory keyspace).
+  const emissions = getEmissionHistory(sessionId);
+  return c.json(emissions);
 });
 
 // GET /spectator/sessions/:id/npcs — NPC cards for a session (Task 11)

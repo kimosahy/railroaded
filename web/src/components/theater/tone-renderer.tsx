@@ -1,5 +1,5 @@
 "use client";
-import type { Tone, TonePreset } from "@theater/types";
+import type { Tone, TonePreset, Confidence } from "@theater/types";
 
 interface ToneStyle {
   sizeMultiplier: number;
@@ -35,11 +35,41 @@ export function getToneStyle(tone: Tone): ToneStyle {
   return TONE_STYLES[tone as TonePreset] ?? DEFAULT_TONE;
 }
 
-export function ToneRenderer({ tone, baseSize, children }: {
-  tone: Tone; baseSize: number; children: React.ReactNode;
+// §4.5 confidence weight overrides tone weight.
+export const CONFIDENCE_WEIGHTS: Record<NonNullable<Confidence>, number> = {
+  low: 300,
+  neutral: 400,
+  high: 600,
+};
+
+// §4.5 hedge phrases — exactly 5 verbatim per MF (AR rule 9). Do NOT extend.
+export const HEDGE_PHRASES: readonly string[] = [
+  "I think",
+  "maybe",
+  "perhaps",
+  "might",
+  "kind of",
+] as const;
+
+/** Detect declarative sentence (ends with period — not !, ?, …). */
+export function hasDeclarative(text: string): boolean {
+  return /\.(?:\s|$)/.test(text.trim());
+}
+
+export function ToneRenderer({ tone, baseSize, confidence, children }: {
+  tone: Tone;
+  /** AR rule 5: baseSize is the FINAL resolved rem value
+   *  (baseline.sizeRem × tone.sizeMultiplier × address.sizeMultiplier).
+   *  ToneRenderer no longer multiplies — it only applies weight/color/animation. */
+  baseSize: number;
+  /** §4.5 confidence — overrides tone weight when present. */
+  confidence?: Confidence;
+  children: React.ReactNode;
 }) {
   const style = getToneStyle(tone);
-  const fontSize = baseSize * style.sizeMultiplier;
+  const fontSize = baseSize;
+  // §4.5 confidence weight override.
+  const weight = confidence ? CONFIDENCE_WEIGHTS[confidence] : style.weight;
 
   let content: React.ReactNode = children;
   if (style.wrapping === "soft-brackets") {
@@ -51,7 +81,7 @@ export function ToneRenderer({ tone, baseSize, children }: {
       className={style.animation ?? ""}
       style={{
         fontSize: `${fontSize}rem`,
-        fontWeight: style.weight,
+        fontWeight: weight,
         fontStyle: style.italic ? "italic" : "normal",
         color: style.color,
         opacity: style.opacity,

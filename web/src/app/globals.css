@@ -130,14 +130,6 @@ html {
 .animate-letter-rotate { animation: letter-rotate 300ms ease-in-out; }
 .animate-raspy-jitter { animation: raspy-jitter 250ms linear infinite; }
 
-/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) */
-@media (prefers-reduced-motion: reduce) {
-  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
-  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
-  .animate-raspy-jitter, .animate-bounce {
-    animation: none !important;
-  }
-}
 
 /* ============================================================
    Theater page — body state, climax flash, tension vibration,
@@ -159,12 +151,13 @@ html {
 }
 .animate-tension-vibrate { animation: tension-vibrate 125ms linear infinite; }
 
-/* §6.2/§9.1 climax desaturate-snap — fires once on transition INTO tension=10 */
+/* §6.2/§9.1 climax desaturate-snap — step function: instant desaturate,
+   250ms hold (20% of 1250ms), instant snap, 1000ms held. NOT a linear gradient. */
 @keyframes climax-flash {
-  0%   { filter: saturate(1); }
-  20%  { filter: saturate(0.3); }
-  40%  { filter: saturate(0.3); }
-  100% { filter: saturate(1); }
+  0%     { filter: saturate(0.3); }
+  20%    { filter: saturate(0.3); }
+  20.01% { filter: saturate(1); }
+  100%   { filter: saturate(1); }
 }
 .theater-climax-flash { animation: climax-flash 1250ms ease-out forwards; }
 
@@ -175,6 +168,84 @@ html {
   100% { transform: translateY(0); opacity: 1; }
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
+
+/* §9.4 foreshadow shimmer */
+@keyframes foreshadow-shimmer {
+  0%, 100% { transform: scale(1); opacity: 0.55; }
+  50%      { transform: scale(1.1); opacity: 0.85; }
+}
+.animate-foreshadow-shimmer { animation: foreshadow-shimmer 2s ease-in-out infinite; }
+
+/* §12.1 DM typing cue — 1.5Hz blink (667ms step-end) */
+@keyframes dm-typing-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+.animate-dm-typing-blink { animation: dm-typing-blink 667ms step-end infinite; }
+
+/* §7.5 scene cut transitions */
+@keyframes cross-fade-200 { from { opacity: 0; } to { opacity: 1; } }
+.animate-cross-fade-200 { animation: cross-fade-200 200ms ease-out; }
+@keyframes match-cut { from { transform: scale(0.96); opacity: 0.7; } to { transform: scale(1); opacity: 1; } }
+.animate-match-cut { animation: match-cut 1200ms ease; }
+@keyframes whip-pan { from { transform: translateX(-12px); filter: blur(8px); opacity: 0; } to { transform: translateX(0); filter: blur(0); opacity: 1; } }
+.animate-whip-pan { animation: whip-pan 150ms ease-out; }
+
+/* §7.1 dice moment animations */
+@keyframes dice-halo {
+  0%, 100% { box-shadow: 0 0 12px rgba(212,175,55,0.4); transform: translateY(-2px); }
+  50%      { box-shadow: 0 0 28px rgba(212,175,55,0.8); transform: translateY(2px); }
+}
+.animate-dice-halo { animation: dice-halo 1200ms ease-in-out infinite; }
+
+@keyframes dice-spin {
+  0%   { transform: rotateZ(0deg) rotateX(0deg); }
+  100% { transform: rotateZ(720deg) rotateX(360deg); }
+}
+.animate-dice-spin { animation: dice-spin 800ms linear; }
+
+/* §6.3 lighting overlays */
+@keyframes torchlit-flicker {
+  0%, 100% { opacity: 1; }
+  33%      { opacity: 0.92; }
+  66%      { opacity: 1.05; }
+}
+.animate-torchlit-flicker { animation: torchlit-flicker 333ms ease-in-out infinite; } /* 3Hz */
+
+@keyframes midnight-flicker {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.88; }
+}
+.animate-midnight-flicker { animation: midnight-flicker 500ms ease-in-out infinite; } /* 2Hz */
+
+/* §6.3 magical: particles drift full viewport over 30s, fade in/out at edges, recycle */
+@keyframes magical-drift {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; background-color: #b07cf2; }
+  10%  { opacity: 1; }
+  33%  { background-color: #4ec3c0; }
+  66%  { background-color: #d4af37; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(-100vh) translateX(20px); opacity: 0; background-color: #b07cf2; }
+}
+.animate-magical-drift {
+  animation: magical-drift 30s linear infinite;
+  background-color: #b07cf2;
+}
+
+/* §4.4 interruption collision flash — 200ms, 0 → 0.6 → 0 on --accent-coral */
+@keyframes interruption-flash {
+  0%   { background-color: rgba(214, 91, 49, 0); }
+  50%  { background-color: rgba(214, 91, 49, 0.6); }
+  100% { background-color: rgba(214, 91, 49, 0); }
+}
+.animate-interruption-flash { animation: interruption-flash 200ms ease-out; }
+
+/* §7.3 scene entrance animations per scene type */
+@keyframes fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slide-up { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes quick-zoom { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes cross-fade-in { from { opacity: 0; } to { opacity: 0.8; } }
+.animate-fade-up { animation: fade-up 800ms ease-out; }
+.animate-slide-up { animation: slide-up 400ms ease-out; }
+.animate-quick-zoom { animation: quick-zoom 200ms ease-out; }
+.animate-cross-fade { animation: cross-fade-in 1200ms ease-out; }
 
 /* §9.1 Bullet Time slider thumb — 4px wide, 24px tall */
 .bullet-time-slider {
@@ -203,9 +274,14 @@ html {
   border: none;
 }
 
+/* Suppress ALL kinetic animations for reduce-motion (§13 Q9) — consolidated */
 @media (prefers-reduced-motion: reduce) {
+  .animate-reveal-fade, .animate-bouncy-reveal, .animate-screen-pulse,
+  .animate-brief-shake, .animate-fade-tail, .animate-letter-rotate,
+  .animate-raspy-jitter, .animate-bounce,
   .animate-exhausted-blink, .animate-alert-pulse,
-  .animate-tension-vibrate, .theater-climax-flash, .animate-freeze-drop {
+  .animate-tension-vibrate, .theater-climax-flash, .animate-freeze-drop,
+  .animate-fade-up, .animate-slide-up, .animate-quick-zoom, .animate-cross-fade {
     animation: none !important;
   }
   .theater { animation: none !important; }
