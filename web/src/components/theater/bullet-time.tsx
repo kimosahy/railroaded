@@ -1,7 +1,7 @@
 "use client";
 
-// §9.1 detents — verbatim
-const SPEEDS = [0.1, 0.25, 0.5, 1, 1.5, 2] as const;
+// §9.1 VERBATIM: 4 manual detents. Auto-slow (Task 19) can target other values dynamically.
+const SPEEDS = [1, 0.5, 0.2, 0.1] as const;
 
 interface BulletTimeProps {
   speed: number;
@@ -44,7 +44,7 @@ export function BulletTimeSlider({ speed, onSpeedChange }: BulletTimeProps) {
             type="button"
             onClick={() => onSpeedChange(s)}
             // STD-006: 44px tap targets
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-[10px] font-theater-ui uppercase tracking-[0.18em] rounded"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center text-[11px] font-theater-ui uppercase tracking-[0.18em] rounded"
             style={{
               color: s === speed ? "var(--accent-gold)" : "var(--text-faded)",
               backgroundColor: s === speed ? "rgba(212,175,55,0.08)" : "transparent",
