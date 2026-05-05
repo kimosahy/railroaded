@@ -2,7 +2,8 @@ import type { ServerWebSocket } from "bun";
 import { getAuthUser } from "./auth.ts";
 import type { UserRole, SessionPhase } from "../types.ts";
 import { stripAnnotationsForViewer } from "../theater/composer.ts";
-import type { Emission, ViewerRole } from "../theater/types.ts";
+import { storeSessionSetup, storeEmission } from "../theater/setup-store.ts";
+import type { Emission, SessionSetup, ViewerRole } from "../theater/types.ts";
 
 // --- Per-connection data attached to ws.data ---
 
@@ -368,6 +369,15 @@ function viewerRoleFor(ws: ServerWebSocket<WSData>): ViewerRole {
  * Broadcast a theater emission to subscribers, applying viewer-role field stripping.
  */
 export function broadcastTheaterEmission(partyId: string, emission: Emission): void {
+  // Setup payload producer wiring (AR rule 16 / CC Task 0j).
+  // session_setup.v1 emission shape matches SessionSetup interface.
+  if (emission.schema === "railroaded.theater.session_setup.v1") {
+    storeSessionSetup(emission as unknown as SessionSetup);
+  }
+  // Director's Cut emission storage (AR rule 2 / CC Task 14a-pre).
+  // Single call site captures every emission for replay.
+  storeEmission(partyId, emission as unknown as Record<string, unknown>);
+
   const subs = partySubscribers.get(partyId);
   if (!subs) return;
   for (const ws of subs) {
