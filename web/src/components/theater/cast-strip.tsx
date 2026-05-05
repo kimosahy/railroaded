@@ -64,8 +64,9 @@ interface CastStripProps {
 }
 
 export function CastStrip({ agents, viewerRole, agentStates }: CastStripProps) {
+  // §11.1: avatars of all players + DM. DM avatar anchors §9.4 fourth-wall mirror flip + §12.1 typing cue.
   const cast: CastMember[] = Array.from(agents.entries())
-    .filter(([, a]) => a.role === "player")
+    .filter(([, a]) => a.role === "player" || a.role === "dm")
     .map(([id, a]) => {
       const state = agentStates.get(id);
       return {
