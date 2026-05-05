@@ -2,6 +2,7 @@
 import type { ComposedEmission } from "@theater/composer";
 import { EmissionText } from "./emission-text";
 import { SceneImage } from "./scene-image";
+import { InterruptionFlash, InterruptionGap, truncateInterrupted } from "./interruption";
 import type { AgentInfo } from "@/hooks/use-session-agents";
 
 // §5.1 within-beat track stacking (narration→action→dialogue→thought) deferred to CC Doc 12.
@@ -69,7 +70,17 @@ function EmissionBlock({
         new Date(previous.emission.timestamp).getTime()
     ) <= 2000;
 
-  return (
+  // §4.4 interruption: emissions with `interrupting` set are themselves the
+  // interrupter — but per spec, the PREVIOUS emission's last word becomes "—".
+  // Detect this by checking if NEXT emission has interrupting === this.emission_id.
+  const wasInterrupted = !!emission.interrupting; // emission was interrupted by another
+
+  // The previous emission was interrupted if the current emission's `interrupting`
+  // points at it. We need the previous emission_id check.
+  const previousWasInterrupted =
+    !!emission.interrupting && !!previous && previous.emission.emission_id === emission.interrupting;
+
+  const inner = (
     <div className="relative">
       {emission.scene && <SceneImage scene={emission.scene} />}
 
@@ -83,7 +94,16 @@ function EmissionBlock({
         </span>
       )}
 
-      <EmissionText emission={emission} />
+      {wasInterrupted ? (
+        <InterruptionFlash>
+          <span>{truncateInterrupted(emission.content)}</span>
+        </InterruptionFlash>
+      ) : (
+        <EmissionText emission={emission} />
+      )}
     </div>
   );
+
+  // §4.4: 12px gap between interrupted and interrupting emission.
+  return previousWasInterrupted ? <InterruptionGap>{inner}</InterruptionGap> : inner;
 }

@@ -169,6 +169,14 @@ html {
 }
 .animate-freeze-drop { animation: freeze-drop 480ms ease-out; }
 
+/* §4.4 interruption collision flash — 200ms, 0 → 0.6 → 0 on --accent-coral */
+@keyframes interruption-flash {
+  0%   { background-color: rgba(214, 91, 49, 0); }
+  50%  { background-color: rgba(214, 91, 49, 0.6); }
+  100% { background-color: rgba(214, 91, 49, 0); }
+}
+.animate-interruption-flash { animation: interruption-flash 200ms ease-out; }
+
 /* §7.3 scene entrance animations per scene type */
 @keyframes fade-up { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slide-up { from { transform: translateY(40px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
