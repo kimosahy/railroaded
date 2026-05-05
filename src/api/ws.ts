@@ -1,6 +1,8 @@
 import type { ServerWebSocket } from "bun";
 import { getAuthUser } from "./auth.ts";
 import type { UserRole, SessionPhase } from "../types.ts";
+import { stripAnnotationsForViewer } from "../theater/composer.ts";
+import type { Emission, ViewerRole } from "../theater/types.ts";
 
 // --- Per-connection data attached to ws.data ---
 
@@ -10,7 +12,17 @@ export interface WSData {
   role: UserRole | null;
   subscribedPartyIds: Set<string>;
   authenticated: boolean;
+  /** Captured during server.upgrade() — req is not available in the open handler. */
+  remoteIp?: string;
+  /** Spectator idle-disconnect timer; cleared on auth. */
+  idleTimer?: ReturnType<typeof setTimeout>;
 }
+
+// --- Spectator rate limiting / idle ---
+
+const spectatorConnectionsPerIp = new Map<string, number>();
+const MAX_SPECTATOR_CONNECTIONS_PER_IP = 5;
+const SPECTATOR_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 
 // --- Message types: Client -> Server ---
 
@@ -98,6 +110,14 @@ function send(ws: ServerWebSocket<WSData>, message: ServerMessage): void {
   if (ws.readyState === 1) {
     ws.send(JSON.stringify(message));
   }
+}
+
+function resetIdleTimer(ws: ServerWebSocket<WSData>): void {
+  if (ws.data.authenticated) return;
+  if (ws.data.idleTimer) clearTimeout(ws.data.idleTimer);
+  ws.data.idleTimer = setTimeout(() => {
+    if (ws.readyState === 1) ws.close(4030, "Spectator idle timeout");
+  }, SPECTATOR_IDLE_TIMEOUT_MS);
 }
 
 function parseMessage(raw: string | Buffer): ClientMessage | null {
@@ -193,6 +213,17 @@ function removePartySubscriber(
 function cleanupConnection(ws: ServerWebSocket<WSData>): void {
   const data = ws.data;
 
+  // Spectator IP counter decrement + idle timer cleanup
+  if (!data.authenticated && data.remoteIp) {
+    const current = spectatorConnectionsPerIp.get(data.remoteIp) ?? 1;
+    if (current <= 1) spectatorConnectionsPerIp.delete(data.remoteIp);
+    else spectatorConnectionsPerIp.set(data.remoteIp, current - 1);
+  }
+  if (data.idleTimer) {
+    clearTimeout(data.idleTimer);
+    data.idleTimer = undefined;
+  }
+
   // Remove from user connections
   if (data.userId) {
     removeUserConnection(data.userId, ws);
@@ -230,6 +261,17 @@ async function handleAuth(
   ws.data.role = user.role;
   ws.data.authenticated = true;
 
+  // Promote: drop spectator IP slot + idle timer now that we're authed.
+  if (ws.data.remoteIp) {
+    const current = spectatorConnectionsPerIp.get(ws.data.remoteIp) ?? 0;
+    if (current <= 1) spectatorConnectionsPerIp.delete(ws.data.remoteIp);
+    else spectatorConnectionsPerIp.set(ws.data.remoteIp, current - 1);
+  }
+  if (ws.data.idleTimer) {
+    clearTimeout(ws.data.idleTimer);
+    ws.data.idleTimer = undefined;
+  }
+
   connections.set(ws, { userId: user.userId, role: user.role });
   addUserConnection(user.userId, ws);
 
@@ -240,11 +282,7 @@ function handleSubscribe(
   ws: ServerWebSocket<WSData>,
   msg: SubscribeMessage
 ): void {
-  if (!ws.data.authenticated) {
-    send(ws, { type: "error", message: "Must authenticate before subscribing" });
-    return;
-  }
-
+  // Spectator mode: unauthenticated clients can subscribe read-only.
   if (ws.data.subscribedPartyIds.has(msg.partyId)) {
     send(ws, { type: "error", message: "Already subscribed to this party" });
     return;
@@ -252,6 +290,9 @@ function handleSubscribe(
 
   ws.data.subscribedPartyIds.add(msg.partyId);
   addPartySubscriber(msg.partyId, ws);
+
+  // Activity resets the idle clock for spectators
+  if (!ws.data.authenticated) resetIdleTimer(ws);
 
   send(ws, {
     type: "event",
@@ -264,11 +305,6 @@ function handleUnsubscribe(
   ws: ServerWebSocket<WSData>,
   msg: UnsubscribeMessage
 ): void {
-  if (!ws.data.authenticated) {
-    send(ws, { type: "error", message: "Must authenticate first" });
-    return;
-  }
-
   if (!ws.data.subscribedPartyIds.has(msg.partyId)) {
     send(ws, { type: "error", message: "Not subscribed to this party" });
     return;
@@ -276,6 +312,8 @@ function handleUnsubscribe(
 
   ws.data.subscribedPartyIds.delete(msg.partyId);
   removePartySubscriber(msg.partyId, ws);
+
+  if (!ws.data.authenticated) resetIdleTimer(ws);
 
   send(ws, {
     type: "event",
@@ -321,6 +359,41 @@ export function broadcastToParty(
   }
 }
 
+function viewerRoleFor(ws: ServerWebSocket<WSData>): ViewerRole {
+  if (!ws.data.authenticated) return "audience";
+  return ws.data.role === "dm" ? "dm" : "player";
+}
+
+/**
+ * Broadcast a theater emission to subscribers, applying viewer-role field stripping.
+ */
+export function broadcastTheaterEmission(partyId: string, emission: Emission): void {
+  const subs = partySubscribers.get(partyId);
+  if (!subs) return;
+  for (const ws of subs) {
+    if (ws.readyState !== 1) continue;
+    const stripped = stripAnnotationsForViewer(emission, viewerRoleFor(ws));
+    ws.send(JSON.stringify({ type: "theater_emission", data: stripped }));
+  }
+}
+
+/**
+ * Broadcast an emission update (e.g. image_url arrival). Same stripping rules.
+ * Per ATLAS-019 FIF-1.
+ */
+export function broadcastTheaterEmissionUpdate(
+  partyId: string,
+  update: Record<string, unknown>
+): void {
+  const subs = partySubscribers.get(partyId);
+  if (!subs) return;
+  for (const ws of subs) {
+    if (ws.readyState !== 1) continue;
+    const stripped = stripAnnotationsForViewer(update as Emission, viewerRoleFor(ws));
+    ws.send(JSON.stringify({ type: "theater_emission_update", data: stripped }));
+  }
+}
+
 /**
  * Send a message to all WebSocket connections belonging to a specific user.
  */
@@ -341,21 +414,6 @@ export function sendToUser(
 
 /**
  * Returns the Bun WebSocket handler object, compatible with Bun.serve({ websocket: ... }).
- *
- * Usage:
- *   Bun.serve({
- *     fetch(req, server) {
- *       if (new URL(req.url).pathname === "/ws") {
- *         const upgraded = server.upgrade(req, {
- *           data: { userId: null, username: null, role: null, subscribedPartyIds: new Set(), authenticated: false }
- *         });
- *         if (!upgraded) return new Response("WebSocket upgrade failed", { status: 400 });
- *         return undefined;
- *       }
- *       // ... other routes
- *     },
- *     websocket: createWSHandler(),
- *   });
  */
 export function createWSHandler(): {
   open: (ws: ServerWebSocket<WSData>) => void;
@@ -366,6 +424,16 @@ export function createWSHandler(): {
   return {
     open(ws: ServerWebSocket<WSData>) {
       connections.set(ws, { userId: null, role: null });
+
+      // Spectator IP rate limit + idle timer setup. IP was captured at upgrade.
+      const ip = ws.data.remoteIp ?? "unknown";
+      const current = spectatorConnectionsPerIp.get(ip) ?? 0;
+      if (current >= MAX_SPECTATOR_CONNECTIONS_PER_IP) {
+        ws.close(4029, "Too many spectator connections from this IP");
+        return;
+      }
+      spectatorConnectionsPerIp.set(ip, current + 1);
+      resetIdleTimer(ws);
     },
 
     message(ws: ServerWebSocket<WSData>, raw: string | Buffer) {
@@ -375,10 +443,12 @@ export function createWSHandler(): {
         return;
       }
 
+      // Activity from a spectator resets the idle clock.
+      if (!ws.data.authenticated) resetIdleTimer(ws);
+
       switch (msg.type) {
         case "auth":
           // handleAuth is async but Bun's message handler is sync.
-          // Fire and forget — errors are sent back to the client via the socket.
           void handleAuth(ws, msg);
           break;
         case "subscribe":
@@ -399,21 +469,29 @@ export function createWSHandler(): {
 
     drain(_ws: ServerWebSocket<WSData>) {
       // Called when the socket's backpressure is relieved.
-      // No-op for now — could be used to resume queued messages.
     },
   };
 }
 
 /**
  * Create a fresh WSData object for use when upgrading a connection.
- * Pass this as `data` in `server.upgrade(req, { data: createWSData() })`.
+ * Pass this as `data` in `server.upgrade(req, { data: createWSData(remoteIp) })`.
  */
-export function createWSData(): WSData {
+export function createWSData(remoteIp?: string): WSData {
   return {
     userId: null,
     username: null,
     role: null,
     subscribedPartyIds: new Set<string>(),
     authenticated: false,
+    remoteIp,
   };
+}
+
+/** Test-only: reset all internal state. */
+export function _resetWSState(): void {
+  connections.clear();
+  userConnections.clear();
+  partySubscribers.clear();
+  spectatorConnectionsPerIp.clear();
 }

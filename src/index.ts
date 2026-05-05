@@ -240,7 +240,12 @@ const server = Bun.serve({
     // Handle WebSocket upgrade for /ws
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
-      const upgraded = server.upgrade(req, { data: createWSData() });
+      // ATLAS-022 BLOCKER-3: capture remoteIp at upgrade. `req` is not in scope in WS open handler.
+      const remoteIp =
+        process.env.TRUSTED_PROXY === "true"
+          ? (req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown")
+          : (server.requestIP(req)?.address ?? "unknown");
+      const upgraded = server.upgrade(req, { data: createWSData(remoteIp) });
       if (upgraded) return undefined;
       return Response.json({ error: "WebSocket upgrade failed", code: "WEBSOCKET_UPGRADE_FAILED" }, { status: 400 });
     }

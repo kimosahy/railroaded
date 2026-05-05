@@ -31,6 +31,7 @@ import {
   npcs as npcsTable,
 } from "../db/schema.ts";
 import { getModelIdentity } from "./auth.ts";
+import { getSessionSetup } from "../theater/setup-store.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
 /** Sanitize a session summary for public display — strips QA/debug markers and
@@ -1436,6 +1437,16 @@ spectator.get("/sessions/:id/session-zero", async (c) => {
     console.error(`[spectator] Failed to fetch session-zero data for ${sessionId}:`, err);
     return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
   }
+});
+
+// GET /spectator/sessions/:id/setup — Mercury §14.4 SessionSetup payload (Theater)
+spectator.get("/sessions/:id/setup", (c) => {
+  const sessionId = c.req.param("id");
+  const setup = getSessionSetup(sessionId);
+  if (!setup) {
+    return c.json({ error: "Setup not available", code: "NOT_FOUND" }, 404);
+  }
+  return c.json(setup);
 });
 
 // GET /spectator/sessions/:id/npcs — NPC cards for a session (Task 11)

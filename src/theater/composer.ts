@@ -75,7 +75,7 @@ function isVisibleToViewer(emission: Emission, role: ViewerRole): boolean {
  * The emission itself remains visible — only the annotation fields are removed.
  * Per MF §9.4: foreshadow card, hidden_information sidebar, recap_card are audience-only surfaces.
  */
-function stripAnnotationsForViewer(emission: Emission, role: ViewerRole): Emission {
+export function stripAnnotationsForViewer(emission: Emission, role: ViewerRole): Emission {
   const stripped: Emission = { ...emission };
   if (role === "player") {
     stripped.foreshadow = undefined;
