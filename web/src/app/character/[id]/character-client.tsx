@@ -554,12 +554,7 @@ export function CharacterDetailClient({ characterId }: { characterId: string }) 
 
       {/* ── Combat Stats Grid ──────────────────────────────────── */}
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: "1rem",
-          marginBottom: "1.5rem",
-        }}
+        className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6"
       >
         {combatStats.map((s) => (
           <Card key={s.label} style={{ background: "var(--surface)", border: "1px solid var(--border)", textAlign: "center" }}>

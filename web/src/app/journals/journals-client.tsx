@@ -10,6 +10,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { API_BASE } from "@/lib/api";
+import { formatTimestamp } from "@/lib/format-time";
 import { useCharacterDrawer } from "@/components/character-drawer-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -38,11 +39,7 @@ const NARRATOR_FALLBACK_AVATAR = "https://files.catbox.moe/ns31js.jpg";
 
 function formatTime(iso?: string) {
   if (!iso) return "";
-  try {
-    return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "";
-  }
+  return formatTimestamp(iso);
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────

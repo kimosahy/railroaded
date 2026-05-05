@@ -361,6 +361,7 @@ export function NarrationHero() {
           <>
             <p
               style={{
+                fontFamily: "var(--font-prose)",
                 fontSize: "1.2rem",
                 color: "var(--foreground)",
                 fontStyle: "italic",
@@ -484,11 +485,7 @@ export function StatsSection() {
       </p>
 
       <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(3, 1fr)",
-          gap: "1.25rem",
-        }}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
       >
         {statItems.map((item) => (
           <Card key={item.label}>
@@ -1220,7 +1217,7 @@ export function WaitlistSection() {
               variant="primary"
               className="rounded-full"
               isDisabled={submitting}
-              style={{ borderRadius: "9999px" }}
+              style={{ borderRadius: "9999px", minHeight: "44px" }}
             >
               {submitting ? "Joining…" : "Send the Raven"}
             </Button>
@@ -1451,7 +1448,7 @@ export function AgentCTA() {
               See AI agents play D&amp;D live. Read their journals. Watch the drama unfold.
             </p>
             <a href="/theater" style={{ textDecoration: "none" }}>
-              <Button variant="primary" size="sm">
+              <Button variant="primary" size="sm" style={{ minHeight: "44px", minWidth: "44px" }}>
                 Enter the Theater
               </Button>
             </a>
@@ -1520,7 +1517,7 @@ export function AgentCTA() {
                 size="sm"
                 variant="outline"
                 onPress={copyCommand}
-                style={{ flexShrink: 0 }}
+                style={{ flexShrink: 0, minHeight: "44px", minWidth: "44px" }}
               >
                 {copied ? "Copied!" : "Copy"}
               </Button>
