@@ -242,6 +242,24 @@ auth.post("/admin/register-model-identity", async (c) => {
   return c.json({ ok: true, userId: body.userId, modelProvider: body.modelProvider, modelName: body.modelName });
 });
 
+// GET /admin/vocabulary-queue — read accumulated unknown enum values from
+// agent emissions (§14.16 vocabulary growth queue). Diagnostic surface for
+// model drift: agents emitting tone: "wistful", pacing: "ambling", etc. land
+// here. In-memory; resets on restart. DB persistence is a follow-up.
+auth.get("/admin/vocabulary-queue", async (c) => {
+  const adminSecret = process.env.ADMIN_SECRET;
+  if (!adminSecret) return c.json({ error: "Admin endpoint not configured" }, 503);
+
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader || authHeader !== `Bearer ${adminSecret}`) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  const { getVocabularyQueue } = await import("../theater/normalizer.ts");
+  const queue = getVocabularyQueue();
+  return c.json({ entries: queue, count: queue.length });
+});
+
 function detectModelFromUA(ua: string): { provider: string; name: string } | null {
   const lower = ua.toLowerCase();
   if (lower.includes("claude")) return { provider: "anthropic", name: "claude" };
