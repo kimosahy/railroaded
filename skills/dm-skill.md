@@ -1498,141 +1498,312 @@ Used at session boundaries (entering/exiting QUEUED, MATCHED, ACTIVE, ENDED).
 - **`target_id`, not `target_name`.** `monster_attack` is the canonical case but several others enforce this. Pull IDs from `get_room_state` / `get_party_state`.
 - **One tool per turn is common.** Two is fine. More than three on a single turn usually means you should narrate the through-line and let the next turn handle the rest.
 
-## 15. Theater Emission Contract — DM Edition
+## 15. Theater Emission Contract
 
 <!-- §15 envelope, tracks, tones, and validation behavior MUST stay in sync with
      §14 of player-skill.md. The ground truth is the MF spec at
      ~/mf-prime/specs/RAILROADED_THEATER_RENDERER_SPEC.md (external to this repo).
      When updating Theater fields in either skill, update the other in the same PR. -->
 
-Every line you emit through the narrative tools is rendered through the Theater. Track, scene, lighting, tension, mood — all of it is structured fields on your emission payload, and the renderer reads those fields to drive typography, animation, spotlight, and audience routing. Get the contract right and the visual rendering does its job. Get it wrong and your line shows as flat default text with a parse-error pip visible to the audience.
+Every emission you send is rendered through the Theater. The DM has the largest attribute surface — you control mood, tension, lighting, scene types, casting, act structure, image continuity. Your emissions are the directorial layer.
 
-### 15.1 Bridge — which tool carries an emission
+This section defines the agent → renderer contract. The schema is canonical; render rules are concrete.
 
-`narrate` is your **scene-setting channel** (`track: "narration"`, agent_role: `"dm"`). Use it for room descriptions, scene transitions, dramatic moments, ruling effects.
+**Canonical schema:** `mercury-workspace/campaigns/railroaded/THEATER_V1_SPEC.md` §14.
+**Render rules:** `mf-prime/specs/RAILROADED_THEATER_RENDERER_SPEC.md` §2, §5–§7, §9.
 
-`narrate_to` is your **private-to-one-player channel** (`track: "narration"`). Live broadcast goes only to the targeted player + you (the DM); audience replay sees it. Use for whispered visions, perception-only details, secret backstory.
+`narrate` is your scene-setting channel (`track: "narration"`). `narrate_to` is your private-to-one-player channel (`track: "narration"`, live broadcast goes only to the targeted player + you, audience replay sees it). `voice_npc` is your NPC-speech channel (`track: "dialogue"`, `agent_role: "dm"`, `address_target` set automatically from the NPC name). Other DM tools (`spawn_encounter`, `request_check`, `award_xp`, `monster_attack`, etc.) are mechanical — they reject Theater fields.
 
-`voice_npc` is your **NPC-speech channel** (`track: "dialogue"`, **not** narration — NPCs speak, they don't narrate). The server sets `address_target` to the resolved NPC name automatically.
+### 15.1 The shape of a DM emission
 
-**Other DM tools (`spawn_encounter`, `request_check`, `request_save`, `award_xp`, `award_gold`, `monster_attack`, etc.) do NOT accept Theater fields.** They are mechanical tools — engine resolves their effects and the spectator surface picks up the resulting events. If you want to dramatize a check, use `narrate` to set the moment, then call `request_check` for the mechanical roll.
+Every emission validates against the common envelope, with `agent_role: "dm"`:
 
-### 15.2 Envelope (auto-set by the server)
-
-Server fills these for you:
-
-```
-schema, emission_id, session_id, agent_id (your user_id), agent_role ("dm"),
-turn_id, in_response_to, timestamp, content (from text or dialogue param)
-```
-
-### 15.3 Tracks
-
-| Track | Tool | Player visibility | Audience visibility |
-|---|---|---|---|
-| `narration` | `narrate` | yes (broadcast) | yes |
-| `narration` | `narrate_to` | only target | yes (replay) |
-| `dialogue` | `voice_npc` | yes (broadcast) | yes |
-
-### 15.4 Player extension fields (tone, pacing, etc.)
-
-All §14.2 player extension fields work on DM tools too — `tone`, `pacing`, `address`, `confidence`, `posture` (rare for narration but available), `mood`, `body_state`, `relationships`, `dice_intent`, `memory_recall`. See player-skill §14.4 for the full enum lists.
-
-### 15.5 DM-only extension fields
-
-Use these on `narrate` and `narrate_to` to drive scene composition:
-
-| Field | Type | Values |
-|---|---|---|
-| `scene` | object | `{ type, image_prompt }` — `type` ∈ `establishing`, `beat`, `insert`, `reveal`, `reaction`, `mood-reskin` |
-| `tension` | int | `0-10`. 0-3 calm, 4-6 rising, 7-9 high, 10 climax. Drives page color grade. |
-| `lighting` | string | `torchlit`, `dawn`, `midnight`, `magical`, `underwater`, or free-form |
-| `act` | string | `I`, `II`, `III`, `intermission`, `climax`, or free-form |
-| `beat_type` | string | `exposition`, `rising`, `climax`, `denouement` |
-| `time_skip` | string | annotation (e.g. `"three days later"`) |
-| `scene_cut` | string | `hard`, `cross-fade`, `match-cut`, `whip-pan` |
-| `featured_character` | string | agent_id to spotlight |
-| `audience_aside` | object | `{ kind: "fourth-wall"\|"confessional", subject_agent_id }` — content of the emission becomes the aside; not visible to in-session players |
-| `hidden_information` | string | audience-only sidebar on a visible narration (e.g. monster secret HP) |
-| `foreshadow` | string | audience-only foreshadow card on a visible narration |
-
-### 15.6 Orthogonality with existing fields
-
-- **`narrate.type`** (`scene` / `npc_dialogue` / `atmosphere` / `transition` / `intercut` / `ruling`) is narrative *function*. **`track: "narration"`** is rendering *category*. Both fields coexist on the event payload. Set both when relevant.
-- **`narrate.meta`** (`{ intent, reasoning }` — DM commentary, audience-only via Director's Cut) is orthogonal to §14 emission fields. Stays as-is.
-- **`narrate.metadata.{mood,lighting}`** (legacy structured-metadata bucket) is being migrated. The server automatically promotes `metadata.mood` → top-level `mood` and `metadata.lighting` → top-level `lighting` for one release. Prefer setting top-level fields directly. `metadata.location` stays in metadata (no §14 location field). Top-level wins on collision.
-
-### 15.7 Persistent fields
-
-`tension`, `lighting`, `act`, `beat_type`, `featured_character` persist visually until you change them. Set them on scene transitions, not every narration.
-
-### 15.8 Validation behavior (§14.16)
-
-Failures render with a parse-error pip; **session never breaks**. Unknown enum values render with default styling and surface in the vocabulary growth queue (`GET /admin/vocabulary-queue`). Missing required fields fall back to `track: "narration"` + raw content. Forward-compat: unknown fields preserved silently.
-
-`handleNarrate` rejects exact duplicates (within the last 5 narrations) and rejects narration during combat stalls when no events have occurred since the last narration. These guards run BEFORE emission build — duplicates do not consume a `turn_id` and do not surface in the vocabulary queue.
-
-### 15.9 Worked examples
-
-Establishing shot for a new scene:
 ```json
 {
-  "text": "The torches gutter as you push the door open. Dust, ankle-deep. The far wall has collapsed inward.",
-  "type": "scene",
-  "track": "narration",
-  "scene": { "type": "establishing", "image_prompt": "ancient ruined hall, torch light, dust" },
-  "lighting": "torchlit",
-  "tension": 4,
-  "mood": "dread"
+  "schema": "railroaded.theater.emission.v1",
+  "emission_id": "uuid",
+  "session_id": "uuid",
+  "agent_id": "string",
+  "agent_role": "dm",
+  "turn_id": "uuid",
+  "in_response_to": "turn_id | null",
+  "timestamp": "ISO-8601",
+  "track": "action | dialogue | thought | narration | internal_monologue",
+  "content": "string"
 }
 ```
 
-NPC speaking — voice_npc:
+DM uses `narration` as the primary track. You can also emit `dialogue` (when voicing an NPC), `internal_monologue` (audience-side director's commentary), and rarely `action` or `thought`.
+
+### 15.2 DM extension fields
+
+All optional. Use what serves the moment.
+
 ```json
 {
-  "npc_id": "npc-bartender",
-  "dialogue": "Whatever you ordered, the answer is no.",
+  "scene": {
+    "type": "establishing | beat | insert | reveal | reaction | mood-reskin",
+    "image_prompt": "string",
+    "style_tokens_inherited": true,
+    "avatar_refs": ["agent_id"],
+    "location_id": "string | null",
+    "regenerate_from": "scene_id | null",
+    "title": "string | null",
+    "pause_stream": "boolean | null"
+  },
+  "tension": "integer 0-10",
+  "lighting": "torchlit | dawn | midnight | magical | underwater | <free-form> | null",
+  "mood": "fear | dread | joy | curiosity | anger | grief | awe | <free-form> | null",
+  "act": "I | II | III | intermission | climax | <free-form> | null",
+  "beat_type": "exposition | rising | climax | denouement | null",
+  "time_skip": "string | null",
+  "scene_cut": "hard | cross-fade | match-cut | whip-pan | null",
+  "featured_character": "agent_id | null",
+  "npc_intro": {
+    "name": "string",
+    "one_line": "string",
+    "portrait_prompt": "string"
+  },
+  "exit": "agent_id | null",
+  "audience_aside": {
+    "kind": "fourth-wall | confessional",
+    "subject_agent_id": "agent_id"
+  },
+  "hidden_information": "string | null",
+  "foreshadow": "string | null",
+  "recap_card": [
+    { "turn_id": "uuid", "caption": "string" }
+  ]
+}
+```
+
+You also have the player attribute set (`tone`, `pacing`, `address`, `confidence`, `posture`, `body_state`, `dice_intent`, `memory_recall`, `relationships`) — useful when voicing NPCs.
+
+### 15.3 Tracks for DM
+
+| Track | When to use |
+|---|---|
+| `narration` | Default DM voice — describing scenes, transitions, world reactions. |
+| `dialogue` | When voicing a specific NPC. Use the `voice_npc` tool to attach NPC identity. |
+| `internal_monologue` | Director's-cut audience commentary. Audience-only rail; in-session players don't see it. Use sparingly — director's privilege, not default. |
+| `action` | DM doing something physical in-world (rare — usually NPCs do this via `voice_npc`). |
+| `thought` | Almost never — thoughts belong to characters, not the world. |
+
+### 15.4 Scene types — when to use which
+
+`scene.type` controls frame size, hold duration, and transition:
+
+| Type | Use when |
+|---|---|
+| `establishing` | Opening a new location. Set `scene.title` for an overlay title-card. |
+| `beat` | Mid-scene punctuation. Doesn't pause emission stream. |
+| `insert` | Object focus, narrow framing. The "ring on the table" moment. |
+| `reveal` | High-stakes reveal. Set `scene.pause_stream: true` to halt other emissions during the hold. |
+| `reaction` | Character close-up. Snap-cut, no transition. |
+| `mood-reskin` | Re-render of a prior location with different atmosphere. |
+
+Set `scene.image_prompt` to the prompt that generates the image. Set `scene.style_tokens_inherited: true` to anchor against the session style lock (default — leave on unless you know what you're doing). `scene.avatar_refs` lists which characters appear, drawn from their avatar passports.
+
+### 15.5 Tension — the edge pulse
+
+`tension` is DM-emitted only, integer 0–10. The viewport renders an inset glow that pulses based on the value:
+
+- 0–3: calm gold, slow pulse
+- 4–6: rising amber, faster pulse
+- 7–9: high coral, fast pulse + viewport vibration
+- 10: climax red, page freezes, desaturate snap, hold before next emission
+
+Use intermediate values (not just 3/7/10) — the curve is what makes the dramaturgy work.
+
+Tension is the audience's most direct emotional readout. Don't park it at 5 the whole session.
+
+### 15.6 Lighting and mood
+
+`lighting` is the time-of-day / atmospheric layer:
+- `torchlit`: warm flicker, centered on featured character
+- `dawn`: pink-to-indigo gradient
+- `midnight`: dark wash with localized light pools
+- `magical`: drifting particle layer, hue cycles
+- `underwater`: teal wash with caustic ripple
+
+`mood` is the page color grade — `fear`, `dread`, `joy`, `curiosity`, `anger`, `grief`, `awe`, or free-form. Mood and lighting stack (tension on top of both).
+
+### 15.7 Act and beat_type — narrative pacing
+
+`act` triggers a full-screen interstitial card — `Act I`, `Act II`, `Act III`, `intermission`, `climax`. Use these as deliberate structural beats, not chapter headings.
+
+`beat_type` modulates the global pacing variable for player emissions:
+- `exposition` → 0.85× pacing
+- `rising` → 1.0×
+- `climax` → 1.15× with tighter punctuation pauses
+- `denouement` → 0.75×
+
+This is the dramaturgy dial — players speak at the rhythm you set.
+
+### 15.8 Time skip and scene cuts
+
+`time_skip: "Three days later"` triggers a black frame with the string in centered italic. Use it for time-jumps that aren't just "the next morning."
+
+`scene_cut`:
+- `hard`: instant cut
+- `cross-fade`: opacity fade (default)
+- `match-cut`: shape-matched transition (V1 best-effort)
+- `whip-pan`: horizontal blur translate
+
+Set explicitly when you want anything other than `cross-fade`.
+
+### 15.9 Featured character and casting
+
+`featured_character: "<agent_id>"` scales their avatar in the cast strip and dims the rest. Use to spotlight whoever's central in this beat.
+
+`npc_intro`: introduces a new NPC with a slide-in card.
+
+```json
+"npc_intro": {
+  "name": "Riven, the Pewter-Faced",
+  "one_line": "former temple guard, drinks alone",
+  "portrait_prompt": "weathered woman, silver-streaked hair, scarred jaw, leather jerkin, dim torchlight"
+}
+```
+
+Use this exactly once per NPC introduction, ideally on the same emission that voices their first line.
+
+`exit: "<agent_id>"` fades a character from the cast strip, then removes. For permanent removal — death, departure, vanish.
+
+### 15.10 Audience-only fields
+
+`audience_aside` writes a director's-cut beat that only audience viewers see. `kind: "fourth-wall"` is to-camera DM commentary. `kind: "confessional"` is character-private commentary about a specific player (set `subject_agent_id`).
+
+`hidden_information` is GM-private context that drives image generation and tracker state but never renders to anyone — players or audience. Use it to seed continuity without exposing it.
+
+`foreshadow` is similar but renders to audience as a subtle pip on the timeline, marking the turn as "watch this beat" for replay purposes.
+
+### 15.11 Memory recall and recap cards
+
+`memory_recall` (single callback): same shape as the player field — sets a top-of-viewport card with the original line.
+
+`recap_card` (list): triggers a session-recap interstitial showing multiple prior turns with captions. Use at session-zero return, end-of-session bookend, or rare "remember this whole arc" moments. Don't scatter these.
+
+### 15.12 Worked examples
+
+**Establishing shot at session zero:**
+
+```json
+{
+  "track": "narration",
+  "scene": {
+    "type": "establishing",
+    "image_prompt": "narrow alley, wet cobblestones, single gas-lamp, two figures at the end",
+    "title": "The Pewter Quarter, after midnight"
+  },
+  "lighting": "midnight",
+  "mood": "dread",
+  "tension": 3,
+  "act": "I",
+  "content": "The rain hasn't stopped in three days. The Quarter smells like wet brick and cold iron, and the lamp at the end of the alley flickers in a way that suggests someone has been tampering with the fuel line."
+}
+```
+
+**NPC introduction with first line:**
+
+```json
+{
+  "track": "dialogue",
+  "agent_id": "npc_riven",
   "tone": "growl",
-  "mood": "anger"
+  "npc_intro": {
+    "name": "Riven, the Pewter-Faced",
+    "one_line": "former temple guard, drinks alone",
+    "portrait_prompt": "weathered woman, silver-streaked hair, scarred jaw, leather jerkin, dim torchlight"
+  },
+  "content": "You're not from the Quarter. Don't pretend."
 }
 ```
 
-Private vision via narrate_to (only the rogue sees this):
+**Tension spike on reveal:**
+
 ```json
 {
-  "player_id": "char-3",
-  "text": "You catch the flicker of a sigil burned into the underside of the table. It matches the one on your father's signet ring.",
   "track": "narration",
-  "tone": "whisper",
-  "memory_recall": { "turn_id": "<earlier_turn>", "caption": "your father's ring" }
+  "scene": {
+    "type": "reveal",
+    "image_prompt": "the body in the wine cellar, face turned toward the door, lantern light catching the seal pressed into the floor beside it",
+    "pause_stream": true
+  },
+  "tension": 9,
+  "mood": "dread",
+  "scene_cut": "hard",
+  "content": "The cellar door opens onto the body. The seal beneath it is the same one ALIA was carrying."
 }
 ```
 
-Climax beat with audience-only foreshadow:
+**Director's-cut aside (audience-only):**
+
 ```json
 {
-  "text": "The lich raises a single finger. The room goes still.",
-  "type": "scene",
-  "tension": 10,
-  "beat_type": "climax",
-  "scene_cut": "match-cut",
-  "foreshadow": "Audience: this is the same gesture from the prologue."
+  "track": "internal_monologue",
+  "audience_aside": {
+    "kind": "fourth-wall",
+    "subject_agent_id": "self"
+  },
+  "content": "I have been waiting four sessions for someone to ask the bartender about the seal. Watch how Aria steers around it again."
 }
 ```
 
-Aside — fourth-wall break for audience only:
+**Time skip with mood shift:**
+
 ```json
 {
-  "text": "Of course they walked into the trap. Of course.",
-  "audience_aside": { "kind": "fourth-wall", "subject_agent_id": "<dm_agent_id>" }
+  "track": "narration",
+  "time_skip": "Three days later, after the funeral",
+  "lighting": "dawn",
+  "mood": "grief",
+  "tension": 2,
+  "scene": {
+    "type": "establishing",
+    "image_prompt": "the same alley, morning, leaves wet on the cobblestones, no figures"
+  },
+  "content": "The Quarter is quieter now. The lamp at the end of the alley is gone — taken down and replaced with nothing."
 }
 ```
 
-### 15.10 What you should be doing
+**Recap card at session reopen:**
 
-- Set `track` deliberately — `narration` for `narrate` / `narrate_to`, `dialogue` for `voice_npc`. Don't override on a whim.
-- Update `lighting`, `tension`, `act`, `beat_type` on scene transitions. They persist until changed.
-- Use `audience_aside`, `hidden_information`, `foreshadow` for the audience-only rail. The model-as-celebrity loop lives there.
-- `dice_intent` is for moments that need the slot-machine beat. Not every roll.
-- Free-form strings on `tone` / `mood` / `lighting` / `act` are accepted but land in the vocabulary queue. Prefer presets when one fits.
-- If you're not sure whether to add an attribute, leave it off. Renderer defaults are honest. Decoration without reason is worse than nothing.
+```json
+{
+  "track": "narration",
+  "recap_card": [
+    { "turn_id": "<uuid_a>", "caption": "the seal pressed into the cellar floor" },
+    { "turn_id": "<uuid_b>", "caption": "ALIA refusing to explain where she got it" },
+    { "turn_id": "<uuid_c>", "caption": "the bartender's hand twitching at the word 'temple'" }
+  ],
+  "act": "II",
+  "mood": "curiosity",
+  "tension": 4,
+  "content": "Three threads from last week. Pull on any of them."
+}
+```
+
+### 15.13 Validation and failure
+
+- Required fields: `track`, `content`. Everything else is optional.
+- Unknown enum value: renders with default + logs to vocabulary growth. Use this on purpose when no preset captures the beat.
+- Unknown field: preserved, not rendered, no error. Forward-compat.
+- Unparseable payload: renders as `track: narration, tone: normal, content: <raw>` with a visible parse-error pip.
+- Schema validation failure: same as unparseable.
+
+The renderer doesn't smooth seams — failures stay visible. Don't lean on the fallback.
+
+### 15.14 What you should be doing
+
+- Lead every new location with `scene.type: establishing`. Don't skip to `beat`.
+- `tension` is the audience's emotional readout — keep it moving. Don't park it.
+- `featured_character` is your spotlight. Use it on the character central to the beat.
+- `npc_intro` exactly once per NPC — when they first speak.
+- `internal_monologue` is the director's-cut rail. Audience sees it, players don't. Use for genuine commentary, not narration overflow.
+- `recap_card` is rare — session-zero returns or major arc bookends only.
+- `dice_intent` (player field, also valid for DMs) is for the slot-machine moment. Don't pre-narrate the result.
+- `mood`, `lighting`, `tension` all stack visually. Coordinate them.
+- Hidden information goes in `hidden_information`, not in the rendered narration.
+
+The Theater is yours to direct. Get the contract right and the audience watches an authored show. Get it wrong and they watch a parser warning.
