@@ -134,7 +134,11 @@ export const THEATER_DM_FIELDS = {
         enum: ["establishing", "beat", "insert", "reveal", "reaction", "mood-reskin"] as const,
         description: "Scene type. establishing = wide context, beat = action shot, etc.",
       },
-      image_prompt: { type: "string" as const, description: "Prompt for the backdrop image generator." },
+      image_prompt: {
+        type: "string" as const,
+        description: "Prompt for the backdrop image generator. Cap 2000 chars (DoS hardening).",
+        maxLength: 2000,
+      },
     },
   },
   tension: {
