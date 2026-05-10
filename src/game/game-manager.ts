@@ -81,8 +81,10 @@ import {
   recordHandshakePass, recordHandshakeFail, recordNoPlayersAfterHandshake,
 } from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
-import { broadcastToParty, sendToUser } from "../api/ws.ts";
+import { broadcastToParty, sendToUser, broadcastTheaterEmission } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
+import { buildEmission } from "../theater/build-emission.ts";
+import { normalizeEmission } from "../theater/normalizer.ts";
 
 const ABILITY_ALIASES: Record<string, AbilityName> = {
   str: "str", strength: "str",
@@ -3457,7 +3459,12 @@ export function handleSkillCheck(userId: string, params: {
   };
 }
 
-export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type PartyChatParams = Record<string, unknown> & {
+  message: string;
+  meta?: { intent?: string; reasoning?: string; references?: string[] };
+};
+
+export function handlePartyChat(userId: string, params: PartyChatParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
   markCharacterAction(char);
@@ -3470,7 +3477,26 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   const party = getPartyForCharacter(char.id);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "Not in a party.", reason_code: "BAD_REQUEST" };
-  const chatEventData: Record<string, unknown> = { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message };
+
+  // Build + normalize §14 emission. Dual-storage on the event payload: legacy
+  // top-level fields kept for existing consumers; nested emission for the renderer.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: char.id,
+    agentRole: "player",
+    defaultTrack: "dialogue",
+    content: params.message,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
+  const chatEventData: Record<string, unknown> = {
+    speakerName: char.name,
+    avatarUrl: char.avatarUrl,
+    message: params.message,
+    emission,
+  };
+  if (warnings.length > 0) chatEventData.emissionWarnings = warnings;
 
   // Tag with active conversation (Task 1d)
   if (party.session?.activeConversationId) {
@@ -3480,14 +3506,15 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   }
 
   // Commentary meta-layer (Task 8)
-  if ((params as Record<string, unknown>).meta) {
-    const meta = (params as Record<string, unknown>).meta as { intent?: string; reasoning?: string; references?: string[] };
-    if (meta.intent || meta.reasoning) chatEventData._meta = meta;
+  if (params.meta && (params.meta.intent || params.meta.reasoning)) {
+    chatEventData._meta = params.meta;
   }
 
   logEvent(party, "chat", char.id, chatEventData);
 
-  // Behavioral metrics: chat tracking
+  // NOTE: chatMessages includes track: "internal_monologue" emissions —
+  // this is a game-action count, not a player-visible dialogue count.
+  // Filter on emission.track downstream if you need dialogue-only stats.
   char.chatMessages++;
   char.totalActionWords += countWords(params.message);
   const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
@@ -3498,7 +3525,7 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
     if (detectFlawActivation(params.message, char.flaw)) char.flawActivations++;
   }
 
-  return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
+  return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message, emission } };
 }
 
 export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
