@@ -4847,19 +4847,23 @@ export function handleForceSkipTurn(userId: string, params: { reason?: string })
   };
 }
 
-export function handleNarrate(userId: string, params: {
+type NarrateParams = Record<string, unknown> & {
   text: string; style?: string;
   type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
   npcId?: string; metadata?: Record<string, unknown>;
   meta?: { intent?: string; reasoning?: string; references?: string[] };
-}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+};
+
+export function handleNarrate(userId: string, params: NarrateParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "You are not a DM for any active party.", reason_code: "BAD_REQUEST" };
   // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
   markDmActed(party.id);
 
-  // Sprint M Task 3: duplicate narration suppression during combat stalls
+  // Sprint M Task 3: duplicate narration suppression during combat stalls.
+  // CRITICAL: must run BEFORE emission build so we don't mint a UUID and
+  // side-effect storeEmission on a rejected duplicate (Task 5 ordering rule).
   if (party.session) {
     const hash = params.text.slice(0, 100).toLowerCase().trim();
     const recentHashes = party.session.recentNarrationHashes ?? [];
@@ -4885,8 +4889,21 @@ export function handleNarrate(userId: string, params: {
     party.session.lastEventCountAtNarration = party.events.length;
   }
 
+  // Build + normalize §14 emission. track="narration" is orthogonal to existing
+  // narrateType (scene/npc_dialogue/etc.) — both coexist on the event payload.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "narration",
+    content: params.text,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
   const narType = params.type ?? "scene";
-  const eventData: Record<string, unknown> = { text: params.text, narrateType: narType };
+  const eventData: Record<string, unknown> = { text: params.text, narrateType: narType, emission };
+  if (warnings.length > 0) eventData.emissionWarnings = warnings;
   if (params.style) eventData.style = params.style;
   if (params.npcId) eventData.npcId = params.npcId;
   if (params.metadata) eventData.metadata = params.metadata;
@@ -4902,7 +4919,7 @@ export function handleNarrate(userId: string, params: {
     if (npc) eventData.npcName = npc.name;
   }
 
-  // Commentary meta-layer (Task 8)
+  // Commentary meta-layer (Task 8) — orthogonal to §14 emission fields, stays as-is.
   if (params.meta && (params.meta.intent || params.meta.reasoning)) {
     eventData._meta = params.meta;
   }
@@ -4913,6 +4930,7 @@ export function handleNarrate(userId: string, params: {
     data: {
       narrated: true, text: params.text, type: narType,
       npcId: params.npcId ?? null, style: params.style ?? null,
+      emission,
     },
   };
 }
@@ -5103,7 +5121,11 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
   return { success: true, data: { room: room.name, description: params.description } };
 }
 
-export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?: string; dialogue?: string; message?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type VoiceNpcParams = Record<string, unknown> & {
+  npc_id?: string; name?: string; dialogue?: string; message?: string;
+};
+
+export function handleVoiceNpc(userId: string, params: VoiceNpcParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Accept npc_id or name as identifier; accept dialogue or message as text
   const npcIdentifier = params.npc_id ?? params.name;
   const dialogue = params.dialogue ?? params.message;
@@ -5122,7 +5144,22 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
   const npc = npcsMap.get(npcIdentifier);
   const npcName = npc ? npc.name : npcIdentifier;
 
-  logEvent(party, "npc_dialogue", null, { npcId: npc?.id, npcName, dialogue });
+  // Build + normalize §14 emission. NPCs SPEAK (track: dialogue), they do not
+  // narrate. address_target is derived from the resolved NPC name.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "dialogue",
+    content: dialogue,
+    addressTarget: npcName,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
+  const npcEventData: Record<string, unknown> = { npcId: npc?.id, npcName, dialogue, emission };
+  if (warnings.length > 0) npcEventData.emissionWarnings = warnings;
+  logEvent(party, "npc_dialogue", null, npcEventData);
 
   // Log interaction for persistent NPCs
   if (npc?.dbNpcId && party.dbSessionId) {
@@ -5147,7 +5184,7 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
       .catch((err) => console.error("[DB] Failed to update NPC memory:", err));
   }
 
-  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue } };
+  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue, emission } };
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
