@@ -20,11 +20,13 @@ let tc = 0;
 function uid(prefix: string) { return `${prefix}-${++tc}`; }
 
 function reset() {
-  const { characters, parties, playerQueue, dmQueue } = getState();
+  const { characters, charactersByUser, parties, playerQueue, dmQueue, npcs } = getState();
   characters.clear();
+  charactersByUser.clear();
   parties.clear();
   playerQueue.length = 0;
   dmQueue.length = 0;
+  npcs.clear();
   _resetSetupStore();
   clearVocabularyQueue();
 }
