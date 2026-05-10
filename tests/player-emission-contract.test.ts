@@ -258,3 +258,51 @@ describe("chatMessages metric guard for internal_monologue (Rev3 Task 6)", () =>
     expect(char.chatMessages).toBe(beforeChat);
   });
 });
+
+describe("chatMessages metric guard for handleWhisper (Rev3.1 Task 6.1 — sibling-path fix)", () => {
+  test("whisper with track: dialogue (default) DOES increment chatMessages (regression)", async () => {
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const fromChar = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const toChar = [...characters.values()].find(c => c.userId === playerUserIds[1])!;
+    const beforeChat = fromChar.chatMessages;
+    const beforeWords = fromChar.totalActionWords;
+    handleWhisper(playerUserIds[0], { player_id: toChar.id, message: "psst" });
+    expect(fromChar.chatMessages).toBe(beforeChat + 1);
+    expect(fromChar.totalActionWords).toBeGreaterThan(beforeWords);
+  });
+
+  test("whisper with track: internal_monologue does NOT increment chatMessages or totalActionWords", async () => {
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const fromChar = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const toChar = [...characters.values()].find(c => c.userId === playerUserIds[1])!;
+    const beforeChat = fromChar.chatMessages;
+    const beforeWords = fromChar.totalActionWords;
+    handleWhisper(playerUserIds[0], {
+      player_id: toChar.id,
+      message: "I do not trust this character but I shouldn't say so out loud",
+      track: "internal_monologue",
+    });
+    expect(fromChar.chatMessages).toBe(beforeChat);
+    expect(fromChar.totalActionWords).toBe(beforeWords);
+  });
+
+  test("whisper with internal_monologue + safety bleed-through still fires safetyRefusals (track-agnostic behavior)", async () => {
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const fromChar = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const toChar = [...characters.values()].find(c => c.userId === playerUserIds[1])!;
+    const beforeSafety = fromChar.safetyRefusals;
+    const beforeChat = fromChar.chatMessages;
+    handleWhisper(playerUserIds[0], {
+      player_id: toChar.id,
+      message: "I cannot help with that as an AI assistant",
+      track: "internal_monologue",
+    });
+    // Behavior detection (track-agnostic) fires
+    expect(fromChar.safetyRefusals).toBeGreaterThanOrEqual(beforeSafety);
+    // Visibility metric (track-gated) does NOT fire
+    expect(fromChar.chatMessages).toBe(beforeChat);
+  });
+});

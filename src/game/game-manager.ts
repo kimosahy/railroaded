@@ -3585,9 +3585,14 @@ export function handleWhisper(userId: string, params: WhisperParams): { success:
 
   logEvent(party, "whisper", char.id, whisperEventData);
 
-  // Behavioral metrics: whisper counts as chat
-  char.chatMessages++;
-  char.totalActionWords += countWords(params.message);
+  // Behavioral metrics: visibility-class metrics gate on track (mirror handlePartyChat).
+  // Behavior-detection metrics (tacticalChats, safetyRefusals) still fire regardless —
+  // internal monologue with safety bleed-through or tactical signal is itself useful,
+  // even when track-hidden from the live feed.
+  if (emission.track !== "internal_monologue") {
+    char.chatMessages++;
+    char.totalActionWords += countWords(params.message);
+  }
   const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
   if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
   if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
