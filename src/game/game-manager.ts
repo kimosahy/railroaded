@@ -81,10 +81,11 @@ import {
   recordHandshakePass, recordHandshakeFail, recordNoPlayersAfterHandshake,
 } from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
-import { broadcastToParty, sendToUser, broadcastTheaterEmission } from "../api/ws.ts";
+import { broadcastToParty, sendToUser, broadcastTheaterEmission, sendTheaterEmissionToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
 import { buildEmission } from "../theater/build-emission.ts";
 import { normalizeEmission } from "../theater/normalizer.ts";
+import { storeEmission } from "../theater/setup-store.ts";
 
 const ABILITY_ALIASES: Record<string, AbilityName> = {
   str: "str", strength: "str",
@@ -3528,7 +3529,12 @@ export function handlePartyChat(userId: string, params: PartyChatParams): { succ
   return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message, emission } };
 }
 
-export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type WhisperParams = Record<string, unknown> & {
+  player_id: string;
+  message: string;
+};
+
+export function handleWhisper(userId: string, params: WhisperParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // TODO Pass 2: assign specific reason_code
   if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character.", reason_code: "BAD_REQUEST" };
   // TODO Pass 2: assign specific reason_code
@@ -3549,7 +3555,31 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
   // TODO Pass 2: assign specific reason_code
   if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself.", reason_code: "BAD_REQUEST" };
 
-  logEvent(party, "whisper", char.id, { from: char.name, to: target.name, message: params.message });
+  // Build + normalize §14 emission. Whispers are private: storeEmission for
+  // audience Director's Cut replay (audience sees what players hide from each
+  // other — §14.3 design thesis), but live broadcast goes only to target + DM,
+  // never to other party members.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: char.id,
+    agentRole: "player",
+    defaultTrack: "dialogue",
+    content: params.message,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  storeEmission(party.id, emission as unknown as Record<string, unknown>);
+  sendTheaterEmissionToUser(target.userId, emission, "player");
+  if (party.dmUserId) sendTheaterEmissionToUser(party.dmUserId, emission, "dm");
+
+  const whisperEventData: Record<string, unknown> = {
+    from: char.name,
+    to: target.name,
+    message: params.message,
+    emission,
+  };
+  if (warnings.length > 0) whisperEventData.emissionWarnings = warnings;
+
+  logEvent(party, "whisper", char.id, whisperEventData);
 
   // Behavioral metrics: whisper counts as chat
   char.chatMessages++;
@@ -3558,7 +3588,7 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
   if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
   if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
 
-  return { success: true, data: { from: char.name, to: target.name, message: params.message } };
+  return { success: true, data: { from: char.name, to: target.name, message: params.message, emission } };
 }
 
 export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {

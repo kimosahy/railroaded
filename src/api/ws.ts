@@ -405,6 +405,21 @@ export function broadcastTheaterEmissionUpdate(
 }
 
 /**
+ * Send a single theater emission to one user with viewer-role field stripping.
+ * Used by private channels (whisper, narrate_to) where audience replay sees the
+ * emission via storeEmission but live broadcast goes only to the target + DM.
+ * Single source of truth for the theater_emission WS payload shape.
+ */
+export function sendTheaterEmissionToUser(
+  userId: string,
+  emission: Emission,
+  role: ViewerRole,
+): void {
+  const stripped = stripAnnotationsForViewer(emission, role);
+  sendToUser(userId, { type: "theater_emission", data: stripped });
+}
+
+/**
  * Send a message to all WebSocket connections belonging to a specific user.
  */
 export function sendToUser(
