@@ -382,12 +382,12 @@ export function broadcastTheaterEmission(partyId: string, emission: Emission): v
   if (!subs) return;
   for (const ws of subs) {
     if (ws.readyState !== 1) continue;
-    // §14.3 internal_monologue is audience-only. viewerRoleFor returns only
-    // "dm" or "player" — audience doesn't enter this loop, they read replay
-    // via storeEmission → spectator HTTP endpoints. So a flat skip suffices:
-    // never live-broadcast an internal_monologue; storeEmission ran above
-    // for audience replay.
+    // §14.3 audience-only payloads (whole-emission gating). viewerRoleFor returns
+    // only "dm" or "player" — audience doesn't enter this loop, they read replay
+    // via storeEmission → spectator HTTP endpoints. Flat skip suffices for both:
+    // never live-broadcast; storeEmission ran above the loop for audience replay.
     if (emission.track === "internal_monologue") continue;
+    if (emission.audience_aside) continue;   // §14.3: when audience_aside set, the whole emission is the aside
     const stripped = stripAnnotationsForViewer(emission, viewerRoleFor(ws));
     ws.send(JSON.stringify({ type: "theater_emission", data: stripped }));
   }
