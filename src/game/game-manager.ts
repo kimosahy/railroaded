@@ -4935,10 +4935,53 @@ export function handleNarrate(userId: string, params: NarrateParams): { success:
   };
 }
 
-export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type NarrateToParams = Record<string, unknown> & {
+  player_id: string;
+  text: string;
+};
+
+// Stub-fix: prior to this change handleNarrateTo returned success without calling
+// logEvent, broadcasting, or storing — the targeted player received nothing.
+// Wired now to mirror the handleWhisper private-channel pattern: storeEmission
+// for audience Director's Cut + live WS push to target + DM only.
+export function handleNarrateTo(userId: string, params: NarrateToParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  // TODO Pass 2: assign specific reason_code
+  if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.text) return { success: false, error: "Missing text.", reason_code: "BAD_REQUEST" };
+
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
-  return { success: true, data: { narrated: true, to: params.player_id, text: params.text } };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
+
+  const target = resolveCharacter(params.player_id);
+  // TODO Pass 2: assign specific reason_code
+  if (!target || target.partyId !== party.id) return { success: false, error: "Target not in your party.", reason_code: "BAD_REQUEST" };
+
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "narration",
+    content: params.text,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  storeEmission(party.id, emission as unknown as Record<string, unknown>);
+  sendTheaterEmissionToUser(target.userId, emission, "player");
+  if (party.dmUserId) sendTheaterEmissionToUser(party.dmUserId, emission, "dm");
+
+  const eventData: Record<string, unknown> = {
+    to: target.id,
+    toName: target.name,
+    text: params.text,
+    emission,
+  };
+  if (warnings.length > 0) eventData.emissionWarnings = warnings;
+
+  logEvent(party, "narration_to", null, eventData);
+
+  return { success: true, data: { narrated: true, to: params.player_id, toName: target.name, text: params.text, emission } };
 }
 
 export function handleDMJournal(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
