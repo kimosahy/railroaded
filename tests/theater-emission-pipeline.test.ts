@@ -107,6 +107,27 @@ describe("buildEmission — envelope shape (§14.1)", () => {
     expect(raw.in_response_to).toBe("previous-turn-uuid");
   });
 
+  test("Rev3.1 Task 7.1 — caps scene.image_prompt at 2000 chars (server-side enforcement)", () => {
+    const longPrompt = "x".repeat(5000);
+    const raw = buildEmission(
+      { text: "scene", scene: { type: "establishing", image_prompt: longPrompt } },
+      { sessionId: "s1", agentId: "dm1", agentRole: "dm", defaultTrack: "narration", content: "scene" },
+    );
+    const scene = raw.scene as Record<string, unknown>;
+    expect(typeof scene.image_prompt).toBe("string");
+    expect((scene.image_prompt as string).length).toBe(2000);
+  });
+
+  test("Rev3.1 Task 7.1 — preserves scene.image_prompt under cap unchanged", () => {
+    const okPrompt = "x".repeat(1500);
+    const raw = buildEmission(
+      { text: "scene", scene: { type: "establishing", image_prompt: okPrompt } },
+      { sessionId: "s1", agentId: "dm1", agentRole: "dm", defaultTrack: "narration", content: "scene" },
+    );
+    const scene = raw.scene as Record<string, unknown>;
+    expect((scene.image_prompt as string).length).toBe(1500);
+  });
+
   test("each call mints a fresh emission_id and turn_id", () => {
     const a = buildEmission(
       { message: "1" },

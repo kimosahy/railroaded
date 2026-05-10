@@ -74,5 +74,18 @@ export function buildEmission(
     if (m.lighting !== undefined && raw.lighting === undefined) raw.lighting = m.lighting;
   }
 
+  // Server-side enforcement of advisory schema caps. tool-schema.ts declares
+  // maxLength: 2000 on scene.image_prompt for the LLM tool runtime, but this
+  // codebase has no runtime JSON-schema validator (no ajv/zod/joi/valibot/
+  // typebox in package.json). Schema declaration alone is advisory. Any future
+  // maxLength added to tool-schema.ts must be mirrored here (or earlier — at
+  // the dispatcher pick() boundary) to be more than agent-runtime metadata.
+  if (raw.scene && typeof raw.scene === "object") {
+    const s = raw.scene as Record<string, unknown>;
+    if (typeof s.image_prompt === "string" && s.image_prompt.length > 2000) {
+      s.image_prompt = s.image_prompt.slice(0, 2000);
+    }
+  }
+
   return raw;
 }
