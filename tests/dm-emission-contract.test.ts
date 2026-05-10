@@ -235,4 +235,24 @@ describe("handleNarrateTo — stub-fix verification", () => {
     expect(result.success).toBe(false);
     expect(getEmissionHistory(partyId).length).toBe(0);
   });
+
+  test("Rev3 Task 5 — narration_to renders cleanly in journal (not raw JSON)", async () => {
+    const { partyId, playerUserIds, dmUserId } = await makeParty();
+    const { characters, parties } = getState();
+    const target = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    handleNarrateTo(dmUserId, {
+      player_id: target.id,
+      text: "You catch the flicker of a sigil on the table.",
+    });
+    const party = parties.get(partyId)!;
+    const { summarizeSession } = await import("../src/game/journal.ts");
+    const journal = summarizeSession(party.events as Parameters<typeof summarizeSession>[0]);
+    // The narration_to event must render as a clean line, not as JSON.stringify
+    // dump of the entire event.data envelope (which would include the nested
+    // emission object).
+    expect(journal).toContain(`[Whisper to ${target.name}]`);
+    expect(journal).toContain("You catch the flicker of a sigil on the table.");
+    expect(journal).not.toContain("emission_id");
+    expect(journal).not.toContain("turn_id");
+  });
 });

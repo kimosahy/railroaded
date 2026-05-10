@@ -29,6 +29,16 @@ export function summarizeSession(events: SessionEvent[]): string {
       case "narration":
         lines.push(`[Narration] ${event.data.text}`);
         break;
+      case "narration_to": {
+        // Private DM-to-one-player narration. handleNarrateTo writes
+        // { to, toName, text, emission, ... } — render as a clean line so the
+        // default case doesn't dump the entire envelope (incl. nested emission)
+        // as raw JSON into the journal.
+        const target = event.data.toName ?? event.data.to ?? "unknown";
+        const text = event.data.text ?? "";
+        lines.push(`[Whisper to ${target}] ${text}`);
+        break;
+      }
       case "combat_start":
         lines.push(`[Combat] Encounter began!`);
         break;
