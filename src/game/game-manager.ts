@@ -81,8 +81,11 @@ import {
   recordHandshakePass, recordHandshakeFail, recordNoPlayersAfterHandshake,
 } from "../engine/model-ranking.ts";
 import { eq, asc, desc, or, isNull, like } from "drizzle-orm";
-import { broadcastToParty, sendToUser } from "../api/ws.ts";
+import { broadcastToParty, sendToUser, broadcastTheaterEmission, sendTheaterEmissionToUser } from "../api/ws.ts";
 import type { AbilityName } from "../types.ts";
+import { buildEmission } from "../theater/build-emission.ts";
+import { normalizeEmission } from "../theater/normalizer.ts";
+import { storeEmission } from "../theater/setup-store.ts";
 
 const ABILITY_ALIASES: Record<string, AbilityName> = {
   str: "str", strength: "str",
@@ -3457,7 +3460,12 @@ export function handleSkillCheck(userId: string, params: {
   };
 }
 
-export function handlePartyChat(userId: string, params: { message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type PartyChatParams = Record<string, unknown> & {
+  message: string;
+  meta?: { intent?: string; reasoning?: string; references?: string[] };
+};
+
+export function handlePartyChat(userId: string, params: PartyChatParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const char = getCharacterForUser(userId);
   if (!char) return { success: false, error: "No character found.", reason_code: "CHARACTER_NOT_FOUND" };
   markCharacterAction(char);
@@ -3470,7 +3478,26 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   const party = getPartyForCharacter(char.id);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "Not in a party.", reason_code: "BAD_REQUEST" };
-  const chatEventData: Record<string, unknown> = { speakerName: char.name, avatarUrl: char.avatarUrl, message: params.message };
+
+  // Build + normalize §14 emission. Dual-storage on the event payload: legacy
+  // top-level fields kept for existing consumers; nested emission for the renderer.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: char.id,
+    agentRole: "player",
+    defaultTrack: "dialogue",
+    content: params.message,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
+  const chatEventData: Record<string, unknown> = {
+    speakerName: char.name,
+    avatarUrl: char.avatarUrl,
+    message: params.message,
+    emission,
+  };
+  if (warnings.length > 0) chatEventData.emissionWarnings = warnings;
 
   // Tag with active conversation (Task 1d)
   if (party.session?.activeConversationId) {
@@ -3480,16 +3507,21 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
   }
 
   // Commentary meta-layer (Task 8)
-  if ((params as Record<string, unknown>).meta) {
-    const meta = (params as Record<string, unknown>).meta as { intent?: string; reasoning?: string; references?: string[] };
-    if (meta.intent || meta.reasoning) chatEventData._meta = meta;
+  if (params.meta && (params.meta.intent || params.meta.reasoning)) {
+    chatEventData._meta = params.meta;
   }
 
   logEvent(party, "chat", char.id, chatEventData);
 
-  // Behavioral metrics: chat tracking
-  char.chatMessages++;
-  char.totalActionWords += countWords(params.message);
+  // Behavioral metrics: visibility-class metrics (chatMessages, totalActionWords)
+  // exclude track: "internal_monologue" — these count player-visible chat volume.
+  // Behavior-detection metrics (tacticalChats, safetyRefusals, flawOpportunities,
+  // flawActivations) capture signal regardless of track — internal monologue
+  // containing safety bleed-through or flaw activation is itself useful signal.
+  if (emission.track !== "internal_monologue") {
+    char.chatMessages++;
+    char.totalActionWords += countWords(params.message);
+  }
   const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
   if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
   if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
@@ -3498,10 +3530,15 @@ export function handlePartyChat(userId: string, params: { message: string }): { 
     if (detectFlawActivation(params.message, char.flaw)) char.flawActivations++;
   }
 
-  return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message } };
+  return { success: true, data: { speaker: char.name, avatarUrl: char.avatarUrl, message: params.message, emission } };
 }
 
-export function handleWhisper(userId: string, params: { player_id: string; message: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type WhisperParams = Record<string, unknown> & {
+  player_id: string;
+  message: string;
+};
+
+export function handleWhisper(userId: string, params: WhisperParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // TODO Pass 2: assign specific reason_code
   if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character.", reason_code: "BAD_REQUEST" };
   // TODO Pass 2: assign specific reason_code
@@ -3522,16 +3559,45 @@ export function handleWhisper(userId: string, params: { player_id: string; messa
   // TODO Pass 2: assign specific reason_code
   if (target.id === char.id) return { success: false, error: "You cannot whisper to yourself.", reason_code: "BAD_REQUEST" };
 
-  logEvent(party, "whisper", char.id, { from: char.name, to: target.name, message: params.message });
+  // Build + normalize §14 emission. Whispers are private: storeEmission for
+  // audience Director's Cut replay (audience sees what players hide from each
+  // other — §14.3 design thesis), but live broadcast goes only to target + DM,
+  // never to other party members.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: char.id,
+    agentRole: "player",
+    defaultTrack: "dialogue",
+    content: params.message,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  storeEmission(party.id, emission as unknown as Record<string, unknown>);
+  sendTheaterEmissionToUser(target.userId, emission, "player");
+  if (party.dmUserId) sendTheaterEmissionToUser(party.dmUserId, emission, "dm");
 
-  // Behavioral metrics: whisper counts as chat
-  char.chatMessages++;
-  char.totalActionWords += countWords(params.message);
+  const whisperEventData: Record<string, unknown> = {
+    from: char.name,
+    to: target.name,
+    message: params.message,
+    emission,
+  };
+  if (warnings.length > 0) whisperEventData.emissionWarnings = warnings;
+
+  logEvent(party, "whisper", char.id, whisperEventData);
+
+  // Behavioral metrics: visibility-class metrics gate on track (mirror handlePartyChat).
+  // Behavior-detection metrics (tacticalChats, safetyRefusals) still fire regardless —
+  // internal monologue with safety bleed-through or tactical signal is itself useful,
+  // even when track-hidden from the live feed.
+  if (emission.track !== "internal_monologue") {
+    char.chatMessages++;
+    char.totalActionWords += countWords(params.message);
+  }
   const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
   if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
   if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;
 
-  return { success: true, data: { from: char.name, to: target.name, message: params.message } };
+  return { success: true, data: { from: char.name, to: target.name, message: params.message, emission } };
 }
 
 export function handleShortRest(userId: string): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -4790,19 +4856,23 @@ export function handleForceSkipTurn(userId: string, params: { reason?: string })
   };
 }
 
-export function handleNarrate(userId: string, params: {
+type NarrateParams = Record<string, unknown> & {
   text: string; style?: string;
   type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
   npcId?: string; metadata?: Record<string, unknown>;
   meta?: { intent?: string; reasoning?: string; references?: string[] };
-}): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+};
+
+export function handleNarrate(userId: string, params: NarrateParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   const party = findDMParty(userId);
   // TODO Pass 2: assign specific reason_code
   if (!party) return { success: false, error: "You are not a DM for any active party.", reason_code: "BAD_REQUEST" };
   // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
   markDmActed(party.id);
 
-  // Sprint M Task 3: duplicate narration suppression during combat stalls
+  // Sprint M Task 3: duplicate narration suppression during combat stalls.
+  // CRITICAL: must run BEFORE emission build so we don't mint a UUID and
+  // side-effect storeEmission on a rejected duplicate (Task 5 ordering rule).
   if (party.session) {
     const hash = params.text.slice(0, 100).toLowerCase().trim();
     const recentHashes = party.session.recentNarrationHashes ?? [];
@@ -4828,8 +4898,21 @@ export function handleNarrate(userId: string, params: {
     party.session.lastEventCountAtNarration = party.events.length;
   }
 
+  // Build + normalize §14 emission. track="narration" is orthogonal to existing
+  // narrateType (scene/npc_dialogue/etc.) — both coexist on the event payload.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "narration",
+    content: params.text,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
   const narType = params.type ?? "scene";
-  const eventData: Record<string, unknown> = { text: params.text, narrateType: narType };
+  const eventData: Record<string, unknown> = { text: params.text, narrateType: narType, emission };
+  if (warnings.length > 0) eventData.emissionWarnings = warnings;
   if (params.style) eventData.style = params.style;
   if (params.npcId) eventData.npcId = params.npcId;
   if (params.metadata) eventData.metadata = params.metadata;
@@ -4845,7 +4928,7 @@ export function handleNarrate(userId: string, params: {
     if (npc) eventData.npcName = npc.name;
   }
 
-  // Commentary meta-layer (Task 8)
+  // Commentary meta-layer (Task 8) — orthogonal to §14 emission fields, stays as-is.
   if (params.meta && (params.meta.intent || params.meta.reasoning)) {
     eventData._meta = params.meta;
   }
@@ -4856,14 +4939,58 @@ export function handleNarrate(userId: string, params: {
     data: {
       narrated: true, text: params.text, type: narType,
       npcId: params.npcId ?? null, style: params.style ?? null,
+      emission,
     },
   };
 }
 
-export function handleNarrateTo(userId: string, params: { player_id: string; text: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type NarrateToParams = Record<string, unknown> & {
+  player_id: string;
+  text: string;
+};
+
+// Stub-fix: prior to this change handleNarrateTo returned success without calling
+// logEvent, broadcasting, or storing — the targeted player received nothing.
+// Wired now to mirror the handleWhisper private-channel pattern: storeEmission
+// for audience Director's Cut + live WS push to target + DM only.
+export function handleNarrateTo(userId: string, params: NarrateToParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+  // TODO Pass 2: assign specific reason_code
+  if (!params.player_id) return { success: false, error: "Missing player_id — specify the target character.", reason_code: "BAD_REQUEST" };
+  // TODO Pass 2: assign specific reason_code
+  if (!params.text) return { success: false, error: "Missing text.", reason_code: "BAD_REQUEST" };
+
   const party = findDMParty(userId);
   if (!party) return { success: false, error: "Not a DM for any party.", reason_code: "NOT_DM" };
-  return { success: true, data: { narrated: true, to: params.player_id, text: params.text } };
+  // PRESERVATION: do not restrict DM narrative tools per MF SPEC §3
+  markDmActed(party.id);
+
+  const target = resolveCharacter(params.player_id);
+  // TODO Pass 2: assign specific reason_code
+  if (!target || target.partyId !== party.id) return { success: false, error: "Target not in your party.", reason_code: "BAD_REQUEST" };
+
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "narration",
+    content: params.text,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  storeEmission(party.id, emission as unknown as Record<string, unknown>);
+  sendTheaterEmissionToUser(target.userId, emission, "player");
+  if (party.dmUserId) sendTheaterEmissionToUser(party.dmUserId, emission, "dm");
+
+  const eventData: Record<string, unknown> = {
+    to: target.id,
+    toName: target.name,
+    text: params.text,
+    emission,
+  };
+  if (warnings.length > 0) eventData.emissionWarnings = warnings;
+
+  logEvent(party, "narration_to", null, eventData);
+
+  return { success: true, data: { narrated: true, to: params.player_id, toName: target.name, text: params.text, emission } };
 }
 
 export function handleDMJournal(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -5046,7 +5173,11 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
   return { success: true, data: { room: room.name, description: params.description } };
 }
 
-export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?: string; dialogue?: string; message?: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
+type VoiceNpcParams = Record<string, unknown> & {
+  npc_id?: string; name?: string; dialogue?: string; message?: string;
+};
+
+export function handleVoiceNpc(userId: string, params: VoiceNpcParams): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
   // Accept npc_id or name as identifier; accept dialogue or message as text
   const npcIdentifier = params.npc_id ?? params.name;
   const dialogue = params.dialogue ?? params.message;
@@ -5065,7 +5196,22 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
   const npc = npcsMap.get(npcIdentifier);
   const npcName = npc ? npc.name : npcIdentifier;
 
-  logEvent(party, "npc_dialogue", null, { npcId: npc?.id, npcName, dialogue });
+  // Build + normalize §14 emission. NPCs SPEAK (track: dialogue), they do not
+  // narrate. address_target is derived from the resolved NPC name.
+  const raw = buildEmission(params, {
+    sessionId: party.session?.id ?? party.id,
+    agentId: userId,
+    agentRole: "dm",
+    defaultTrack: "dialogue",
+    content: dialogue,
+    addressTarget: npcName,
+  });
+  const { emission, warnings } = normalizeEmission(raw);
+  broadcastTheaterEmission(party.id, emission);
+
+  const npcEventData: Record<string, unknown> = { npcId: npc?.id, npcName, dialogue, emission };
+  if (warnings.length > 0) npcEventData.emissionWarnings = warnings;
+  logEvent(party, "npc_dialogue", null, npcEventData);
 
   // Log interaction for persistent NPCs
   if (npc?.dbNpcId && party.dbSessionId) {
@@ -5090,7 +5236,7 @@ export function handleVoiceNpc(userId: string, params: { npc_id?: string; name?:
       .catch((err) => console.error("[DB] Failed to update NPC memory:", err));
   }
 
-  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue } };
+  return { success: true, data: { npc: npcName, npc_id: npc?.id, dialogue, emission } };
 }
 
 export function handleRequestCheck(userId: string, params: { player_id: string; ability: string; dc: number; skill?: string; advantage?: boolean; disadvantage?: boolean }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {

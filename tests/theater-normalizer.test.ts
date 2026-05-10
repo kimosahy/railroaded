@@ -1,5 +1,8 @@
-import { describe, expect, test } from "bun:test";
-import { normalizeEmission, applySpanOverrides, FALLBACK_DEFAULTS } from "../src/theater/normalizer.ts";
+import { describe, expect, test, beforeEach } from "bun:test";
+import {
+  normalizeEmission, applySpanOverrides, FALLBACK_DEFAULTS,
+  logUnrecognizedValue, getVocabularyQueue, clearVocabularyQueue, VOCAB_QUEUE_MAX,
+} from "../src/theater/normalizer.ts";
 
 describe("normalizeEmission — no-mutation contract + validation", () => {
   test("(a) does not mutate input; idempotent across calls", () => {
@@ -63,5 +66,43 @@ describe("applySpanOverrides + FALLBACK_DEFAULTS", () => {
     expect(FALLBACK_DEFAULTS.pacing).toBe("normal");
     expect(FALLBACK_DEFAULTS.confidence).toBe("neutral");
     expect(FALLBACK_DEFAULTS.tension).toBe(3);
+  });
+});
+
+describe("vocabulary queue cap (Rev3 Task 4 — DoS hardening)", () => {
+  beforeEach(() => clearVocabularyQueue());
+
+  test("VOCAB_QUEUE_MAX exported and equals 1000", () => {
+    expect(VOCAB_QUEUE_MAX).toBe(1000);
+  });
+
+  test("queue caps at VOCAB_QUEUE_MAX entries (FIFO eviction)", () => {
+    for (let i = 0; i < 1500; i++) {
+      logUnrecognizedValue("tone", `unique_${i}`, "spam-agent");
+    }
+    const queue = getVocabularyQueue();
+    expect(queue.length).toBeLessThanOrEqual(VOCAB_QUEUE_MAX);
+    expect(queue.length).toBe(VOCAB_QUEUE_MAX);
+  });
+
+  test("FIFO: oldest entries evicted, most recent preserved", () => {
+    for (let i = 0; i < 1100; i++) {
+      logUnrecognizedValue("tone", `value_${i}`, "agent");
+    }
+    const queue = getVocabularyQueue();
+    // First 100 should have been shifted out; last entry should still be present
+    expect(queue.find(e => e.value === "value_0")).toBeUndefined();
+    expect(queue.find(e => e.value === "value_99")).toBeUndefined();
+    expect(queue.find(e => e.value === "value_100")).toBeDefined();
+    expect(queue.find(e => e.value === "value_1099")).toBeDefined();
+  });
+
+  test("repeated values increment count without growing queue length", () => {
+    for (let i = 0; i < 50; i++) {
+      logUnrecognizedValue("tone", "wistful", "agent-x");
+    }
+    const queue = getVocabularyQueue();
+    expect(queue.length).toBe(1);
+    expect(queue[0].count).toBe(50);
   });
 });

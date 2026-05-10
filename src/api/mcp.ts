@@ -18,6 +18,9 @@ import type { PlayerToolDefinition } from "../tools/player-tools.ts";
 import { dmTools } from "../tools/dm-tools.ts";
 import type { ToolDefinition } from "../tools/dm-tools.ts";
 import * as gm from "../game/game-manager.ts";
+import {
+  PARTY_CHAT_FIELDS, WHISPER_FIELDS, NARRATE_FIELDS, NARRATE_TO_FIELDS, VOICE_NPC_FIELDS, pick,
+} from "./_dispatcher-whitelists.ts";
 
 // ---------------------------------------------------------------------------
 // JSON-RPC types
@@ -287,7 +290,9 @@ async function handleToolsCall(
   });
 }
 
-async function executeToolCall(
+// Exported for direct test access — exercises dispatcher pass-through without
+// fixturing the full MCP HTTP route.
+export async function executeToolCall(
   toolName: string,
   userId: string,
   args: Record<string, unknown>
@@ -357,9 +362,19 @@ async function executeToolCall(
     case "channel_divinity":
       return gm.handleChannelDivinity(userId, { ability: args.ability as string });
     case "party_chat":
-      return gm.handlePartyChat(userId, { message: args.message as string });
-    case "whisper":
-      return gm.handleWhisper(userId, { player_id: args.player_id as string, message: args.message as string });
+      // Pass-through with whitelist filter: preserves Theater fields the agent
+      // sets (track, tone, pacing, etc.) while dropping anything unknown.
+      return gm.handlePartyChat(userId, pick(args, PARTY_CHAT_FIELDS) as Parameters<typeof gm.handlePartyChat>[1]);
+    case "whisper": {
+      // Coalesce target aliases (target_id / targetId / target → player_id) so
+      // the agent can use any of them — same UX as REST. Mutate before pick so
+      // the canonical key passes the whitelist.
+      const whisperArgs = { ...args };
+      if (whisperArgs.player_id === undefined) {
+        whisperArgs.player_id = whisperArgs.target_id ?? whisperArgs.targetId ?? whisperArgs.target;
+      }
+      return gm.handleWhisper(userId, pick(whisperArgs, WHISPER_FIELDS) as Parameters<typeof gm.handleWhisper>[1]);
+    }
     case "journal_add":
       return gm.handleJournalAdd(userId, { entry: args.entry as string });
     case "pickup_item":
@@ -377,17 +392,17 @@ async function executeToolCall(
       return gm.handleQueueForParty(userId);
 
     // --- DM tools ---
-    case "narrate":
-      return gm.handleNarrate(userId, {
-        text: args.text as string,
-        style: args.style as string | undefined,
-        type: args.type as "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling" | undefined,
-        npcId: args.npc_id as string | undefined,
-        metadata: args.metadata as Record<string, unknown> | undefined,
-        meta: args.meta as { intent?: string; reasoning?: string; references?: string[] } | undefined,
-      });
+    case "narrate": {
+      // Pass-through with whitelist + npc_id → npcId rename (handler accepts npcId).
+      const filtered = pick(args, NARRATE_FIELDS);
+      if (filtered.npc_id !== undefined && filtered.npcId === undefined) {
+        filtered.npcId = filtered.npc_id;
+        delete filtered.npc_id;
+      }
+      return gm.handleNarrate(userId, filtered as Parameters<typeof gm.handleNarrate>[1]);
+    }
     case "narrate_to":
-      return gm.handleNarrateTo(userId, { player_id: args.player_id as string, text: args.text as string });
+      return gm.handleNarrateTo(userId, pick(args, NARRATE_TO_FIELDS) as Parameters<typeof gm.handleNarrateTo>[1]);
     case "spawn_encounter":
       return gm.handleSpawnEncounter(userId, { monsters: args.monsters as { template_name: string; count: number }[] });
     case "trigger_encounter":
@@ -395,7 +410,9 @@ async function executeToolCall(
     case "monster_attack":
       return gm.handleMonsterAttack(userId, { monster_id: args.monster_id as string, target_id: args.target_id as string | undefined, target: args.target as string | undefined, target_name: args.target_name as string | undefined, attack_name: args.attack_name as string | undefined });
     case "voice_npc":
-      return gm.handleVoiceNpc(userId, { npc_id: args.npc_id as string, dialogue: args.dialogue as string });
+      // Pass-through with whitelist — preserves C3 legacy aliases (name/message)
+      // alongside npc_id/dialogue, plus all Theater fields.
+      return gm.handleVoiceNpc(userId, pick(args, VOICE_NPC_FIELDS) as Parameters<typeof gm.handleVoiceNpc>[1]);
     case "interact_with_feature":
       return gm.handleInteractWithFeature(userId, { feature_name: args.feature_name as string });
     case "override_room_description":

@@ -81,10 +81,12 @@ export function stripAnnotationsForViewer(emission: Emission, role: ViewerRole):
     stripped.foreshadow = undefined;
     stripped.hidden_information = undefined;
     stripped.recap_card = undefined;
+    stripped.audience_aside = undefined;   // §14.3 audience-only — players never see asides
   } else if (role === "dm") {
     stripped.foreshadow = undefined;       // dramatic tension — DM doesn't need
     // DM keeps hidden_information (operational awareness)
     stripped.recap_card = undefined;
+    stripped.audience_aside = undefined;   // audience-only by spec; DM's own asides remain in raw replay store
   }
   // audience: keeps everything
   return stripped;

@@ -382,6 +382,12 @@ export function broadcastTheaterEmission(partyId: string, emission: Emission): v
   if (!subs) return;
   for (const ws of subs) {
     if (ws.readyState !== 1) continue;
+    // §14.3 audience-only payloads (whole-emission gating). viewerRoleFor returns
+    // only "dm" or "player" — audience doesn't enter this loop, they read replay
+    // via storeEmission → spectator HTTP endpoints. Flat skip suffices for both:
+    // never live-broadcast; storeEmission ran above the loop for audience replay.
+    if (emission.track === "internal_monologue") continue;
+    if (emission.audience_aside) continue;   // §14.3: when audience_aside set, the whole emission is the aside
     const stripped = stripAnnotationsForViewer(emission, viewerRoleFor(ws));
     ws.send(JSON.stringify({ type: "theater_emission", data: stripped }));
   }
@@ -390,6 +396,15 @@ export function broadcastTheaterEmission(partyId: string, emission: Emission): v
 /**
  * Broadcast an emission update (e.g. image_url arrival). Same stripping rules.
  * Per ATLAS-019 FIF-1.
+ *
+ * TODO(M2 — RPF follow-up): does NOT gate by track. If a future feature attaches
+ * an update payload (image_url, etc.) to an internal_monologue emission, the update
+ * slips past the live-broadcast gate to non-audience subscribers. To gate, we need
+ * a getStoredEmissionById lookup (does not exist on setup-store today —
+ * emissionHistory is Map<partyId, Emission[]> with no by-id index) OR the update
+ * payload itself must carry the original emission's track. Add the lookup or
+ * threading when a real image_url update path exists. Until then, this is a known
+ * leak vector — track via the audit list in the RPF spec.
  */
 export function broadcastTheaterEmissionUpdate(
   partyId: string,
@@ -402,6 +417,21 @@ export function broadcastTheaterEmissionUpdate(
     const stripped = stripAnnotationsForViewer(update as Emission, viewerRoleFor(ws));
     ws.send(JSON.stringify({ type: "theater_emission_update", data: stripped }));
   }
+}
+
+/**
+ * Send a single theater emission to one user with viewer-role field stripping.
+ * Used by private channels (whisper, narrate_to) where audience replay sees the
+ * emission via storeEmission but live broadcast goes only to the target + DM.
+ * Single source of truth for the theater_emission WS payload shape.
+ */
+export function sendTheaterEmissionToUser(
+  userId: string,
+  emission: Emission,
+  role: ViewerRole,
+): void {
+  const stripped = stripAnnotationsForViewer(emission, role);
+  sendToUser(userId, { type: "theater_emission", data: stripped });
 }
 
 /**

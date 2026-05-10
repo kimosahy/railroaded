@@ -10,6 +10,7 @@
  */
 
 import type { AbilityName } from "../types.ts";
+import { THEATER_PLAYER_FIELDS, THEATER_DM_FIELDS } from "../theater/tool-schema.ts";
 
 // ---------------------------------------------------------------------------
 // Tool definition type
@@ -102,7 +103,8 @@ export const dmTools: readonly ToolDefinition[] = [
       "scenes, the results of actions, environmental changes, and dramatic moments. " +
       "The text you provide is sent as-is to all connected player agents. This is your " +
       "primary storytelling tool — set the scene, build tension, describe consequences. " +
-      "The server does not modify the text; it is delivered verbatim.",
+      "The server does not modify the text; it is delivered verbatim. Theater fields " +
+      "(scene, lighting, tension, mood, etc.) drive renderer composition for the audience.",
     inputSchema: {
       type: "object",
       properties: {
@@ -115,7 +117,8 @@ export const dmTools: readonly ToolDefinition[] = [
         type: {
           type: "string",
           description:
-            "Narration type for structured output. Helps spectators and frontends render narration differently.",
+            "Narration type for structured output. Helps spectators and frontends render narration differently. " +
+            "Orthogonal to Theater track — both fields coexist on the event payload.",
           enum: ["scene", "npc_dialogue", "atmosphere", "transition", "intercut", "ruling"] as const,
         },
         npc_id: {
@@ -125,19 +128,24 @@ export const dmTools: readonly ToolDefinition[] = [
         },
         metadata: {
           type: "object",
-          description: "Optional structured metadata (e.g., location, mood, lighting).",
+          description:
+            "Legacy structured metadata bucket. metadata.mood and metadata.lighting are " +
+            "automatically promoted to top-level Theater fields for one release; prefer setting " +
+            "top-level mood/lighting directly. metadata.location stays here (no §14 location field).",
           properties: {},
         },
         meta: {
           type: "object",
           description:
-            "Commentary track — DM's reasoning behind this narration. Not shown to players. " +
-            "Use for intent, pacing notes, or dramatic goals.",
+            "Commentary track — DM's reasoning behind this narration. Audience-only via Director's Cut. " +
+            "Orthogonal to §14 emission fields and stays as-is.",
           properties: {
             intent: { type: "string", description: "Why you're narrating this now." },
             reasoning: { type: "string", description: "What narrative goal this serves." },
           },
         },
+        ...THEATER_PLAYER_FIELDS,
+        ...THEATER_DM_FIELDS,
       },
       required: ["text"],
     },
@@ -147,10 +155,10 @@ export const dmTools: readonly ToolDefinition[] = [
   {
     name: "narrate_to",
     description:
-      "Send private narrative text to a single player. Only that player receives the " +
-      "message. Use this for whispered visions, perception-only details, secret notes, " +
-      "backstory callbacks, or information that only one character would know. Other " +
-      "party members do not see this text.",
+      "Send private narrative text to a single player. Only that player (and the DM) " +
+      "receives the live message; audience replay sees it. Use this for whispered " +
+      "visions, perception-only details, secret notes, backstory callbacks, or " +
+      "information that only one character would know. Other party members do not see this text.",
     inputSchema: {
       type: "object",
       properties: {
@@ -164,6 +172,8 @@ export const dmTools: readonly ToolDefinition[] = [
           description:
             "The private narrative text. Only this player will see it.",
         },
+        ...THEATER_PLAYER_FIELDS,
+        ...THEATER_DM_FIELDS,
       },
       required: ["player_id", "text"],
     },
@@ -293,7 +303,8 @@ export const dmTools: readonly ToolDefinition[] = [
       "exist in the current room; this tool delivers dialogue attributed to a specific " +
       "NPC. Use distinct voices, speech patterns, and personalities for each NPC. " +
       "All party members receive the dialogue. For NPCs that only one player can hear, " +
-      "combine with narrate_to() instead.",
+      "combine with narrate_to() instead. Theater track is dialogue (NPCs speak — " +
+      "they don't narrate); address_target is set automatically from the NPC's name.",
     inputSchema: {
       type: "object",
       properties: {
@@ -309,6 +320,7 @@ export const dmTools: readonly ToolDefinition[] = [
             "The NPC's spoken dialogue. Write in character — accents, verbal tics, " +
             "personality quirks all go here.",
         },
+        ...THEATER_PLAYER_FIELDS,
       },
       required: ["npc_id", "dialogue"],
     },

@@ -45,12 +45,24 @@ interface VocabEntry {
 
 const vocabularyQueue: VocabEntry[] = [];
 
+/**
+ * Hard cap on vocabulary queue length. Without this, a hostile or buggy agent
+ * emitting varying tone/pacing/etc. (e.g. tone: "wistful_<random_uuid>") would
+ * grow the queue unboundedly across server lifetime — DoS via memory exhaustion.
+ * FIFO eviction preserves the most recent observations, which matter most for
+ * model-drift diagnostics.
+ */
+export const VOCAB_QUEUE_MAX = 1000;
+
 export function logUnrecognizedValue(attribute: string, value: string, agentId: string): void {
   const existing = vocabularyQueue.find(v => v.attribute === attribute && v.value === value);
   if (existing) {
     existing.count++;
-  } else {
-    vocabularyQueue.push({ attribute, value, agentId, count: 1 });
+    return;
+  }
+  vocabularyQueue.push({ attribute, value, agentId, count: 1 });
+  if (vocabularyQueue.length > VOCAB_QUEUE_MAX) {
+    vocabularyQueue.shift();
   }
 }
 
