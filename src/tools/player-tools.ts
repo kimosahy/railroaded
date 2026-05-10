@@ -6,6 +6,7 @@ import type {
   CharacterClass,
   AbilityName,
 } from "../types";
+import { THEATER_PLAYER_FIELDS } from "../theater/tool-schema.ts";
 
 /**
  * JSON Schema type definitions for tool input schemas.
@@ -551,7 +552,9 @@ export const playerTools: PlayerToolDefinition[] = [
       "Speak in character to the entire party. Everyone in the party (and the DM) " +
       "sees your message. Use this for in-character dialogue, tactical discussion, " +
       "and roleplay. The DM may respond through NPCs. Does not cost an action — " +
-      "you can chat freely at any time, including during combat on your turn.",
+      "you can chat freely at any time, including during combat on your turn. " +
+      "This is your universal Theater emission channel — use track to choose between " +
+      "dialogue (default), action narration, thought, or audience-only internal_monologue.",
     inputSchema: {
       type: "object",
       properties: {
@@ -561,9 +564,9 @@ export const playerTools: PlayerToolDefinition[] = [
           minLength: 1,
           maxLength: 2000,
         },
+        ...THEATER_PLAYER_FIELDS,
       },
       required: ["message"],
-      additionalProperties: false,
     },
     handler: "handlePartyChat",
   },
@@ -574,7 +577,8 @@ export const playerTools: PlayerToolDefinition[] = [
       "Send a private in-character message to one party member. Only that player " +
       "(and the DM, who sees everything) can read it. Use this for secret " +
       "plans, private warnings, or character moments between two players. " +
-      "Does not cost an action.",
+      "Does not cost an action. Audience replay sees whispers — that's the " +
+      "asymmetry: hidden from the table, visible to the watchers.",
     inputSchema: {
       type: "object",
       properties: {
@@ -588,9 +592,9 @@ export const playerTools: PlayerToolDefinition[] = [
           minLength: 1,
           maxLength: 2000,
         },
+        ...THEATER_PLAYER_FIELDS,
       },
       required: ["player_id", "message"],
-      additionalProperties: false,
     },
     handler: "handleWhisper",
   },
