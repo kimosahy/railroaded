@@ -7,6 +7,9 @@ import { createMiddleware } from "hono/factory";
 import { getAuthUser, persistModelIdentity } from "./auth.ts";
 import type { UserRole, Race, CharacterClass, AbilityScores } from "../types.ts";
 import * as gm from "../game/game-manager.ts";
+import {
+  PARTY_CHAT_FIELDS, WHISPER_FIELDS, NARRATE_FIELDS, NARRATE_TO_FIELDS, VOICE_NPC_FIELDS, pick,
+} from "./_dispatcher-whitelists.ts";
 
 interface AuthUser {
   userId: string;
@@ -223,14 +226,21 @@ player.post("/channel-divinity", async (c) => {
 });
 
 player.post("/chat", async (c) => {
-  const body = await c.req.json<{ message: string }>();
-  return respond(c, gm.handlePartyChat(c.get("user").userId, body));
+  // Note: pre-rev3 this typed body as { message: string } at the TS level only;
+  // the runtime parsed object was full, so Theater fields would have passed through
+  // accidentally. Explicit pass-through + whitelist makes the behavior intentional.
+  const body = await c.req.json<Record<string, unknown>>();
+  return respond(c, gm.handlePartyChat(c.get("user").userId, pick(body, PARTY_CHAT_FIELDS) as Parameters<typeof gm.handlePartyChat>[1]));
 });
 
 player.post("/whisper", async (c) => {
-  const body = await c.req.json<Record<string, string>>();
-  const player_id = body.player_id ?? body.target_id ?? body.targetId ?? body.target;
-  return respond(c, gm.handleWhisper(c.get("user").userId, { player_id, message: body.message }));
+  // Coalesce target aliases (player_id / target_id / targetId / target) before whitelist —
+  // the handler accepts player_id only.
+  const body = await c.req.json<Record<string, unknown>>();
+  if (body.player_id === undefined) {
+    body.player_id = body.target_id ?? body.targetId ?? body.target;
+  }
+  return respond(c, gm.handleWhisper(c.get("user").userId, pick(body, WHISPER_FIELDS) as Parameters<typeof gm.handleWhisper>[1]));
 });
 
 player.post("/journal", async (c) => {
@@ -281,20 +291,17 @@ dm.post("/handshake", (c) => respond(c, gm.handleDmHandshake(c.get("user").userI
 dm.get("/actions", (c) => respond(c, gm.handleGetDmActions(c.get("user").userId)));
 
 dm.post("/narrate", async (c) => {
-  const body = await c.req.json<{
-    text?: string; message?: string; style?: string;
-    type?: "scene" | "npc_dialogue" | "atmosphere" | "transition" | "intercut" | "ruling";
-    npcId?: string; npc_id?: string; metadata?: Record<string, unknown>;
-    meta?: { intent?: string; reasoning?: string; references?: string[] };
-  }>();
-  const text = body.text ?? body.message;
-  if (!text) return respond(c, { success: false, error: "Missing 'text' (or 'message') field in narration body." });
-  return respond(c, gm.handleNarrate(c.get("user").userId, { text, style: body.style, type: body.type, npcId: body.npcId ?? body.npc_id, metadata: body.metadata, meta: body.meta }));
+  const body = await c.req.json<Record<string, unknown>>();
+  // Coalesce text/message and npcId/npc_id BEFORE whitelist; handler accepts text + npcId.
+  if (body.text === undefined && body.message !== undefined) body.text = body.message;
+  if (body.npcId === undefined && body.npc_id !== undefined) body.npcId = body.npc_id;
+  if (!body.text) return respond(c, { success: false, error: "Missing 'text' (or 'message') field in narration body." });
+  return respond(c, gm.handleNarrate(c.get("user").userId, pick(body, NARRATE_FIELDS) as Parameters<typeof gm.handleNarrate>[1]));
 });
 
 dm.post("/narrate-to", async (c) => {
-  const body = await c.req.json<{ player_id: string; text: string }>();
-  return respond(c, gm.handleNarrateTo(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  return respond(c, gm.handleNarrateTo(c.get("user").userId, pick(body, NARRATE_TO_FIELDS) as Parameters<typeof gm.handleNarrateTo>[1]));
 });
 
 dm.post("/spawn-encounter", async (c) => {
@@ -315,8 +322,8 @@ dm.post("/override-room-description", async (c) => {
 });
 
 dm.post("/voice-npc", async (c) => {
-  const body = await c.req.json<{ npc_id?: string; name?: string; dialogue?: string; message?: string }>();
-  return respond(c, gm.handleVoiceNpc(c.get("user").userId, body));
+  const body = await c.req.json<Record<string, unknown>>();
+  return respond(c, gm.handleVoiceNpc(c.get("user").userId, pick(body, VOICE_NPC_FIELDS) as Parameters<typeof gm.handleVoiceNpc>[1]));
 });
 
 dm.post("/request-check", async (c) => {
