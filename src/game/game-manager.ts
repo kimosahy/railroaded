@@ -3513,11 +3513,15 @@ export function handlePartyChat(userId: string, params: PartyChatParams): { succ
 
   logEvent(party, "chat", char.id, chatEventData);
 
-  // NOTE: chatMessages includes track: "internal_monologue" emissions —
-  // this is a game-action count, not a player-visible dialogue count.
-  // Filter on emission.track downstream if you need dialogue-only stats.
-  char.chatMessages++;
-  char.totalActionWords += countWords(params.message);
+  // Behavioral metrics: visibility-class metrics (chatMessages, totalActionWords)
+  // exclude track: "internal_monologue" — these count player-visible chat volume.
+  // Behavior-detection metrics (tacticalChats, safetyRefusals, flawOpportunities,
+  // flawActivations) capture signal regardless of track — internal monologue
+  // containing safety bleed-through or flaw activation is itself useful signal.
+  if (emission.track !== "internal_monologue") {
+    char.chatMessages++;
+    char.totalActionWords += countWords(params.message);
+  }
   const memberNames = party.members.map((mid) => characters.get(mid)?.name).filter(Boolean) as string[];
   if (detectTacticalChat(params.message, memberNames)) char.tacticalChats++;
   if (detectSafetyBleedThrough(params.message)) char.safetyRefusals++;

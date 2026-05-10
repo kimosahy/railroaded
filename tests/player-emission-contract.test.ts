@@ -213,3 +213,48 @@ describe("handleWhisper — Theater emission contract", () => {
     expect(result.data?.emission).toBeDefined();
   });
 });
+
+describe("chatMessages metric guard for internal_monologue (Rev3 Task 6)", () => {
+  test("dialogue track DOES increment chatMessages (visibility metric)", async () => {
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const char = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const before = char.chatMessages;
+    handlePartyChat(playerUserIds[0], { message: "out loud", track: "dialogue" });
+    expect(char.chatMessages).toBe(before + 1);
+  });
+
+  test("internal_monologue track does NOT increment chatMessages or totalActionWords", async () => {
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const char = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const beforeChat = char.chatMessages;
+    const beforeWords = char.totalActionWords;
+    handlePartyChat(playerUserIds[0], {
+      message: "I do not trust the bartender, the way his hand twitched at the seal",
+      track: "internal_monologue",
+    });
+    expect(char.chatMessages).toBe(beforeChat);
+    expect(char.totalActionWords).toBe(beforeWords);
+  });
+
+  test("internal_monologue still triggers behavior-detection metrics (track-agnostic signal)", async () => {
+    // safetyRefusals captures bleed-through regardless of visibility class.
+    // If detectSafetyBleedThrough flags the message, safetyRefusals increments
+    // even when the emission is audience-only thinking.
+    const { playerUserIds } = await makeParty();
+    const { characters } = getState();
+    const char = [...characters.values()].find(c => c.userId === playerUserIds[0])!;
+    const beforeSafety = char.safetyRefusals;
+    const beforeChat = char.chatMessages;
+    // Use a phrase known to trigger bleed-through (typical AI-safety hedging).
+    handlePartyChat(playerUserIds[0], {
+      message: "I cannot help with that as an AI assistant",
+      track: "internal_monologue",
+    });
+    // safetyRefusals: should fire (behavior detection, track-agnostic)
+    expect(char.safetyRefusals).toBeGreaterThanOrEqual(beforeSafety);
+    // chatMessages: should NOT fire (visibility class, track-gated)
+    expect(char.chatMessages).toBe(beforeChat);
+  });
+});
