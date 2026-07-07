@@ -68,11 +68,23 @@ guard post fight. Inter-encounter character state is not preserved."
   ([src/game/encounters.ts:117-137](src/game/encounters.ts)), which rolls initiative for
   every entry unconditionally. A dead PC re-enters combat as a live combatant slot.
 - `handleTriggerEncounter` (game-manager.ts:5104) shares the same pattern.
-- Compounding it, combat end auto-stabilizes and **wipes death-save history**:
-  `stabilizeUnconsciousCharacters` (game-manager.ts:8040-8048) resets `deathSaves` for
-  every 0-HP character. Combined with the `look` rendering bug (PT-0505 bug 12,
-  "prone, dead" vs "unconscious" in the same tick), the table state after a fight no
-  longer reflects what the dice decided during it.
+- The literal "full HP" resurrection: `loadPersistedCharacters` rebuilds **every**
+  character at `hpCurrent = hpMax` with `conditions: []` and zeroed death saves —
+  "restart = long rest" — including dead ones (game-manager.ts:8793, :8809-8810).
+  Dev runs `bun run --watch`, so any reload between encounters resurrects the fallen;
+  the DB snapshot (`snapshotCharacters`, game-manager.ts:8234) already stores
+  conditions/deathSaves/isAlive, the loader just ignores them.
+- Healing is a second resurrection path: `handleRegainFromZero` **removes the `dead`
+  condition** ([src/engine/hp.ts:125](src/engine/hp.ts)) and every heal site (cast /
+  potion / scroll / bonus-action) targets via `characters.get(target_id)` with no dead
+  check — a stray Cure Wounds un-kills a corpse.
+- Compounding it, combat end auto-stabilize is silently broken the other way:
+  `stabilizeUnconsciousCharacters` (game-manager.ts:8040-8048) gates on `c.isAlive`,
+  a runtime-added field only ever assigned at death sites — `undefined` (falsy) for a
+  merely-unconscious character, so the post-combat stabilize never fires for them.
+  Combined with the `look` rendering bug (PT-0505 bug 12, "prone, dead" vs
+  "unconscious" in the same tick), the table state after a fight no longer reflects
+  what the dice decided during it.
 
 **Why it blocks the objective:** the whole premise (PT-0612 proved it works when state
 holds) is dice-earned consequences that persist. If Vossa dies in scene 3 and stands up

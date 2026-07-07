@@ -3057,9 +3057,9 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 
   // Apply effect to target if applicable
   if (spell.isHealing && params.target_id && result.totalEffect) {
-    // Find target character
+    // Find target character. Dead targets cannot be healed — death is permanent.
     const target = characters.get(params.target_id);
-    if (target) {
+    if (target && !target.conditions.includes("dead")) {
       const wasDying = target.hpCurrent === 0;
       const hp = applyHealing(
         { current: target.hpCurrent, max: target.hpMax, temp: 0 },
@@ -3820,8 +3820,12 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
   // Data-driven potion handling
   if (itemDef?.category === "potion" && itemDef.healAmount) {
-    const healRoll = roll(itemDef.healAmount);
     const target = params.target_id ? characters.get(params.target_id) : char;
+    if (target?.conditions.includes("dead")) {
+      // Death is permanent — don't consume the potion on a corpse.
+      return { success: false, error: `${target.name} is dead. The fallen cannot be healed.`, reason_code: "BAD_REQUEST" };
+    }
+    const healRoll = roll(itemDef.healAmount);
     if (target) {
       const wasDying = target.hpCurrent === 0;
       const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
@@ -3859,8 +3863,9 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
     // Apply spell effect to target
     if (spell.isHealing && params.target_id && result.totalEffect) {
+      // Dead targets cannot be healed — death is permanent.
       const target = characters.get(params.target_id);
-      if (target) {
+      if (target && !target.conditions.includes("dead")) {
         const wasDying = target.hpCurrent === 0;
         const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
         target.hpCurrent = hp.current;
@@ -4056,8 +4061,9 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       let bonusSaveDC: number | undefined;
 
       if (spell.isHealing && params.target_id && result.totalEffect) {
+        // Dead targets cannot be healed — death is permanent.
         const target = characters.get(params.target_id);
-        if (target) {
+        if (target && !target.conditions.includes("dead")) {
           const wasDying = target.hpCurrent === 0;
           const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
           target.hpCurrent = hp.current;
@@ -5096,10 +5102,14 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
 
   // Compute everything first
   const monsters = spawnMonsters(toSpawn);
+  // Dead party members never enter initiative — consequences persist across
+  // encounters (PT-0505: a PC with 3 failed death saves re-appeared in the
+  // next encounter). Unconscious/stable members stay in initiative; the turn
+  // loop auto-rolls their death saves / skips them.
   const players = party.members
     .map((mid) => characters.get(mid))
-    .filter(Boolean)
-    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores?.dex ?? (c!.abilityScores as any)?.dexterity ?? 10 }));
+    .filter((c): c is NonNullable<typeof c> => Boolean(c) && !c!.conditions.includes("dead"))
+    .map((c) => ({ id: c.id, name: c.name, dexScore: c.abilityScores?.dex ?? (c.abilityScores as any)?.dexterity ?? 10 }));
 
   const initiative = rollEncounterInitiative(players, monsters);
   const slots: InitiativeSlot[] = initiative.map((e) => ({
@@ -8076,7 +8086,11 @@ function persistDmStats(userId: string, increments: { sessionsAsDM?: number; dun
 function stabilizeUnconsciousCharacters(party: GameParty): void {
   for (const mid of party.members) {
     const c = characters.get(mid);
-    if (c && c.isAlive && c.hpCurrent === 0 && c.conditions.includes("unconscious")) {
+    // Gate on the canonical "dead" condition, not the runtime-added isAlive
+    // field — isAlive is only assigned at death sites, so it's undefined
+    // (falsy) for characters who merely dropped unconscious, which silently
+    // disabled post-combat auto-stabilize.
+    if (c && !c.conditions.includes("dead") && c.hpCurrent === 0 && c.conditions.includes("unconscious")) {
       c.conditions = addCondition(c.conditions, "stable");
       c.deathSaves = resetDeathSaves();
     }
@@ -8781,6 +8795,11 @@ export async function loadPersistedCharacters(): Promise<number> {
       const hitDice = row.hitDice as CharacterSheet["hitDice"];
       const equipment = row.equipment as CharacterSheet["equipment"];
 
+      // Death survives restarts: a dead character must never come back at
+      // full HP with cleared conditions (PT-0505 "alive at full HP" bug).
+      // Living characters get the "restart = long rest" reset as before.
+      const isDead = row.isAlive === false || (row.conditions ?? []).includes("dead");
+
       const char: GameCharacter = {
         name: row.name,
         race: row.race,
@@ -8790,7 +8809,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         gold: row.gold ?? 0,
         abilityScores,
         hpMax: row.hpMax,
-        hpCurrent: row.hpMax, // restart = long rest, full HP
+        hpCurrent: isDead ? 0 : row.hpMax, // restart = long rest, full HP (unless dead)
         ac: row.ac,
         spellSlots,
         hitDice,
@@ -8806,8 +8825,10 @@ export async function loadPersistedCharacters(): Promise<number> {
         id: charId,
         userId,
         partyId: null, // no active party after restart
-        conditions: [],
-        deathSaves: { successes: 0, failures: 0 },
+        conditions: isDead ? ["dead"] : [],
+        deathSaves: isDead
+          ? (row.deathSaves as CharacterSheet["deathSaves"] ?? { successes: 0, failures: 3 })
+          : { successes: 0, failures: 0 },
         dbCharId: row.id,
         flaw: row.flaw ?? "",
         bond: row.bond ?? "",

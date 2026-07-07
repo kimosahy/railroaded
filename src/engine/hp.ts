@@ -115,14 +115,14 @@ export function handleDropToZero(conditions: Condition[]): Condition[] {
 /**
  * When a character is stabilized or regains HP from 0.
  * Removes unconscious (and prone if healed, not if stabilized).
+ * Does NOT remove "dead" — death is permanent (design rule); healing
+ * cannot resurrect. Callers must not heal dead targets.
  */
 export function handleRegainFromZero(
   conditions: Condition[],
   healed: boolean
 ): Condition[] {
   let updated = removeCondition(conditions, "unconscious");
-  // Remove dead/stable states
-  updated = removeCondition(updated, "dead");
   updated = removeCondition(updated, "stable");
   // Only remove prone if actually healed (not just stabilized)
   if (healed) {
