@@ -103,7 +103,14 @@ export function getAllowedActions(
     return ["get_status", "get_available_actions"];
   }
   // Unconscious at 0 HP: death saves on their turn. Otherwise just status.
+  // Stabilized characters cannot roll death saves (handleDeathSave rejects
+  // them) — advertising death_save to them caused agent stalls (PT-0612).
   if (conditions.includes("unconscious") && (hp === undefined || hp <= 0)) {
+    if (conditions.includes("stable")) {
+      return isCurrentTurn
+        ? ["end_turn", "get_status", "get_available_actions"]
+        : ["get_status", "get_available_actions"];
+    }
     return isCurrentTurn
       ? ["death_save", "end_turn", "get_status", "get_available_actions"]
       : ["get_status", "get_available_actions"];

@@ -53,7 +53,7 @@ import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice }
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
 import { castSpell, spellSaveDC, spellAttackBonus, getMaxSpellSlots, type SpellDefinition } from "../engine/spells.ts";
-import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
+import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP, type DeathSaveResult } from "../engine/death.ts";
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass, hitDieSidesForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
@@ -1283,6 +1283,26 @@ function advanceTurnSkipDead(party: GameParty): void {
       const char = characters.get(current.entityId);
       if (char && char.conditions.includes("dead")) {
         party.session = removeCombatant(party.session, current.entityId);
+        continue;
+      }
+      // Downed PCs never hold the turn (PT-0612 soft-lock): stable PCs are
+      // skipped like asleep monsters; dying PCs auto-roll their death save —
+      // RAW: a dying creature's turn IS its death save — and the turn passes.
+      if (char && char.conditions.includes("unconscious")) {
+        if (char.conditions.includes("stable")) {
+          logEvent(party, "turn_auto_advanced", char.id, {
+            reason: "unconscious_stable",
+            characterName: char.name,
+          });
+          party.session = nextTurn(party.session);
+          continue;
+        }
+        const result = performDeathSave(party, char, { auto: true });
+        // Death may have ended combat (TPK / all players dead) inside the save
+        if (!party.session || party.session.phase !== "combat") return;
+        if (result.revivedWith1HP) break; // nat 20 — back on their feet, their turn
+        if (result.dead) continue; // already removed from initiative by performDeathSave
+        party.session = nextTurn(party.session);
         continue;
       }
     }
@@ -4410,6 +4430,30 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
+  const result = performDeathSave(party, char);
+
+  return {
+    success: true,
+    data: {
+      naturalRoll: result.naturalRoll,
+      success: result.success,
+      deathSaves: result.deathSaves,
+      stabilized: result.stabilized,
+      dead: result.dead,
+      revivedWith1HP: result.revivedWith1HP,
+    },
+  };
+}
+
+/**
+ * Roll a death save for a dying character and apply all consequences:
+ * conditions, nat-20 revival, event log, party broadcast, DM notification,
+ * and (on death) initiative removal + partial XP + TPK handling.
+ * Shared by the agent-initiated handleDeathSave and the auto-roll in
+ * advanceTurnSkipDead (a dying creature's turn IS its death save).
+ */
+function performDeathSave(party: GameParty, char: GameCharacter, opts?: { auto?: boolean }): DeathSaveResult {
+  const auto = opts?.auto ?? false;
   const result = deathSave(char.deathSaves);
   char.deathSaves = result.deathSaves;
   char.conditions = applyDeathSaveConditions(char.conditions, result);
@@ -4427,6 +4471,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     stabilized: result.stabilized,
     dead: result.dead,
     revivedWith1HP: result.revivedWith1HP,
+    auto,
   });
 
   // Broadcast death save result to entire party
@@ -4440,6 +4485,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     stabilized: result.stabilized,
     dead: result.dead,
     revivedWith1HP: result.revivedWith1HP,
+    auto,
   });
 
   // Notify DM explicitly on stabilize or death
@@ -4494,17 +4540,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     }
   }
 
-  return {
-    success: true,
-    data: {
-      naturalRoll: result.naturalRoll,
-      success: result.success,
-      deathSaves: result.deathSaves,
-      stabilized: result.stabilized,
-      dead: result.dead,
-      revivedWith1HP: result.revivedWith1HP,
-    },
-  };
+  return result;
 }
 
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
