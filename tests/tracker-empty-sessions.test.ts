@@ -5,9 +5,11 @@ import { join } from "path";
 const html = readFileSync(join(__dirname, "../website/tracker.html"), "utf-8");
 
 describe("tracker empty session handling", () => {
-  test("renderSessions filters out inactive sessions with 0 events", () => {
-    // Should filter sessions: keep active OR eventCount > 0
-    expect(html).toContain("sessions.filter(s => s.isActive || (s.eventCount || 0) > 0)");
+  test("renderSessions filters out inactive sessions with few events", () => {
+    // Keep active sessions, or inactive ones with enough events to be worth
+    // showing (threshold raised from >0 to >=3; assertion updated in the
+    // 2026-07-07 finish audit).
+    expect(html).toContain("sessions.filter(s => s.isActive || (s.eventCount || 0) >= 3)");
   });
 
   test("active sessions with 0 events show 'Session starting…' instead of '0 events'", () => {

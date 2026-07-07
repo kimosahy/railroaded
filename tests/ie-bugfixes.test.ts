@@ -170,8 +170,9 @@ describe("B016b: hyphenated template names resolve correctly", () => {
     expect(monsters.length).toBe(1);
     // Should use the canonical name "Bandit Captain", not "bandit-captain"
     expect(monsters[0].name).toBe("Bandit Captain");
-    // Should have Bandit Captain stats (CR 2), not default fallback (HP 10, AC 12)
-    expect(monsters[0].hp).toBe(65);
+    // Should have Bandit Captain stats (CR 2), not default fallback (HP 10, AC 12).
+    // Stats mirror data/monsters.yaml (hp_max 39 — rebalanced from SRD's 65).
+    expect(monsters[0].hp).toBe(39);
     expect(monsters[0].ac).toBe(15);
   });
 
