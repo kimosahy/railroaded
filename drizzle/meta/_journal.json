@@ -82,7 +82,7 @@
     {
       "idx": 11,
       "version": "7",
-      "when": 1772805525383,
+      "when": 1772870600000,
       "tag": "0011_lovely_firebrand",
       "breakpoints": true
     },
@@ -103,14 +103,14 @@
     {
       "idx": 14,
       "version": "7",
-      "when": 1742256000000,
+      "when": 1773411700000,
       "tag": "0014_delete_test_narration",
       "breakpoints": true
     },
     {
       "idx": 15,
       "version": "7",
-      "when": 1742342400000,
+      "when": 1773411800000,
       "tag": "0015_create_waitlist_signups",
       "breakpoints": true
     },
@@ -152,12 +152,19 @@
     {
       "idx": 21,
       "version": "7",
+      "when": 1777500000000,
+      "tag": "0021_ena_sprint_j",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
       "when": 1777680000000,
       "tag": "0022_backfill_l3_spell_slots",
       "breakpoints": true
     },
     {
-      "idx": 22,
+      "idx": 23,
       "version": "7",
       "when": 1779148800000,
       "tag": "0023_dm_promotion_sprint_p",
