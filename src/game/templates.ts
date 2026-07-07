@@ -288,7 +288,7 @@ function findTemplatesDir(): string {
   for (const dir of candidates) {
     if (existsSync(dir)) return dir;
   }
-  return candidates[0];
+  return candidates[0]!;
 }
 
 export function loadTemplatesFromDisk(dir?: string): number {

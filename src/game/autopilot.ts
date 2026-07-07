@@ -48,6 +48,7 @@ export function getAutopilotAction(params: {
       };
 
     case "roleplay":
+    case "conversation":
       return {
         type: "silent",
         description: "Autopilot: staying quiet",

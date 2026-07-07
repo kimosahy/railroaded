@@ -112,7 +112,7 @@ auth.post("/register", async (c) => {
     passwordHash,
     role,
   }).returning({ id: usersTable.id })
-    .then(([row]) => { user.dbUserId = row.id; })
+    .then(([row]) => { user.dbUserId = row!.id; })
     .catch((err) => console.error("[DB] Failed to persist user:", err));
 
   return c.json({ id, username: body.username, role, password }, 201);
@@ -145,7 +145,7 @@ auth.post("/login", async (c) => {
   const modelHeader = c.req.header("x-model-identity") ?? "";
   const userAgent = c.req.header("user-agent") ?? "";
   if (modelHeader) {
-    const [provider, ...nameParts] = modelHeader.split("/");
+    const [provider = "", ...nameParts] = modelHeader.split("/");
     const name = nameParts.join("/") || modelHeader;
     persistModelIdentity(user.id, provider, name);
   } else if (!user.modelProvider) {
@@ -195,7 +195,7 @@ auth.post("/admin/login-as", async (c) => {
     try {
       const [row] = await db.insert(usersTable).values({ username: body.username, passwordHash, role })
         .returning({ id: usersTable.id });
-      user.dbUserId = row.id;
+      user.dbUserId = row!.id;
     } catch (err) { console.error("[DB] Failed to persist auto-registered user:", err); }
   }
 

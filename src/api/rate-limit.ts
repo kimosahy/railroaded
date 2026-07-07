@@ -37,6 +37,7 @@ function getTickSeconds(phase: SessionPhase): number {
       return 60;
     case "roleplay":
     case "rest":
+    case "conversation":
       return 0; // no rate limit
   }
 }

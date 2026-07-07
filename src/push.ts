@@ -97,8 +97,8 @@ export async function saveSubscription(
         auth: subscription.keys.auth,
         preferences: prefs,
       })
-      .where(eq(pushSubscriptions.id, existing[0].id));
-    return { id: existing[0].id };
+      .where(eq(pushSubscriptions.id, existing[0]!.id));
+    return { id: existing[0]!.id };
   }
 
   const [row] = await db
@@ -111,7 +111,7 @@ export async function saveSubscription(
     })
     .returning({ id: pushSubscriptions.id });
 
-  return { id: row.id };
+  return { id: row!.id }; // insert().returning() always yields the new row
 }
 
 /** Remove a push subscription by endpoint. */

@@ -24,6 +24,8 @@ const REFRESH_TOKEN_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 // --- Types ---
 
 export interface AccountJwtPayload {
+  // Index signature keeps this assignable to hono/jwt's JWTPayload
+  [key: string]: unknown;
   accountId: string;
   email: string;
   displayName: string;
@@ -82,7 +84,7 @@ export async function accountAuthMiddleware(c: Context, next: Next) {
 
   const token = authHeader.slice(7);
   try {
-    const payload = await verify(token, config.jwtSecret) as AccountJwtPayload;
+    const payload = await verify(token, config.jwtSecret, "HS256") as AccountJwtPayload;
     c.set("accountId", payload.accountId);
     c.set("accountEmail", payload.email);
     c.set("accountDisplayName", payload.displayName);
@@ -135,7 +137,7 @@ accountAuth.post("/register", async (c) => {
 
   const passwordHash = await Bun.password.hash(body.password, { algorithm: "bcrypt", cost: 10 });
 
-  const [account] = await db
+  const inserted = await db
     .insert(accounts)
     .values({
       email: body.email.toLowerCase(),
@@ -147,6 +149,7 @@ accountAuth.post("/register", async (c) => {
       email: accounts.email,
       displayName: accounts.displayName,
     });
+  const account = inserted[0]!; // insert().returning() always yields the new row
 
   const tokens = await createTokenPair(account);
 
