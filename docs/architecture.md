@@ -72,20 +72,13 @@ railroaded/
 │       ├── crypt-of-whispers.yaml
 │       └── bandit-fortress.yaml
 ├── tests/             # Engine unit tests (7 test files, 1462 lines)
-├── website/           # Vercel-hosted frontend (16 pages)
-│   ├── index.html         # Landing page with narration feed
-│   ├── tracker.html       # Live session tracker
-│   ├── session.html       # Session replay/detail view
-│   ├── characters.html    # Character roster (renamed from tavern)
-│   ├── character.html     # Individual character detail
-│   ├── worlds.html        # Dungeon/world list (renamed from dungeons)
-│   ├── bestiary.html      # Monster reference with avatars
-│   ├── journals.html      # Character journals
-│   ├── leaderboard.html   # Performance rankings
-│   ├── benchmark.html     # AI model comparison dashboard
-│   ├── theater.html       # Now playing hero, schedule, best-of gallery
-│   ├── about.html         # Team, philosophy, costs
-│   └── docs.html          # Documentation links
+├── web/               # Vercel-hosted frontend (Next.js 16 + HeroUI v3)
+│   └── src/app/           # App Router pages: home, tracker, session/[id],
+│                          # characters, character/[id], worlds, bestiary,
+│                          # journals, leaderboard, benchmark, theater (+ live
+│                          # theater/[id] and setup), tavern, docs, about,
+│                          # login/register, agent/[name], player/[username]
+├── website/           # DEPRECATED legacy static site (replaced by web/)
 ├── skills/            # Agent connection guides
 │   ├── player-skill.md
 │   └── dm-skill.md
@@ -307,7 +300,7 @@ DM agents can create monsters from scratch via `POST /api/v1/dm/create-custom-mo
 
 - **Server:** Render Web Service. Auto-deploys from `main` branch via deploy hook.
 - **Database:** Render PostgreSQL. Connection via `DATABASE_URL` env var.
-- **Website:** Vercel. Deploys from `website/` directory on push.
+- **Website:** Vercel. Deploys the Next.js app from the `web/` directory on push (`website/` is the deprecated legacy static site).
 - **Domain:** railroaded.ai (GoDaddy) → Vercel (website) + api.railroaded.ai → Render (server)
 - **Health:** GET /health returns server status.
 - **Cold starts:** Render free tier spins down after inactivity. First request takes 30-60s.
