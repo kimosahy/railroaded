@@ -3364,6 +3364,9 @@ export function handleMove(userId: string, params: { direction_or_target: string
     return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}`, reason_code: "BAD_REQUEST" };
   }
 
+  // Pre-move visited state — room_enter events carry roomId + revisit so
+  // scenes have stable identity in the event stream (feeds the story export).
+  const revisit = party.dungeonState.rooms.get(target.roomId)?.visited ?? false;
   const moveResult = moveToRoom(party.dungeonState, target.roomId);
   if (!moveResult.ok) {
     // TODO Pass 2: assign specific reason_code
@@ -3373,7 +3376,12 @@ export function handleMove(userId: string, params: { direction_or_target: string
   party.dungeonState = moveResult.state;
   const room = getCurrentRoom(moveResult.state);
 
-  logEvent(party, "room_enter", char.id, { roomName: room?.name });
+  logEvent(party, "room_enter", char.id, {
+    roomName: room?.name,
+    roomId: room?.id,
+    description: room?.description,
+    revisit,
+  });
 
   return {
     success: true,
@@ -4975,6 +4983,17 @@ export function handleNarrate(userId: string, params: NarrateParams): { success:
     eventData._meta = params.meta;
   }
 
+  // Scene canon: the first scene-narration delivered in a room becomes its
+  // established lore, re-served on revisit (get_room_state / advance_scene)
+  // so the DM builds on it instead of re-inventing the premise (PT-0505:
+  // "room descriptions regenerate per-call — no traceable arc is possible").
+  if (narType === "scene" && party.dungeonState) {
+    const room = getCurrentRoom(party.dungeonState);
+    if (room && !room.canonNarration) {
+      room.canonNarration = params.text;
+    }
+  }
+
   logEvent(party, "narration", null, eventData);
   return {
     success: true,
@@ -5213,6 +5232,9 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
 
   const oldDescription = room.description;
   room.description = params.description;
+  // An explicit override IS the room's new established lore — replace canon
+  // so revisits serve the rewritten room, not the pre-override narration.
+  room.canonNarration = params.description;
 
   logEvent(party, "room_override", null, { room: room.name, oldDescription, newDescription: params.description });
 
@@ -5741,13 +5763,30 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   }
 
   if (nextRoom && party.dungeonState) {
+    // Capture pre-move visited state: moveToRoom flips it, and revisits must
+    // be announced so the DM re-serves established lore instead of new lore.
+    const revisit = party.dungeonState.rooms.get(nextRoom)?.visited ?? false;
     const moveResult = moveToRoom(party.dungeonState, nextRoom);
     if (moveResult.ok) {
       party.dungeonState = moveResult.state;
       const room = getCurrentRoom(moveResult.state);
-      logEvent(party, "room_enter", null, { roomName: room?.name });
+      logEvent(party, "room_enter", null, {
+        roomName: room?.name,
+        roomId: room?.id,
+        description: room?.description,
+        revisit,
+      });
       const newExits = getAvailableExits(moveResult.state).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId }));
-      return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase, exits: newExits } };
+      return {
+        success: true,
+        data: {
+          advanced: true, room: room?.name, description: room?.description,
+          phase: party.session?.phase, exits: newExits,
+          revisit,
+          canon_narration: room?.canonNarration ?? null,
+          ...(revisit && room?.canonNarration ? { canon_note: "The party has been here before. Its lore is established in canon_narration — stay consistent with it." } : {}),
+        },
+      };
     }
     if (moveResult.reason === "no_exit") {
       const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
@@ -5865,13 +5904,20 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
   }
 
   // Surface session theme so DM agent can recontextualize room descriptions
+  // — but only for FIRST visits. Once a room has canon (established lore),
+  // the DM must build on it, not re-invent it (PT-0505 lore-regen bug).
   const dmMeta = (party as GameParty & { dmMetadata?: Record<string, unknown> }).dmMetadata;
   const sessionTheme = dmMeta && Object.keys(dmMeta).length > 0 ? dmMeta : null;
 
   return {
     success: true,
     data: {
-      room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
+      room: room ? {
+        name: room.name, description: room.description, type: room.type, features: room.features,
+        visited: room.visited,
+        canon_narration: room.canonNarration ?? null,
+        ...(room.canonNarration ? { canon_note: "This room's lore is established. Stay consistent with canon_narration — reference it, evolve it, never contradict or replace it." } : {}),
+      } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
       monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       suggestedEncounter,
