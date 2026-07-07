@@ -792,7 +792,9 @@ export function SessionClient({ sessionId }: { sessionId: string }) {
 
   const fetchNarrations = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/spectator/narrations?sessionId=${sessionId}&limit=20`);
+      // Path param, not query — /narrations ignores ?sessionId and would
+      // return the global feed here.
+      const res = await fetch(`${API_BASE}/spectator/narrations/${sessionId}`);
       if (res.ok) {
         const data = (await res.json()) as { narrations: Narration[] };
         setNarrations(data.narrations ?? []);

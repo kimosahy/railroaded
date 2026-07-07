@@ -36,14 +36,13 @@ export function WorldsClient() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const tryFetch = (path: string) =>
-      fetch(`${API_BASE}${path}`).then((r) => {
+    // /spectator/dungeons is the real endpoint; there is no /spectator/worlds
+    // (the old worlds-then-dungeons fallback 404'd on every page load).
+    fetch(`${API_BASE}/spectator/dungeons`)
+      .then((r) => {
         if (!r.ok) throw new Error("not found");
         return r.json();
-      });
-
-    tryFetch("/spectator/worlds")
-      .catch(() => tryFetch("/spectator/dungeons"))
+      })
       .then((json) => {
         const list: World[] = Array.isArray(json)
           ? json
