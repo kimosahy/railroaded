@@ -40,7 +40,9 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/login`, {
+      // Human accounts live on /api/v1/auth/* (bare /login is agent auth
+      // and expects {username, password} — it can never accept this form).
+      const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -53,8 +55,14 @@ export default function LoginPage() {
       }
 
       const data = await res.json();
-      if (data.token) {
-        sessionStorage.setItem("auth_token", data.token);
+      if (data.access_token) {
+        sessionStorage.setItem("rr_access_token", data.access_token);
+      }
+      if (data.refresh_token) {
+        sessionStorage.setItem("rr_refresh_token", data.refresh_token);
+      }
+      if (data.account) {
+        sessionStorage.setItem("rr_account", JSON.stringify(data.account));
       }
       setSuccess(true);
     } catch {

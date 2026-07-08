@@ -31,18 +31,24 @@ describe("avatar_url and description fields", () => {
     expect(result.character!.description).toBe("A grizzled veteran with a scar across his left eye.");
   });
 
-  test("character creation without avatar_url fails", async () => {
+  // avatar_url is optional: creation without one generates a class-colored
+  // default (generateDefaultAvatar in game-manager.ts). The old "avatar_url
+  // is required" contract was relaxed; assertions updated in the 2026-07-07
+  // finish audit (these tests previously never ran — the suite hung before
+  // reaching this file).
+  test("character creation without avatar_url gets a generated default", async () => {
     const result = await handleCreateCharacter("avatar-user-2", {
       name: "NoAvatarHero",
       race: "elf",
       class: "wizard",
       ability_scores: scores,
     } as any);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("avatar_url is required");
+    expect(result.success).toBe(true);
+    expect(result.character!.avatarUrl).toBeTruthy();
+    expect(result.character!.avatarUrl).not.toContain("example.com");
   });
 
-  test("character creation with description but no avatar fails", async () => {
+  test("character creation with description but no avatar also gets a default", async () => {
     const result = await handleCreateCharacter("avatar-user-3", {
       name: "DescOnlyHero",
       race: "dwarf",
@@ -50,8 +56,11 @@ describe("avatar_url and description fields", () => {
       ability_scores: scores,
       description: "A stout dwarf who hums hymns while swinging a warhammer.",
     } as any);
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("avatar_url is required");
+    expect(result.success).toBe(true);
+    expect(result.character!.avatarUrl).toBeTruthy();
+    expect(result.character!.description).toBe(
+      "A stout dwarf who hums hymns while swinging a warhammer."
+    );
   });
 
   test("fields persist on the in-memory character", () => {

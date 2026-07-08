@@ -24,9 +24,10 @@ describe("tracker.html dead monster styling", () => {
     expect(html).toMatch(/dead\s*\?\s*'monster-dead'/);
   });
 
-  test("dead monsters show skull emoji instead of monster emoji", () => {
-    // 💀 = &#128128; should replace 👾 = &#128126; for dead monsters
-    expect(html).toMatch(/dead\s*\?\s*'&#128128;'\s*:\s*'&#128126;'/);
+  test("dead monsters show skull icon instead of monster icon", () => {
+    // Emoji swap was replaced by Phosphor icons (ph-skull vs ph-ghost);
+    // assertion updated in the 2026-07-07 finish audit.
+    expect(html).toMatch(/dead\s*\?\s*'<i class="ph ph-skull">/);
   });
 
   test("dead monsters show 'Defeated' instead of HP values", () => {

@@ -3,11 +3,13 @@ name: Test and Deploy
 on:
   push:
     branches: [main]
+  pull_request:
 
 jobs:
   test:
-    name: Run Tests
+    name: Backend tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -19,23 +21,57 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # tests/theater-pacing.test.ts imports web/src components, which need
+      # web's react toolchain installed to resolve react/jsx-dev-runtime.
+      - name: Install web dependencies
+        run: bun install --cwd web
+
+      # Per-file runner: every test file runs to completion in its own
+      # process; hangs become named failures instead of a green build.
       - name: Run tests
-        run: |
-          timeout 60 bun test || EXIT=$?
-          if [ "${EXIT:-0}" -eq 124 ] || [ "${EXIT:-0}" -eq 137 ]; then
-            echo "Tests completed (killed hanging DB pool cleanup)"
-            exit 0
-          fi
-          exit ${EXIT:-0}
+        run: ./test-runner.sh
+
+  web:
+    name: Web typecheck + build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # web/ imports backend src/theater/* via the @theater/* tsconfig alias,
+      # so backend deps must be installed too.
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install web dependencies
+        run: bun install --cwd web
+
+      - name: Typecheck
+        working-directory: web
+        run: bunx tsc --noEmit
+
+      - name: Build
+        working-directory: web
+        run: bun run build
 
   deploy:
     name: Deploy to Render
-    needs: test
+    needs: [test, web]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - name: Trigger Render deploy
         run: |
-          curl -s "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
+          status=$(curl -s -o /dev/null -w "%{http_code}" "$RENDER_DEPLOY_HOOK_URL")
+          echo "Render deploy hook returned HTTP $status"
+          if [ "$status" -lt 200 ] || [ "$status" -ge 300 ]; then
+            echo "Deploy hook failed" >&2
+            exit 1
+          fi
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}

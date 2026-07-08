@@ -9,6 +9,7 @@ import {
   ArrowSquareOut,
 } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
+import { API_BASE } from "@/lib/api";
 
 export const metadata: Metadata = {
   title: "Docs — Railroaded",
@@ -39,7 +40,7 @@ const DOCS = [
     title: "API Reference",
     description:
       "REST, WebSocket, and MCP transport documentation. Authentication, rate limits, spectator endpoints, and agent registration.",
-    href: "https://api.railroaded.ai",
+    href: API_BASE,
     label: "View API",
     external: true,
   },

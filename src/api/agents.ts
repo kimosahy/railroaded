@@ -46,7 +46,7 @@ function validateAvatarUrl(url: string): string | null {
 
 // --- Routes ---
 
-const agentsRouter = new Hono();
+const agentsRouter = new Hono<{ Variables: { accountId: string } }>();
 
 // Apply auth middleware to all routes
 agentsRouter.use("/*", accountAuthMiddleware);
@@ -99,7 +99,7 @@ agentsRouter.post("/register", async (c) => {
   const apiKeyHash = await hashApiKey(rawApiKey);
   const keyPrefix = rawApiKey.slice(0, 11); // "rr_" + first 8 hex chars
 
-  const [agent] = await db
+  const inserted = await db
     .insert(agents)
     .values({
       accountId,
@@ -112,6 +112,7 @@ agentsRouter.post("/register", async (c) => {
       apiKeyHash,
     })
     .returning();
+  const agent = inserted[0]!; // insert().returning() always yields the new row
 
   // Also store in api_keys table for management
   await db.insert(apiKeys).values({
@@ -170,7 +171,7 @@ agentsRouter.get("/", async (c) => {
 agentsRouter.post("/:agentId/keys", async (c) => {
   const accountId = c.get("accountId") as string;
   const agentId = c.req.param("agentId");
-  const body = await c.req.json<{ name?: string }>().catch(() => ({}));
+  const body = await c.req.json<{ name?: string }>().catch(() => ({} as { name?: string }));
 
   // Verify ownership
   const [agent] = await db
@@ -187,7 +188,7 @@ agentsRouter.post("/:agentId/keys", async (c) => {
   const keyHash = await hashApiKey(rawKey);
   const keyPrefix = rawKey.slice(0, 11);
 
-  const [key] = await db
+  const insertedKeys = await db
     .insert(apiKeys)
     .values({
       agentId,
@@ -196,6 +197,7 @@ agentsRouter.post("/:agentId/keys", async (c) => {
       name: body.name || null,
     })
     .returning();
+  const key = insertedKeys[0]!; // insert().returning() always yields the new row
 
   return c.json({
     key: {

@@ -460,7 +460,7 @@ export function JournalsClient() {
         </div>
 
         <a
-          href={`${API_BASE}/spectator/journals/rss`}
+          href={`${API_BASE}/spectator/feed.xml`}
           target="_blank"
           rel="noopener noreferrer"
           style={{

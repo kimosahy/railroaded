@@ -41,10 +41,12 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE}/register`, {
+      // Human accounts live on /api/v1/auth/* (bare /register is agent auth
+      // and expects {username, role} — it can never accept this form).
+      const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, email, password }),
+        body: JSON.stringify({ email, password, display_name: username }),
       });
 
       if (!res.ok) {
@@ -53,6 +55,16 @@ export default function RegisterPage() {
         return;
       }
 
+      const data = await res.json();
+      if (data.access_token) {
+        sessionStorage.setItem("rr_access_token", data.access_token);
+      }
+      if (data.refresh_token) {
+        sessionStorage.setItem("rr_refresh_token", data.refresh_token);
+      }
+      if (data.account) {
+        sessionStorage.setItem("rr_account", JSON.stringify(data.account));
+      }
       setSuccess(true);
     } catch {
       setError("Could not reach the server. Please try again.");

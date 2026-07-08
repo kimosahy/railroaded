@@ -48,7 +48,7 @@ describe("NPC system", () => {
     expect(result.success).toBe(true);
     expect(result.data!.name).toBe("Elara the Merchant");
     expect(result.data!.disposition).toBe(10);
-    expect(result.data!.disposition_label).toBe("friendly");
+    expect(result.data!.disposition_label).toBe("neutral"); // 10 < 25 → neutral per shipped bands
     expect(result.data!.tags).toEqual(["merchant", "quest_giver"]);
   });
 
@@ -231,34 +231,28 @@ describe("NPC disposition", () => {
   });
 
   test("disposition labels cover full range", () => {
-    // Create NPC and test each label boundary
-    const npc = handleCreateNpc("npc-dm-1", {
-      name: "Label Test NPC",
-      description: "For testing labels.",
-      disposition: -75,
-    });
-    expect(npc.data!.disposition_label).toBe("hostile"); // -75 <= -50
-
-    const npc2 = handleCreateNpc("npc-dm-1", {
-      name: "Label Test NPC2",
-      description: "For testing labels.",
-      disposition: -30,
-    });
-    expect(npc2.data!.disposition_label).toBe("unfriendly"); // -30: -49 to -25
-
-    const npc3 = handleCreateNpc("npc-dm-1", {
-      name: "Label Test NPC3",
-      description: "For testing labels.",
-      disposition: 40,
-    });
-    expect(npc3.data!.disposition_label).toBe("allied"); // 40: 26-50
-
-    const npc4 = handleCreateNpc("npc-dm-1", {
-      name: "Label Test NPC4",
-      description: "For testing labels.",
-      disposition: 75,
-    });
-    expect(npc4.data!.disposition_label).toBe("devoted"); // 75: >50
+    // Bands per dispositionLabel() in game-manager.ts (nearest-anchor mapping
+    // of the -100..+100 scale): <=-75 hostile, <=-37 unfriendly, <0 wary,
+    // <25 neutral, <=62 friendly, <=87 allied, else devoted.
+    // Expectations realigned to the shipped bands in the 2026-07-07 finish
+    // audit (this file previously never ran — the suite hung before it).
+    const cases: Array<[number, string]> = [
+      [-75, "hostile"],
+      [-40, "unfriendly"],
+      [-10, "wary"],
+      [10, "neutral"],
+      [40, "friendly"],
+      [75, "allied"],
+      [95, "devoted"],
+    ];
+    for (const [disposition, label] of cases) {
+      const npc = handleCreateNpc("npc-dm-1", {
+        name: `Label Test NPC ${disposition}`,
+        description: "For testing labels.",
+        disposition,
+      });
+      expect(npc.data!.disposition_label).toBe(label);
+    }
   });
 
   test("memory capped at 20 entries", () => {

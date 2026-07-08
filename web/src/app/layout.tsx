@@ -50,12 +50,31 @@ const cormorantGaramond = Cormorant_Garamond({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://railroaded.ai"),
   title: "Railroaded — AI Agents Play D&D",
   description:
     "AI agents play Dungeons & Dragons autonomously. No humans in the loop. Watch live sessions, read journals, browse the bestiary.",
   icons: {
     icon: "/favicon.ico",
     apple: "/apple-touch-icon.png",
+  },
+  manifest: "/site.webmanifest",
+  openGraph: {
+    title: "Railroaded — AI Agents Play D&D",
+    description:
+      "AI agents play Dungeons & Dragons autonomously. No humans in the loop. Watch live sessions, read journals, browse the bestiary.",
+    url: "https://railroaded.ai",
+    siteName: "Railroaded",
+    images: [{ url: "/og-share.png", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    site: "@poormetheus",
+    title: "Railroaded — AI Agents Play D&D",
+    description:
+      "AI agents play Dungeons & Dragons autonomously. No humans in the loop.",
+    images: ["/og-share.png"],
   },
 };
 

@@ -7,8 +7,8 @@ import { PartyList } from "@/components/tracker/party-list";
 import { QueueStatusPanel } from "@/components/tracker/queue-status";
 import { EventFeed } from "@/components/tracker/event-feed";
 import { NarratorPanel } from "@/components/tracker/narrator-panel";
-import { Button, Chip, toast } from "@heroui/react";
-import { ShareNetwork, Eye } from "@phosphor-icons/react";
+import { Button, toast } from "@heroui/react";
+import { ShareNetwork } from "@phosphor-icons/react";
 
 // ─── Shared types (exported for sub-components) ───────────────────────────────
 
@@ -93,8 +93,6 @@ export function TrackerClient() {
 
   const SESSIONS_LIMIT = 20;
 
-  const [spectatorCount, setSpectatorCount] = useState<number | null>(null);
-  const [spectatorEndpointMissing, setSpectatorEndpointMissing] = useState(false);
 
   // ── Fetchers ────────────────────────────────────────────────────────────────
 
@@ -261,46 +259,9 @@ export function TrackerClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSessionId]);
 
-  // ── Spectator / viewer count (hide silently on 404) ──────────────────
-  useEffect(() => {
-    if (!selectedSessionId || spectatorEndpointMissing) {
-      setSpectatorCount(null);
-      return;
-    }
-    let cancelled = false;
-    const fetchCount = async () => {
-      try {
-        const res = await fetch(
-          `${API_BASE}/spectator/sessions/${selectedSessionId}/count`,
-        );
-        if (cancelled) return;
-        if (res.status === 404) {
-          setSpectatorEndpointMissing(true);
-          setSpectatorCount(null);
-          return;
-        }
-        if (!res.ok) return;
-        const data = (await res.json()) as { count?: number; viewers?: number; spectators?: number };
-        const n =
-          typeof data.count === "number"
-            ? data.count
-            : typeof data.viewers === "number"
-              ? data.viewers
-              : typeof data.spectators === "number"
-                ? data.spectators
-                : null;
-        if (n != null) setSpectatorCount(n);
-      } catch {
-        /* network errors silent */
-      }
-    };
-    fetchCount();
-    const id = setInterval(fetchCount, 10_000);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [selectedSessionId, spectatorEndpointMissing]);
+  // Viewer count removed: it polled GET /spectator/sessions/:id/count every
+  // 10s, an endpoint that does not exist on the backend — the feature never
+  // rendered. Restore alongside a real backend counter if one lands.
 
   // ── Share session ────────────────────────────────────────────────────────────
   const handleShareSession = useCallback(async () => {
@@ -463,29 +424,6 @@ export function TrackerClient() {
           minHeight: "calc(100dvh - 64px - 6rem)",
         }}
       >
-        {selectedSession && (
-          <div
-            className="flex items-center gap-2 flex-wrap"
-            style={{ marginBottom: "0.35rem", paddingLeft: "0.2rem" }}
-          >
-            {spectatorCount != null && spectatorCount > 0 && (
-              <Chip
-                size="sm"
-                variant="secondary"
-                style={{
-                  fontSize: "0.72rem",
-                  fontFamily: "var(--font-heading)",
-                  letterSpacing: "0.04em",
-                }}
-              >
-                <span className="flex items-center gap-1">
-                  <Eye size={12} />
-                  {spectatorCount} watching
-                </span>
-              </Chip>
-            )}
-          </div>
-        )}
         <EventFeed
           events={events}
           session={selectedSession}
