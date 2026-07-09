@@ -31,6 +31,7 @@ import {
   npcs as npcsTable,
 } from "../db/schema.ts";
 import { getModelIdentity } from "./auth.ts";
+import { composeStoryMarkdown, type StorySessionMeta } from "../game/story-export.ts";
 import { getSessionSetup, getEmissionHistory } from "../theater/setup-store.ts";
 import { eq, desc, count, asc, isNotNull, max, and, inArray, sql, avg, lt } from "drizzle-orm";
 
@@ -1649,6 +1650,130 @@ spectator.get("/sessions/:id/events", async (c) => {
     console.error("[DB] Failed to fetch session events:", err);
     return c.json({ sessionId, events: [], limit, offset });
   }
+});
+
+// --- Story export (Fable sprint GAP 4 / backlog item 16) ---
+// GET /spectator/sessions/:id/story.md — the finished session as ONE readable
+// markdown story: title/cast → scenes (room_enter boundaries) → epilogue.
+// DB-first (persisted sessions, incl. after restart); falls back to the live
+// in-memory session so an in-progress story can be exported mid-session.
+spectator.get("/sessions/:id/story.md", async (c) => {
+  const sessionId = c.req.param("id");
+
+  // --- DB path ---
+  try {
+    const [session] = await db.select({
+      id: gameSessionsTable.id,
+      partyId: gameSessionsTable.partyId,
+      partyName: partiesTable.name,
+      isActive: gameSessionsTable.isActive,
+      summary: gameSessionsTable.summary,
+      outcome: gameSessionsTable.outcome,
+      dmMetadata: gameSessionsTable.dmMetadata,
+      startedAt: gameSessionsTable.startedAt,
+      endedAt: gameSessionsTable.endedAt,
+    })
+      .from(gameSessionsTable)
+      .leftJoin(partiesTable, eq(gameSessionsTable.partyId, partiesTable.id))
+      .where(eq(gameSessionsTable.id, sessionId));
+
+    if (session) {
+      const members = await db.select({
+        name: charactersTable.name,
+        class: charactersTable.class,
+        race: charactersTable.race,
+        level: charactersTable.level,
+        isAlive: charactersTable.isAlive,
+        modelProvider: usersTable.modelProvider,
+        modelName: usersTable.modelName,
+      })
+        .from(charactersTable)
+        .leftJoin(usersTable, eq(charactersTable.userId, usersTable.id))
+        .where(eq(charactersTable.partyId, session.partyId));
+
+      const eventRows = await db.select({
+        type: sessionEventsTable.type,
+        actorId: sessionEventsTable.actorId,
+        data: sessionEventsTable.data,
+        createdAt: sessionEventsTable.createdAt,
+      })
+        .from(sessionEventsTable)
+        .where(eq(sessionEventsTable.sessionId, sessionId))
+        .orderBy(asc(sessionEventsTable.createdAt));
+
+      const narrationRows = await db.select({
+        content: narrationsTable.content,
+        createdAt: narrationsTable.createdAt,
+      })
+        .from(narrationsTable)
+        .where(eq(narrationsTable.sessionId, sessionId))
+        .orderBy(asc(narrationsTable.createdAt));
+
+      const markdown = composeStoryMarkdown(
+        {
+          sessionId,
+          partyName: session.partyName,
+          summary: sanitizeSummaryForPublic(session.summary),
+          outcome: session.outcome,
+          startedAt: session.startedAt,
+          endedAt: session.endedAt,
+          isActive: session.isActive,
+          dmMetadata: session.dmMetadata ?? null,
+          members: members.map((m) => ({
+            name: m.name,
+            race: m.race,
+            class: m.class,
+            level: m.level,
+            isAlive: m.isAlive,
+            model: m.modelProvider && m.modelName ? `${m.modelProvider}/${m.modelName}` : null,
+          })),
+        },
+        eventRows.map((r) => ({ type: r.type, actorId: r.actorId, data: r.data as Record<string, unknown>, timestamp: r.createdAt })),
+        narrationRows.map((r) => ({ content: r.content, createdAt: r.createdAt })),
+      );
+      return c.body(markdown, 200, { "Content-Type": "text/markdown; charset=utf-8" });
+    }
+  } catch (err) {
+    // Fall through to the in-memory path (no DB / non-uuid live session id)
+  }
+
+  // --- In-memory fallback: live session ---
+  const { parties, characters } = gm.getState();
+  for (const [, party] of parties) {
+    if (party.session?.id !== sessionId) continue;
+    const dmMeta = (party as unknown as { dmMetadata?: Record<string, unknown> }).dmMetadata ?? null;
+    const members = party.members.flatMap((mid: string) => {
+      const ch = characters.get(mid);
+      return ch ? [{
+        name: ch.name,
+        race: ch.race,
+        class: ch.class,
+        level: ch.level,
+        isAlive: !ch.conditions.includes("dead"),
+        model: null,
+      }] : [];
+    });
+    const markdown = composeStoryMarkdown(
+      {
+        sessionId,
+        partyName: party.name ?? null,
+        summary: null,
+        outcome: null,
+        startedAt: party.session.startedAt,
+        endedAt: party.session.endedAt,
+        isActive: party.session.isActive,
+        dmMetadata: dmMeta as StorySessionMeta["dmMetadata"],
+        members,
+      },
+      party.events.map((e: { type: string; actorId: string | null; data: Record<string, unknown>; timestamp: Date }) => ({
+        type: e.type, actorId: e.actorId, data: e.data, timestamp: e.timestamp,
+      })),
+      [],
+    );
+    return c.body(markdown, 200, { "Content-Type": "text/markdown; charset=utf-8" });
+  }
+
+  return c.json({ error: "Session not found", code: "NOT_FOUND" }, 404);
 });
 
 // --- Activity pulse (formatted recent events for homepage banner) ---

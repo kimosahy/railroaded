@@ -53,7 +53,7 @@ import { resolveAttack, meleeAttackParams, rangedAttackParams, sneakAttackDice }
 import { abilityCheck, savingThrow, groupCheck, proficiencyBonus } from "../engine/checks.ts";
 import { applyDamage, applyHealing, handleDropToZero, handleRegainFromZero, addCondition, removeCondition, hasCondition, calculateAC, calculateMaxHP } from "../engine/hp.ts";
 import { castSpell, spellSaveDC, spellAttackBonus, getMaxSpellSlots, type SpellDefinition } from "../engine/spells.ts";
-import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP } from "../engine/death.ts";
+import { deathSave, applyDeathSaveConditions, resetDeathSaves, damageAtZeroHP, type DeathSaveResult } from "../engine/death.ts";
 import { shortRest as doShortRest, longRest as doLongRest, hitDieForClass, hitDieSidesForClass } from "../engine/rest.ts";
 import { roll, abilityModifier } from "../engine/dice.ts";
 import { rollLootTable, type LootTableEntry } from "../engine/loot.ts";
@@ -1283,6 +1283,26 @@ function advanceTurnSkipDead(party: GameParty): void {
       const char = characters.get(current.entityId);
       if (char && char.conditions.includes("dead")) {
         party.session = removeCombatant(party.session, current.entityId);
+        continue;
+      }
+      // Downed PCs never hold the turn (PT-0612 soft-lock): stable PCs are
+      // skipped like asleep monsters; dying PCs auto-roll their death save —
+      // RAW: a dying creature's turn IS its death save — and the turn passes.
+      if (char && char.conditions.includes("unconscious")) {
+        if (char.conditions.includes("stable")) {
+          logEvent(party, "turn_auto_advanced", char.id, {
+            reason: "unconscious_stable",
+            characterName: char.name,
+          });
+          party.session = nextTurn(party.session);
+          continue;
+        }
+        const result = performDeathSave(party, char, { auto: true });
+        // Death may have ended combat (TPK / all players dead) inside the save
+        if (!party.session || party.session.phase !== "combat") return;
+        if (result.revivedWith1HP) break; // nat 20 — back on their feet, their turn
+        if (result.dead) continue; // already removed from initiative by performDeathSave
+        party.session = nextTurn(party.session);
         continue;
       }
     }
@@ -3037,9 +3057,9 @@ export function handleCast(userId: string, params: { spell_name: string; target_
 
   // Apply effect to target if applicable
   if (spell.isHealing && params.target_id && result.totalEffect) {
-    // Find target character
+    // Find target character. Dead targets cannot be healed — death is permanent.
     const target = characters.get(params.target_id);
-    if (target) {
+    if (target && !target.conditions.includes("dead")) {
       const wasDying = target.hpCurrent === 0;
       const hp = applyHealing(
         { current: target.hpCurrent, max: target.hpMax, temp: 0 },
@@ -3344,6 +3364,9 @@ export function handleMove(userId: string, params: { direction_or_target: string
     return { success: false, error: `Cannot move to "${params.direction_or_target}". Available exits: ${exits.map((e) => e.roomName).join(", ")}`, reason_code: "BAD_REQUEST" };
   }
 
+  // Pre-move visited state — room_enter events carry roomId + revisit so
+  // scenes have stable identity in the event stream (feeds the story export).
+  const revisit = party.dungeonState.rooms.get(target.roomId)?.visited ?? false;
   const moveResult = moveToRoom(party.dungeonState, target.roomId);
   if (!moveResult.ok) {
     // TODO Pass 2: assign specific reason_code
@@ -3353,7 +3376,12 @@ export function handleMove(userId: string, params: { direction_or_target: string
   party.dungeonState = moveResult.state;
   const room = getCurrentRoom(moveResult.state);
 
-  logEvent(party, "room_enter", char.id, { roomName: room?.name });
+  logEvent(party, "room_enter", char.id, {
+    roomName: room?.name,
+    roomId: room?.id,
+    description: room?.description,
+    revisit,
+  });
 
   return {
     success: true,
@@ -3800,8 +3828,12 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
   // Data-driven potion handling
   if (itemDef?.category === "potion" && itemDef.healAmount) {
-    const healRoll = roll(itemDef.healAmount);
     const target = params.target_id ? characters.get(params.target_id) : char;
+    if (target?.conditions.includes("dead")) {
+      // Death is permanent — don't consume the potion on a corpse.
+      return { success: false, error: `${target.name} is dead. The fallen cannot be healed.`, reason_code: "BAD_REQUEST" };
+    }
+    const healRoll = roll(itemDef.healAmount);
     if (target) {
       const wasDying = target.hpCurrent === 0;
       const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, healRoll.total);
@@ -3839,8 +3871,9 @@ export function handleUseItem(userId: string, params: { item_name: string; targe
 
     // Apply spell effect to target
     if (spell.isHealing && params.target_id && result.totalEffect) {
+      // Dead targets cannot be healed — death is permanent.
       const target = characters.get(params.target_id);
-      if (target) {
+      if (target && !target.conditions.includes("dead")) {
         const wasDying = target.hpCurrent === 0;
         const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
         target.hpCurrent = hp.current;
@@ -4036,8 +4069,9 @@ export function handleBonusAction(userId: string, params: { action: string; spel
       let bonusSaveDC: number | undefined;
 
       if (spell.isHealing && params.target_id && result.totalEffect) {
+        // Dead targets cannot be healed — death is permanent.
         const target = characters.get(params.target_id);
-        if (target) {
+        if (target && !target.conditions.includes("dead")) {
           const wasDying = target.hpCurrent === 0;
           const hp = applyHealing({ current: target.hpCurrent, max: target.hpMax, temp: 0 }, result.totalEffect);
           target.hpCurrent = hp.current;
@@ -4410,6 +4444,30 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     return { success: false, error: "It's not your turn.", reason_code: "WRONG_TURN" };
   }
 
+  const result = performDeathSave(party, char);
+
+  return {
+    success: true,
+    data: {
+      naturalRoll: result.naturalRoll,
+      success: result.success,
+      deathSaves: result.deathSaves,
+      stabilized: result.stabilized,
+      dead: result.dead,
+      revivedWith1HP: result.revivedWith1HP,
+    },
+  };
+}
+
+/**
+ * Roll a death save for a dying character and apply all consequences:
+ * conditions, nat-20 revival, event log, party broadcast, DM notification,
+ * and (on death) initiative removal + partial XP + TPK handling.
+ * Shared by the agent-initiated handleDeathSave and the auto-roll in
+ * advanceTurnSkipDead (a dying creature's turn IS its death save).
+ */
+function performDeathSave(party: GameParty, char: GameCharacter, opts?: { auto?: boolean }): DeathSaveResult {
+  const auto = opts?.auto ?? false;
   const result = deathSave(char.deathSaves);
   char.deathSaves = result.deathSaves;
   char.conditions = applyDeathSaveConditions(char.conditions, result);
@@ -4427,6 +4485,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     stabilized: result.stabilized,
     dead: result.dead,
     revivedWith1HP: result.revivedWith1HP,
+    auto,
   });
 
   // Broadcast death save result to entire party
@@ -4440,6 +4499,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     stabilized: result.stabilized,
     dead: result.dead,
     revivedWith1HP: result.revivedWith1HP,
+    auto,
   });
 
   // Notify DM explicitly on stabilize or death
@@ -4494,17 +4554,7 @@ export function handleDeathSave(userId: string): { success: boolean; data?: Reco
     }
   }
 
-  return {
-    success: true,
-    data: {
-      naturalRoll: result.naturalRoll,
-      success: result.success,
-      deathSaves: result.deathSaves,
-      stabilized: result.stabilized,
-      dead: result.dead,
-      revivedWith1HP: result.revivedWith1HP,
-    },
-  };
+  return result;
 }
 
 export function handleJournalAdd(userId: string, params: { entry: string }): { success: boolean; data?: Record<string, unknown>; error?: string; reason_code?: string } {
@@ -4933,6 +4983,17 @@ export function handleNarrate(userId: string, params: NarrateParams): { success:
     eventData._meta = params.meta;
   }
 
+  // Scene canon: the first scene-narration delivered in a room becomes its
+  // established lore, re-served on revisit (get_room_state / advance_scene)
+  // so the DM builds on it instead of re-inventing the premise (PT-0505:
+  // "room descriptions regenerate per-call — no traceable arc is possible").
+  if (narType === "scene" && party.dungeonState) {
+    const room = getCurrentRoom(party.dungeonState);
+    if (room && !room.canonNarration) {
+      room.canonNarration = params.text;
+    }
+  }
+
   logEvent(party, "narration", null, eventData);
   return {
     success: true,
@@ -5060,10 +5121,14 @@ export function handleSpawnEncounter(userId: string, params: { monsters: { templ
 
   // Compute everything first
   const monsters = spawnMonsters(toSpawn);
+  // Dead party members never enter initiative — consequences persist across
+  // encounters (PT-0505: a PC with 3 failed death saves re-appeared in the
+  // next encounter). Unconscious/stable members stay in initiative; the turn
+  // loop auto-rolls their death saves / skips them.
   const players = party.members
     .map((mid) => characters.get(mid))
-    .filter(Boolean)
-    .map((c) => ({ id: c!.id, name: c!.name, dexScore: c!.abilityScores?.dex ?? (c!.abilityScores as any)?.dexterity ?? 10 }));
+    .filter((c): c is NonNullable<typeof c> => Boolean(c) && !c!.conditions.includes("dead"))
+    .map((c) => ({ id: c.id, name: c.name, dexScore: c.abilityScores?.dex ?? (c.abilityScores as any)?.dexterity ?? 10 }));
 
   const initiative = rollEncounterInitiative(players, monsters);
   const slots: InitiativeSlot[] = initiative.map((e) => ({
@@ -5167,6 +5232,9 @@ export function handleOverrideRoomDescription(userId: string, params: { descript
 
   const oldDescription = room.description;
   room.description = params.description;
+  // An explicit override IS the room's new established lore — replace canon
+  // so revisits serve the rewritten room, not the pre-override narration.
+  room.canonNarration = params.description;
 
   logEvent(party, "room_override", null, { room: room.name, oldDescription, newDescription: params.description });
 
@@ -5695,13 +5763,30 @@ export function handleAdvanceScene(userId: string, params: { next_room_id?: stri
   }
 
   if (nextRoom && party.dungeonState) {
+    // Capture pre-move visited state: moveToRoom flips it, and revisits must
+    // be announced so the DM re-serves established lore instead of new lore.
+    const revisit = party.dungeonState.rooms.get(nextRoom)?.visited ?? false;
     const moveResult = moveToRoom(party.dungeonState, nextRoom);
     if (moveResult.ok) {
       party.dungeonState = moveResult.state;
       const room = getCurrentRoom(moveResult.state);
-      logEvent(party, "room_enter", null, { roomName: room?.name });
+      logEvent(party, "room_enter", null, {
+        roomName: room?.name,
+        roomId: room?.id,
+        description: room?.description,
+        revisit,
+      });
       const newExits = getAvailableExits(moveResult.state).map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId }));
-      return { success: true, data: { advanced: true, room: room?.name, description: room?.description, phase: party.session?.phase, exits: newExits } };
+      return {
+        success: true,
+        data: {
+          advanced: true, room: room?.name, description: room?.description,
+          phase: party.session?.phase, exits: newExits,
+          revisit,
+          canon_narration: room?.canonNarration ?? null,
+          ...(revisit && room?.canonNarration ? { canon_note: "The party has been here before. Its lore is established in canon_narration — stay consistent with it." } : {}),
+        },
+      };
     }
     if (moveResult.reason === "no_exit") {
       const validExits = getAvailableExits(party.dungeonState).map((e) => `${e.roomName} (${e.roomId})`);
@@ -5819,13 +5904,20 @@ export function handleGetRoomState(userId: string): { success: boolean; data?: R
   }
 
   // Surface session theme so DM agent can recontextualize room descriptions
+  // — but only for FIRST visits. Once a room has canon (established lore),
+  // the DM must build on it, not re-invent it (PT-0505 lore-regen bug).
   const dmMeta = (party as GameParty & { dmMetadata?: Record<string, unknown> }).dmMetadata;
   const sessionTheme = dmMeta && Object.keys(dmMeta).length > 0 ? dmMeta : null;
 
   return {
     success: true,
     data: {
-      room: room ? { name: room.name, description: room.description, type: room.type, features: room.features } : null,
+      room: room ? {
+        name: room.name, description: room.description, type: room.type, features: room.features,
+        visited: room.visited,
+        canon_narration: room.canonNarration ?? null,
+        ...(room.canonNarration ? { canon_note: "This room's lore is established. Stay consistent with canon_narration — reference it, evolve it, never contradict or replace it." } : {}),
+      } : null,
       exits: exits.map((e) => ({ name: e.roomName, type: e.connectionType, id: e.roomId })),
       monsters: aliveMonsters.map((m) => ({ id: m.id, name: m.name, hp: m.hpCurrent, hpMax: m.hpMax, ac: m.ac, conditions: m.conditions, creatureType: m.creatureType ?? "humanoid" })),
       suggestedEncounter,
@@ -8040,7 +8132,11 @@ function persistDmStats(userId: string, increments: { sessionsAsDM?: number; dun
 function stabilizeUnconsciousCharacters(party: GameParty): void {
   for (const mid of party.members) {
     const c = characters.get(mid);
-    if (c && c.isAlive && c.hpCurrent === 0 && c.conditions.includes("unconscious")) {
+    // Gate on the canonical "dead" condition, not the runtime-added isAlive
+    // field — isAlive is only assigned at death sites, so it's undefined
+    // (falsy) for characters who merely dropped unconscious, which silently
+    // disabled post-combat auto-stabilize.
+    if (c && !c.conditions.includes("dead") && c.hpCurrent === 0 && c.conditions.includes("unconscious")) {
       c.conditions = addCondition(c.conditions, "stable");
       c.deathSaves = resetDeathSaves();
     }
@@ -8745,6 +8841,11 @@ export async function loadPersistedCharacters(): Promise<number> {
       const hitDice = row.hitDice as CharacterSheet["hitDice"];
       const equipment = row.equipment as CharacterSheet["equipment"];
 
+      // Death survives restarts: a dead character must never come back at
+      // full HP with cleared conditions (PT-0505 "alive at full HP" bug).
+      // Living characters get the "restart = long rest" reset as before.
+      const isDead = row.isAlive === false || (row.conditions ?? []).includes("dead");
+
       const char: GameCharacter = {
         name: row.name,
         race: row.race,
@@ -8754,7 +8855,7 @@ export async function loadPersistedCharacters(): Promise<number> {
         gold: row.gold ?? 0,
         abilityScores,
         hpMax: row.hpMax,
-        hpCurrent: row.hpMax, // restart = long rest, full HP
+        hpCurrent: isDead ? 0 : row.hpMax, // restart = long rest, full HP (unless dead)
         ac: row.ac,
         spellSlots,
         hitDice,
@@ -8770,8 +8871,10 @@ export async function loadPersistedCharacters(): Promise<number> {
         id: charId,
         userId,
         partyId: null, // no active party after restart
-        conditions: [],
-        deathSaves: { successes: 0, failures: 0 },
+        conditions: isDead ? ["dead"] : [],
+        deathSaves: isDead
+          ? (row.deathSaves as CharacterSheet["deathSaves"] ?? { successes: 0, failures: 3 })
+          : { successes: 0, failures: 0 },
         dbCharId: row.id,
         flaw: row.flaw ?? "",
         bond: row.bond ?? "",

@@ -12,6 +12,10 @@ export interface DungeonRoom {
   features: string[];
   visited: boolean;
   revealed: boolean;
+  /** Established lore: the first scene narration delivered in this room
+   *  (or an explicit description override). Re-served to the DM on revisit
+   *  so the room's story stays fixed instead of being re-invented. */
+  canonNarration?: string | null;
 }
 
 export interface RoomConnection {
