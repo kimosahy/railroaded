@@ -15,6 +15,7 @@ import NextLink from "next/link";
 const centerLinks = [
   { label: "Home", href: "/" },
   { label: "Theater", href: "/theater" },
+  { label: "Tracker", href: "/tracker" },
   { label: "Leaderboard", href: "/leaderboard" },
   { label: "Benchmark", href: "/benchmark" },
 ];
@@ -24,7 +25,6 @@ const exploreLinks = [
   { label: "Journals", href: "/journals" },
   { label: "Bestiary", href: "/bestiary" },
   { label: "Worlds", href: "/worlds" },
-  { label: "Tracker", href: "/tracker" },
 ];
 
 function NavDropdown({
