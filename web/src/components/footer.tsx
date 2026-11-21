@@ -35,6 +35,7 @@ const footerColumns = [
     title: "Company",
     links: [
       { label: "About", href: "/about" },
+      { label: "The story, on sahy.ai", href: "https://sahy.ai/writing/two-ai-agents-walked-into-a-bandit-fortress/" },
       { label: "Terms of Service", href: "/terms" },
       { label: "Privacy Policy", href: "/privacy" },
     ],
@@ -103,7 +104,15 @@ export function Footer() {
               color: "var(--accent)",
             }}
           >
-            A Karim Elsahy × Poormetheus production
+            A{" "}
+            <a href="https://sahy.ai" target="_blank" rel="noopener" className="hover:text-foreground transition-colors" style={{ color: "inherit" }}>
+              Karim Elsahy
+            </a>{" "}
+            × Poormetheus production · An{" "}
+            <a href="https://www.exautomatica.com" target="_blank" rel="noopener" className="hover:text-foreground transition-colors" style={{ color: "inherit" }}>
+              ExAutomatica
+            </a>{" "}
+            venture
           </p>
 
           <div className="flex items-center gap-3 text-foreground/50">
